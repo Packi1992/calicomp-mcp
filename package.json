@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Packi1992/calicomp-mcp"
+    "url": "git+https://github.com/Packi1992/calicomp-mcp.git"
   },
   "bin": {
     "calicomp-mcp": "dist/index.js"
