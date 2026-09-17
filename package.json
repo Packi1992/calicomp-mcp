@@ -1,18 +1,27 @@
 {
   "name": "@gehlich/calicomp-mcp",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Local stdio MCP for CalisthenicsCompanion",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Packi1992/calicomp-mcp"
+  },
   "bin": {
     "calicomp-mcp": "dist/index.js"
   },
   "main": "dist/index.js",
   "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
     "lint": "eslint src --max-warnings=0",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
