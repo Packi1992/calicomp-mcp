@@ -41,6 +41,36 @@ CalisthenicsCompanion-MCP/
 | `CALICOMP_KEY` | AES-256 encryption key in raw base64 (no prefix). Exported from the app alongside the PAT. |
 | `CALICOMP_SERVER_URL` | *(Optional)* Override the API base URL. Defaults to `https://api.calicompanion.de`. |
 
+## Credential Storage
+
+The "Copy MCP config" button in the app's PAT settings screen produces the JSON block shown
+under [Usage](#usage) below, with `CALICOMP_PAT` and `CALICOMP_KEY` filled in. That block is not
+an ordinary configuration snippet — **both values are plaintext secrets**. `CALICOMP_KEY` in
+particular is what turns the encrypted payload the server stores back into readable training
+data; the server itself only ever sees ciphertext. Treat the whole block the same way you would
+treat a password.
+
+**Where it must NOT go:** any file your project's version control tracks. Pasting the block into
+a repo-committed config file — even a "local" one that ends up staged by accident — puts a live
+token and decryption key into git history, which is not something a later `git rm` undoes.
+
+**Where it should go instead:** a file outside any repository that only your own user account
+can read (`chmod 600`), or your MCP client's user-scope server registration instead of a
+project-scope one. Concretely, the same approach this project uses for its own recurring MCP
+calls: an env file under your user config directory (e.g. `~/.config/calicomp/mcp.env`, mode
+`600`) that a wrapper script or your client's env-var substitution reads at invocation time — or,
+if your client supports it directly, register the server in its *user* config rather than a
+project's `.mcp.json` (Claude Code, for example, distinguishes `claude mcp add --scope user` from
+a project-scoped registration). Either way, the secret lives in exactly one place your user
+account controls, never in a directory a `git add .` could reach.
+
+**What the snippet leaves out:** `CALICOMP_SERVER_URL`. For the hosted default
+(`https://api.calicompanion.de`, see the table above) this is harmless — the server falls back to
+that same default when the variable is absent, so registration works without it. If you run your
+own server, however, the snippet gives you no hint that this variable exists or that you need to
+add it by hand; without it you will silently talk to the wrong server with no error message
+pointing at the cause. Add `CALICOMP_SERVER_URL` to the `env` block yourself in that case.
+
 ## Transport
 
 Runs as a local stdio MCP server. The LLM client communicates via JSON-RPC 2.0
