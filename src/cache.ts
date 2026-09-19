@@ -36,6 +36,8 @@ import type {
   SyncHrSampleDto,
   SyncBlockDto,
   SyncTemplateExerciseDto,
+  SyncExerciseDto,
+  SyncExerciseTranslationDto,
   MiscSyncRow,
   DecryptedSnapshot,
   DecryptedSession,
@@ -47,6 +49,7 @@ import type {
   NormalizedTemplateExercise,
   CatalogExercise,
   CatalogExerciseWire,
+  CatalogTranslation,
   UserProfileResponse,
 } from './types.js';
 
@@ -330,7 +333,63 @@ export function normalizeCatalog(wireCatalog: CatalogExerciseWire[]): CatalogExe
     capabilities: ex.capabilities ?? [],
     equipment:    ex.equipment ?? [],
     isSkill:      ex.isSkill ?? false,
+    origin:       'CATALOG' as const,
   }));
+}
+
+/**
+ * Project a single user-created exercise (`snapshot.exercises`, `isPredefined = 0` server-side)
+ * onto the same `CatalogExercise` shape the curated catalog uses, so every existing and future
+ * reader of `data.catalog` resolves it without a second lookup path (141-18, G-141-2-SCOPE).
+ *
+ * Exported — like `normalizeCatalog` above — because it is tested directly, and because it
+ * belongs beside `normalizeCatalog` as part of the one seam: this is the only place in the
+ * codebase allowed to turn a `SyncExerciseDto` into a `CatalogExercise`.
+ *
+ * Deliberately NOT a decode boundary for muscle/equipment/capability data: a user exercise
+ * carries none of that server-side, so `muscleGroups`/`equipment`/`capabilities` are always `[]`
+ * and `isSkill` is always `false` here — an empty list is the truth (unrated), never a
+ * placeholder standing in for data this function forgot to fetch. Inventing a muscle group,
+ * equipment link or capability axis for a user exercise would poison every weighted evaluation
+ * downstream (T-141-80) and is prohibited even implicitly.
+ *
+ * `key` uses a `user_exercise:<id>` prefix, deliberately carrying a colon — every curated
+ * catalog key is lowercase-with-underscore and never contains one (see `data/exercises.sql`),
+ * so this key can never collide with a catalog key and is recognizable as a user exercise on
+ * sight, independently of the `origin` field.
+ *
+ * `lastModifiedAt` is the user exercise's own `updatedAt` — there is no separate "catalog last
+ * touched" timestamp to fall back to for a row the catalog never curated.
+ */
+export function projectUserExerciseToCatalog(
+  ex: SyncExerciseDto,
+  allTranslations: SyncExerciseTranslationDto[],
+): CatalogExercise {
+  const translations: CatalogTranslation[] = allTranslations
+    .filter((t) => t.exerciseId === ex.id)
+    .map((t) => ({
+      languageCode: t.languageCode,
+      name:         t.name,
+      description:  t.description,
+    }));
+
+  return {
+    id:             ex.id,
+    key:            `user_exercise:${ex.id}`,
+    nameEn:         ex.name,
+    mode:           ex.mode,
+    usesWeight:     ex.usesWeight,
+    description:    ex.description,
+    lastModifiedAt: ex.updatedAt,
+    translations,
+    // Never invented — an unrated exercise contributes nothing to a weighted evaluation, and a
+    // fabricated non-empty value here would look like a real measurement (T-141-80).
+    muscleGroups: [],
+    equipment:    [],
+    isSkill:      false,
+    capabilities: [],
+    origin:       'CUSTOM',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -349,8 +408,19 @@ async function doFetch(
     fetchCatalog(serverUrl),
   ]);
 
-  const snapshot = decryptMerge(rawSnapshot, keyB64);
-  const catalog  = normalizeCatalog(rawCatalog);
+  const snapshot      = decryptMerge(rawSnapshot, keyB64);
+  const curatedCatalog = normalizeCatalog(rawCatalog);
+
+  // 141-18 (G-141-2-SCOPE): the one seam where snapshot and catalog are both in hand for the
+  // first time. Curated entries go first and a user exercise whose id the catalog already
+  // knows is dropped — the curated catalog carries the ratings, so on an id collision it wins
+  // (T-141-82). A soft-deleted user exercise (`deletedAt` set) is dropped too (T-141-83).
+  const curatedIds = new Set(curatedCatalog.map((ex) => ex.id));
+  const projectedUserExercises = snapshot.exercises
+    .filter((ex) => !ex.deletedAt && !curatedIds.has(ex.id))
+    .map((ex) => projectUserExerciseToCatalog(ex, snapshot.exerciseTranslations));
+  const catalog = [...curatedCatalog, ...projectedUserExercises];
+
   return { snapshot, catalog, profile, fetchedAt: Date.now() };
 }
 

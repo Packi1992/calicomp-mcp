@@ -422,6 +422,17 @@ export interface CatalogExercise {
    */
   isSkill?: boolean;
   capabilities: CatalogCapabilityAxis[];
+  /**
+   * Phase 141-18 (G-141-2-SCOPE) — provenance of this catalog entry. `'CATALOG'` for every
+   * entry `normalizeCatalog()` builds from the curated `GET /api/exercises` response;
+   * `'CUSTOM'` for a user's own exercise projected into the merged catalog from
+   * `snapshot.exercises` (see `projectUserExerciseToCatalog` in `cache.ts`). Required, not
+   * optional, so the type checker finds every construction site — the same reasoning that
+   * made `capabilities` required after the CAP-05 gap. A `'CUSTOM'` entry carries no muscle,
+   * equipment or capability rating (see that field's own doc); the coach uses `origin` to
+   * tell an unrated exercise apart from a rated one with zero values.
+   */
+  origin: 'CATALOG' | 'CUSTOM';
 }
 
 /**
@@ -433,8 +444,12 @@ export interface CatalogExercise {
  * `fetchCatalog()` can actually return, instead of `CatalogExercise` silently lying about a
  * field the server can omit (the CAP-05 root cause, 2026-09-06 gap-closure). `cache.ts`'s
  * `normalizeCatalog()` is the only place allowed to construct a `CatalogExercise` from this type.
+ *
+ * `origin` is excluded too — like `capabilities`/`equipment`/`isSkill`, it does not come off
+ * the wire at all. It is stamped on in the one seam (`normalizeCatalog()` for curated entries,
+ * `projectUserExerciseToCatalog()` for a user's own), never read from `GET /api/exercises`.
  */
-export type CatalogExerciseWire = Omit<CatalogExercise, 'capabilities' | 'equipment' | 'isSkill'> & {
+export type CatalogExerciseWire = Omit<CatalogExercise, 'capabilities' | 'equipment' | 'isSkill' | 'origin'> & {
   capabilities?: CatalogCapabilityAxis[];
   equipment?: CatalogEquipment[];
   isSkill?: boolean;

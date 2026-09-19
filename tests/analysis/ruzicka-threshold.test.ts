@@ -38,6 +38,7 @@ function catalogExercise(id: string, muscleKey: string): CatalogExercise {
       },
     ],
     capabilities: [],
+    origin: 'CATALOG',
   };
 }
 

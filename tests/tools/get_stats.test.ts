@@ -199,6 +199,7 @@ describe('get_stats — weightedSetCount', () => {
       ],
       equipment: [],
       capabilities: [],
+      origin: 'CATALOG',
     },
     {
       id: EX_PRIMARY_ID,
@@ -213,6 +214,7 @@ describe('get_stats — weightedSetCount', () => {
       ],
       equipment: [],
       capabilities: [],
+      origin: 'CATALOG',
     },
     {
       id: EX_STABILIZER_ID,
@@ -227,6 +229,7 @@ describe('get_stats — weightedSetCount', () => {
       ],
       equipment: [],
       capabilities: [],
+      origin: 'CATALOG',
     },
   ];
 
@@ -363,6 +366,7 @@ describe('get_stats — trend.points', () => {
       muscleGroups: [{ id: 'mg-points', key: 'chest', translations: [], involvementLevel: 'PRIMARY' }],
       equipment: [],
       capabilities: [],
+      origin: 'CATALOG',
     },
   ];
 
@@ -504,6 +508,7 @@ describe('get_stats — by capabilities', () => {
           capabilityLevel: 'HAUPTREIZ',
         },
       ],
+      origin: 'CATALOG',
     },
     {
       id: EX_MOBILITY_FLEX_ID,
@@ -535,6 +540,7 @@ describe('get_stats — by capabilities', () => {
           capabilityLevel: 'GERING',
         },
       ],
+      origin: 'CATALOG',
     },
     {
       id: EX_NO_AXIS_ID,
@@ -547,6 +553,7 @@ describe('get_stats — by capabilities', () => {
       muscleGroups: [],
       equipment: [],
       capabilities: [],
+      origin: 'CATALOG',
     },
     {
       id: EX_BREATH_UNUSED_ID,
@@ -563,6 +570,7 @@ describe('get_stats — by capabilities', () => {
       capabilities: [
         { id: 'cap-breath', key: 'breath', translations: [{ languageCode: 'en', name: 'Breath' }], capabilityLevel: 'HAUPTREIZ' },
       ],
+      origin: 'CATALOG',
     },
   ];
 

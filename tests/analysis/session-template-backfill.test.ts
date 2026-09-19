@@ -37,6 +37,7 @@ function catalogExercise(id: string, muscleKey?: string): CatalogExercise {
       ? [{ id: `mg-${muscleKey}`, key: muscleKey, translations: [], involvementLevel: 'PRIMARY' }]
       : [],
     capabilities: [],
+    origin: 'CATALOG',
   };
 }
 

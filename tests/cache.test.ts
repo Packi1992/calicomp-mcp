@@ -14,14 +14,20 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { SyncPullResponse, UserProfileResponse, CatalogExerciseWire } from '../src/types.js';
+import type {
+  SyncPullResponse,
+  UserProfileResponse,
+  CatalogExerciseWire,
+  SyncExerciseDto,
+  SyncExerciseTranslationDto,
+} from '../src/types.js';
 
 // ── Module mocks (hoisted by vitest before static imports) ──────────────────
 vi.mock('../src/http.js');
 vi.mock('../src/crypto.js');
 
 // ── Imports after mocks ──────────────────────────────────────────────────────
-import { getSnapshot, __resetCache } from '../src/cache.js';
+import { getSnapshot, __resetCache, projectUserExerciseToCatalog } from '../src/cache.js';
 import * as httpModule from '../src/http.js';
 import * as cryptoModule from '../src/crypto.js';
 
@@ -557,5 +563,123 @@ describe('catalog normalization (CAP-05 gap-closure)', () => {
     expect(catalog[0].equipment).toHaveLength(1);
     expect(catalog[0].capabilities).toHaveLength(1);
     expect(catalog[0].capabilities[0].key).toBe('balance');
+  });
+});
+
+// ── User-exercise merge into the catalog (141-18, G-141-2-SCOPE) ────────────
+//
+// snapshot.exercises has been typed and transported since Phase 120 (cache.ts's
+// decryptMerge passes it through unchanged) but no tool ever read it — the closed test
+// circle cannot write to the curated catalog at all, so their own exercises fell silently
+// out of every coach evaluation. These seven cases are the seven <behavior> bullets from
+// 141-18-PLAN.md Task 1, one test per bullet, in the same order. The last one is the most
+// important: a snapshot with no user exercises must yield the exact catalog normalizeCatalog
+// alone would have produced, or this change touched more than it should have.
+
+describe('user-exercise merge into catalog (G-141-2-SCOPE)', () => {
+  const CURATED_ID = 'cccccccc-1000-4000-c000-000000000001';
+  const curatedWireEntry: CatalogExerciseWire = {
+    id: CURATED_ID,
+    key: 'dip',
+    nameEn: 'Dip',
+    mode: 'REPS',
+    usesWeight: false,
+    lastModifiedAt: 1_700_000_000_000,
+    translations: [{ languageCode: 'de', name: 'Dip' }],
+    muscleGroups: [],
+  };
+
+  function userExercise(overrides: Partial<SyncExerciseDto> & { id: string }): SyncExerciseDto {
+    return {
+      name: 'Klimmzug am Ring',
+      mode: 'REPS',
+      usesWeight: false,
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_050_000,
+      ...overrides,
+    };
+  }
+
+  it('1. a user exercise from the snapshot appears in the merged catalog with id, name, mode and usesWeight', async () => {
+    mockFetchCatalog.mockResolvedValueOnce([]);
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({ exercises: [userExercise({ id: 'user-ex-1', name: 'Ring Rows', mode: 'REPS', usesWeight: true })] }),
+    );
+
+    const { catalog } = await getSnapshot(PAT, KEY_B64, URL);
+
+    expect(catalog).toHaveLength(1);
+    expect(catalog[0]).toMatchObject({ id: 'user-ex-1', nameEn: 'Ring Rows', mode: 'REPS', usesWeight: true });
+  });
+
+  it('2. a user exercise carries the CUSTOM origin; a curated entry carries the CATALOG origin', async () => {
+    mockFetchCatalog.mockResolvedValueOnce([curatedWireEntry]);
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({ exercises: [userExercise({ id: 'user-ex-2' })] }),
+    );
+
+    const { catalog } = await getSnapshot(PAT, KEY_B64, URL);
+
+    expect(catalog).toHaveLength(2);
+    const curated = catalog.find((ex) => ex.id === CURATED_ID);
+    const user = catalog.find((ex) => ex.id === 'user-ex-2');
+    expect(curated?.origin).toBe('CATALOG');
+    expect(user?.origin).toBe('CUSTOM');
+  });
+
+  it('3. a user exercise with a set deletedAt does not appear', async () => {
+    mockFetchCatalog.mockResolvedValueOnce([]);
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        exercises: [userExercise({ id: 'user-ex-deleted', deletedAt: 1_700_000_100_000 })],
+      }),
+    );
+
+    const { catalog } = await getSnapshot(PAT, KEY_B64, URL);
+
+    expect(catalog).toHaveLength(0);
+  });
+
+  it('4. a user exercise sharing an id with a catalog entry is dropped — the catalog entry wins', async () => {
+    mockFetchCatalog.mockResolvedValueOnce([curatedWireEntry]);
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({ exercises: [userExercise({ id: CURATED_ID, name: 'Should never win' })] }),
+    );
+
+    const { catalog } = await getSnapshot(PAT, KEY_B64, URL);
+
+    expect(catalog).toHaveLength(1);
+    expect(catalog[0].id).toBe(CURATED_ID);
+    expect(catalog[0].nameEn).toBe('Dip');
+    expect(catalog[0].origin).toBe('CATALOG');
+  });
+
+  it('5. translations from the snapshot land on the matching user exercise, by language code', () => {
+    const translations: SyncExerciseTranslationDto[] = [
+      { exerciseId: 'user-ex-5', languageCode: 'de', name: 'Ring-Klimmzug' },
+      { exerciseId: 'other-exercise', languageCode: 'de', name: 'Irrelevant' },
+    ];
+
+    const projected = projectUserExerciseToCatalog(userExercise({ id: 'user-ex-5' }), translations);
+
+    expect(projected.translations).toEqual([{ languageCode: 'de', name: 'Ring-Klimmzug', description: undefined }]);
+  });
+
+  it('6. muscle groups, equipment and capability axes of a user exercise are empty — never invented', () => {
+    const projected = projectUserExerciseToCatalog(userExercise({ id: 'user-ex-6' }), []);
+
+    expect(projected.muscleGroups).toEqual([]);
+    expect(projected.equipment).toEqual([]);
+    expect(projected.capabilities).toEqual([]);
+    expect(projected.isSkill).toBe(false);
+  });
+
+  it('7. a snapshot without user exercises yields exactly the catalog normalizeCatalog alone would produce', async () => {
+    mockFetchCatalog.mockResolvedValueOnce([curatedWireEntry]);
+    mockFetchSnapshot.mockResolvedValueOnce(makePull({ exercises: [] }));
+
+    const { catalog } = await getSnapshot(PAT, KEY_B64, URL);
+
+    expect(catalog).toEqual([{ ...curatedWireEntry, capabilities: [], equipment: [], isSkill: false, origin: 'CATALOG' }]);
   });
 });

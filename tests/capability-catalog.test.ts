@@ -25,6 +25,7 @@ function buildExercise(overrides: Partial<CatalogExercise> & { id: string }): Ca
     muscleGroups: [],
     equipment: [],
     capabilities: [],
+    origin: 'CATALOG',
     ...overrides,
   };
 }

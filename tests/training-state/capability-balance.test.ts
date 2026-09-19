@@ -96,6 +96,7 @@ function buildExercise(
       translations: [],
       capabilityLevel: a.level,
     })),
+    origin: 'CATALOG',
   };
 }
 

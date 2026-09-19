@@ -57,6 +57,7 @@ export const mockCatalog: CatalogExercise[] = [
     ],
     equipment: [],
     capabilities: [],
+    origin: 'CATALOG',
   },
   {
     id: CATALOG_EXERCISE_ID_PULLUP,
@@ -82,6 +83,7 @@ export const mockCatalog: CatalogExercise[] = [
     ],
     equipment: [],
     capabilities: [],
+    origin: 'CATALOG',
   },
   {
     id: CATALOG_EXERCISE_ID_SQUAT,
@@ -107,6 +109,7 @@ export const mockCatalog: CatalogExercise[] = [
     ],
     equipment: [],
     capabilities: [],
+    origin: 'CATALOG',
   },
 ];
 

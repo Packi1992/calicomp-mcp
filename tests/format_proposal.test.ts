@@ -171,6 +171,7 @@ describe('shared formatProposal corpus — MCP/Kotlin enforcement-point parity (
         muscleGroups: [],
         equipment: [],
         capabilities: [],
+        origin: 'CATALOG',
       },
     ];
 

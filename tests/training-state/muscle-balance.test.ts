@@ -92,6 +92,7 @@ function buildExercise(id: string, muscleKeys: string[]): CatalogExercise {
     })),
     equipment: [],
     capabilities: [],
+    origin: 'CATALOG',
   };
 }
 

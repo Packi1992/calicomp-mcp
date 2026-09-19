@@ -55,6 +55,7 @@ function buildExercise(
         capabilityLevel,
       }),
     ),
+    origin: 'CATALOG',
   };
 }
 
