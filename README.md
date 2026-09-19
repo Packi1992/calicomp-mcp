@@ -94,6 +94,29 @@ exclusive JSON-RPC channel.
 }
 ```
 
+## Exercise Catalog: Curated Entries and Custom Exercises (since 1.1.0)
+
+`get_exercise_catalog` — and every training-state calculation that resolves an exercise id —
+returns two kinds of entries, distinguished by the `origin` field:
+
+- **`"CATALOG"`** — the curated, admin-maintained catalog (`GET /api/exercises`). These carry
+  muscle-group, equipment and capability-axis ratings.
+- **`"CUSTOM"`** — a user's own exercise, created because they cannot write to the curated
+  catalog at all. For the closed test circle this is the normal case, not an exception: a custom
+  exercise is real training data, but it carries **no** muscle, equipment or capability rating —
+  there is nothing to invent, so those fields are always empty. Treat an empty rating as "not
+  rated", never as a measured zero.
+
+**This does not replace curating the catalog.** If you have admin access and can run the
+catalog round trip (`tools/exercise.mjs` in the super-repo), your own exercises still belong in
+the curated catalog — cleanly, with real ratings. The `CUSTOM` read path exists for everyone who
+cannot do that, so their training data is not silently invisible to the coach. Two user groups,
+two answers; this section covers the one that has no other option.
+
+`propose_new_exercise`'s duplicate check only ever matches against `"CATALOG"` entries — a
+proposal for a new catalog exercise can never be blocked by someone else's same-named custom
+exercise.
+
 ## Building
 
 ```bash

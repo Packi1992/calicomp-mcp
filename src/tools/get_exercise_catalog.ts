@@ -97,7 +97,12 @@ export function registerToolGetExerciseCatalog(
         'Return the full exercise catalog with muscle groups, equipment, and optional ' +
         'localized names. Provide `lang` (e.g. "de", "fr") to add a `localizedName` field ' +
         '(falls back to `nameEn` when no translation exists). Use `muscleGroups[].key` ' +
-        'with `get_stats { by: "muscle" }` to query aggregates by muscle group.',
+        'with `get_stats { by: "muscle" }` to query aggregates by muscle group. ' +
+        'The result includes both curated catalog entries AND the user\'s own custom ' +
+        'exercises — check `origin` ("CATALOG" vs "CUSTOM") to tell them apart. A "CUSTOM" ' +
+        'entry carries no muscle-group, equipment or capability-axis rating, so it never ' +
+        'contributes to a weighted evaluation (muscle balance, capability balance) — treat ' +
+        'that absence as "not rated", never as a real zero.',
       inputSchema: GetExerciseCatalogSchema,
       annotations: { readOnlyHint: true },
     },

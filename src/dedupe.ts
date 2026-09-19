@@ -15,6 +15,13 @@
  * normalized proposed name against BOTH `nameEn` AND every translation name, so a
  * German proposal can match an English-cataloged exercise carrying a German translation.
  *
+ * 141-18 (G-141-2-SCOPE): since `data.catalog` now also carries every user's own exercises
+ * (origin: 'CUSTOM', projected in from `snapshot.exercises`), the match is scoped to
+ * `origin: 'CATALOG'` entries only. A proposal for a new CATALOG exercise must never fail
+ * because some user once created a same-named exercise for themselves — that would be a
+ * block from someone else's data, and the propose path is exactly the path such an exercise
+ * would take INTO the catalog (T-141-81).
+ *
  * Pure functions only — no fetch, no `console.*` (T-121-04). Used by the propose-only
  * WRITE tools (Plans 03/04) to resolve a proposed exercise name to an existing catalog
  * UUID instead of creating a duplicate (T-121-02: callers reference matches by `.id` only).
@@ -61,7 +68,8 @@ export function findCatalogMatch(
   if (!key) return undefined;
   return catalog.find(
     (ex) =>
-      normalizeExerciseName(ex.nameEn) === key ||
-      ex.translations.some((t) => normalizeExerciseName(t.name) === key),
+      ex.origin === 'CATALOG' &&
+      (normalizeExerciseName(ex.nameEn) === key ||
+        ex.translations.some((t) => normalizeExerciseName(t.name) === key)),
   );
 }

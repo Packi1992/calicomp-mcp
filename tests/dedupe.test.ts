@@ -84,3 +84,36 @@ describe('findCatalogMatch', () => {
     expect(findCatalogMatch('   ', mockCatalog)).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// findCatalogMatch — origin scoping (141-18, G-141-2-SCOPE)
+// ---------------------------------------------------------------------------
+
+describe('findCatalogMatch origin scoping', () => {
+  const catalogWithCustomExercise = [
+    ...mockCatalog,
+    {
+      id: 'user-ex-custom-1',
+      key: 'user_exercise:user-ex-custom-1',
+      nameEn: 'Ring Rows',
+      mode: 'REPS',
+      usesWeight: false,
+      lastModifiedAt: 1_700_000_000_000,
+      translations: [],
+      muscleGroups: [],
+      equipment: [],
+      capabilities: [],
+      origin: 'CUSTOM' as const,
+    },
+  ];
+
+  it('still finds a curated (origin: CATALOG) entry by name', () => {
+    const match = findCatalogMatch('Pull-Up', catalogWithCustomExercise);
+    expect(match?.id).toBe(CATALOG_EXERCISE_ID_PULLUP);
+  });
+
+  it('does NOT find a user-created (origin: CUSTOM) exercise, even on an exact name match', () => {
+    const match = findCatalogMatch('Ring Rows', catalogWithCustomExercise);
+    expect(match).toBeUndefined();
+  });
+});
