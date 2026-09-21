@@ -179,14 +179,29 @@ export interface MiscSyncRow {
 /** Root response from GET /api/mcp/data/pull (identical to McpDataPullResponse). */
 export interface SyncPullResponse {
   syncedAt: number;
-  exercises: SyncExerciseDto[];
-  exerciseTranslations: SyncExerciseTranslationDto[];
-  templates: SyncTemplateDto[];
-  blocks: SyncBlockDto[];
-  templateExercises: SyncTemplateExerciseDto[];
-  sessions: SyncSessionDto[];
-  setLogs: SyncSetLogDto[];
-  hrSamples: SyncHrSampleDto[];
+  // Phase 146: ALL eight list fields below are optional, for exactly the reason
+  // `plannedWorkouts` and `settings` already state — `McpDataPullResponse` (SyncDtos.kt)
+  // declares every one of them `= emptyList()`, and the server's `Json` runs with
+  // `encodeDefaults = false`, so an empty list is dropped from the wire entirely. The
+  // governing rule was already written down in `SyncBlockDto`'s comment — "a field is
+  // optional here IF AND ONLY IF the Kotlin DTO declares it a default" — it had simply
+  // only been applied to the two fields whose emptiness someone had actually hit.
+  //
+  // Measured 2026-09-22 against production for a user with no self-created exercises:
+  // `exercises` and `exerciseTranslations` were BOTH absent from the response. Typed as
+  // required, they reached `decryptMerge` as `undefined`, were assigned through unguarded,
+  // and the first `.filter` on the snapshot threw `Cannot read properties of undefined
+  // (reading 'filter')`. That single defect took down three of four read tools and all ten
+  // `propose_new_plan` calls of Plan 146-07 — while `plannedWorkouts`, absent in the very
+  // same response, passed through without a murmur because its `?? []` was there.
+  exercises?: SyncExerciseDto[];
+  exerciseTranslations?: SyncExerciseTranslationDto[];
+  templates?: SyncTemplateDto[];
+  blocks?: SyncBlockDto[];
+  templateExercises?: SyncTemplateExerciseDto[];
+  sessions?: SyncSessionDto[];
+  setLogs?: SyncSetLogDto[];
+  hrSamples?: SyncHrSampleDto[];
   // Phase 135 (SCHED-01): ciphertext-only planned-workout rows (kind 'planned_workout').
   // Optional — NOT required — because the Kotlin DTO (McpDataPullResponse) declares the
   // default `emptyList()` and the server's `Json` runs without `encodeDefaults`, so a

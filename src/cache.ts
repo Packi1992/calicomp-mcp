@@ -291,20 +291,24 @@ export function normalizeWireTemplateExercise(te: SyncTemplateExerciseDto): Norm
 
 /** Apply decrypt-merge to every encrypted entity in the raw snapshot. */
 function decryptMerge(raw: SyncPullResponse, keyB64: string): DecryptedSnapshot {
+  // EVERY list below carries `?? []`, not just the two that used to. `McpDataPullResponse`
+  // declares all of them `= emptyList()` and the server serializes with
+  // `encodeDefaults = false`, so ANY of them can be absent from the wire the moment it is
+  // empty — see the block comment on `SyncPullResponse` in types.ts for the measurement that
+  // made this concrete. An unguarded assignment here does not fail here: it puts `undefined`
+  // into the snapshot and fails much later, at whatever `.filter` touches it first, with a
+  // message that names neither the field nor this function.
   return {
     syncedAt:             raw.syncedAt,
-    exercises:            raw.exercises,
-    exerciseTranslations: raw.exerciseTranslations,
-    templates:            raw.templates,
-    blocks:               raw.blocks.map(normalizeWireBlock),
-    templateExercises:    raw.templateExercises.map(normalizeWireTemplateExercise),
-    sessions:  raw.sessions.map(s  => decryptSession(s,  keyB64)),
-    setLogs:   raw.setLogs.map(sl  => decryptSetLog(sl,  keyB64)),
-    hrSamples: raw.hrSamples.map(hr => decryptHrSample(hr, keyB64)),
-    // `?? []` is what makes the optional wire key (SyncPullResponse.plannedWorkouts)
-    // safe for a user with no planned workouts — see that field's own doc in types.ts.
+    exercises:            raw.exercises ?? [],
+    exerciseTranslations: raw.exerciseTranslations ?? [],
+    templates:            raw.templates ?? [],
+    blocks:               (raw.blocks ?? []).map(normalizeWireBlock),
+    templateExercises:    (raw.templateExercises ?? []).map(normalizeWireTemplateExercise),
+    sessions:  (raw.sessions  ?? []).map(s  => decryptSession(s,  keyB64)),
+    setLogs:   (raw.setLogs   ?? []).map(sl => decryptSetLog(sl,  keyB64)),
+    hrSamples: (raw.hrSamples ?? []).map(hr => decryptHrSample(hr, keyB64)),
     plannedWorkouts: (raw.plannedWorkouts ?? []).map(pw => decryptPlannedWorkout(pw, keyB64)),
-    // `?? []` — same reasoning as plannedWorkouts above, for a user with no synced settings.
     settings: (raw.settings ?? []).map(s => decryptSetting(s, keyB64)),
   };
 }

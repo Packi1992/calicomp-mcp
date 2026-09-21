@@ -683,3 +683,59 @@ describe('user-exercise merge into catalog (G-141-2-SCOPE)', () => {
     expect(catalog).toEqual([{ ...curatedWireEntry, capabilities: [], equipment: [], isSkill: false, origin: 'CATALOG' }]);
   });
 });
+
+// ── Regression: omitted-empty-list wire keys (Phase 146) ─────────────────────
+//
+// `McpDataPullResponse` (SyncDtos.kt) declares EVERY list `= emptyList()` and the server
+// serializes with `encodeDefaults = false` — so any of them vanishes from the wire the
+// moment it is empty. `makePull` above always supplies all of them, which is precisely why
+// this defect survived: the fixture was more generous than the wire ever is.
+//
+// Measured against production 2026-09-22 for a user with no self-created exercises:
+// `exercises` and `exerciseTranslations` were both absent. Typed as required, they reached
+// the snapshot as `undefined` and the first `.filter` on them threw `Cannot read properties
+// of undefined (reading 'filter')` — taking down three of four read tools and all ten
+// `propose_new_plan` calls of Plan 146-07, while `plannedWorkouts`, absent in the SAME
+// response, passed through silently because its `?? []` was already there.
+describe('decrypt-merge: every optional list key may be absent from the wire (Phase 146)', () => {
+  const LIST_KEYS = [
+    'exercises',
+    'exerciseTranslations',
+    'templates',
+    'blocks',
+    'templateExercises',
+    'sessions',
+    'setLogs',
+    'hrSamples',
+    'plannedWorkouts',
+    'settings',
+  ] as const;
+
+  it.each(LIST_KEYS)('a wire response without `%s` yields [] and does not throw', async (key) => {
+    const pull = makePull({}) as unknown as Record<string, unknown>;
+    delete pull[key];
+    mockFetchSnapshot.mockResolvedValueOnce(pull as unknown as SyncPullResponse);
+
+    const { snapshot } = await getSnapshot(PAT, KEY_B64, URL);
+
+    expect(snapshot[key as keyof typeof snapshot]).toEqual([]);
+  });
+
+  it('the real production shape — no exercises, no exerciseTranslations, no plannedWorkouts — survives a .filter on every list', async () => {
+    const pull = makePull({}) as unknown as Record<string, unknown>;
+    delete pull.exercises;
+    delete pull.exerciseTranslations;
+    delete pull.plannedWorkouts;
+    mockFetchSnapshot.mockResolvedValueOnce(pull as unknown as SyncPullResponse);
+
+    const { snapshot } = await getSnapshot(PAT, KEY_B64, URL);
+
+    // The throw site was never decryptMerge itself — it was whatever touched the snapshot
+    // first. Exercise that seam directly rather than trusting the assignment.
+    for (const key of LIST_KEYS) {
+      const value = snapshot[key as keyof typeof snapshot] as unknown[];
+      expect(Array.isArray(value), `snapshot.${key} must be an array, not ${typeof value}`).toBe(true);
+      expect(() => value.filter(Boolean)).not.toThrow();
+    }
+  });
+});
