@@ -304,5 +304,663 @@
         "updatedAt": 1767513900000
       }
     ]
-  }
+  },
+  "getTemplate": {
+    "withBlock": {
+      "id": "char150-tpl-live",
+      "name": "P150 Vorlage (lebend)",
+      "isFavoriteForWatch": false,
+      "createdAt": 1767225600000,
+      "updatedAt": 1767225600000,
+      "blocks": [
+        {
+          "id": "char150-block-live",
+          "templateId": "char150-tpl-live",
+          "name": "P150 Block",
+          "rounds": 3,
+          "orderIndex": 0,
+          "createdAt": 1767225600000,
+          "updatedAt": 1767225600000
+        }
+      ],
+      "templateExercises": [
+        {
+          "id": "char150-te-live-1",
+          "templateId": "char150-tpl-live",
+          "blockId": "char150-block-live",
+          "exerciseId": "char150-cat-pushup",
+          "exerciseSource": "CATALOG",
+          "mode": "REPS",
+          "targetReps": 10,
+          "restTimeSeconds": 60,
+          "sets": 3,
+          "orderIndex": 0,
+          "createdAt": 1767225600000,
+          "updatedAt": 1767225600000
+        }
+      ]
+    },
+    "blockless": {
+      "id": "char150-tpl-blockless",
+      "name": "P150 Vorlage (blocklos)",
+      "isFavoriteForWatch": false,
+      "createdAt": 1767225600000,
+      "updatedAt": 1767225600000,
+      "blocks": [],
+      "templateExercises": [
+        {
+          "id": "char150-te-blockless-1",
+          "templateId": "char150-tpl-blockless",
+          "exerciseId": "char150-cat-squat",
+          "exerciseSource": "CATALOG",
+          "mode": "REPS",
+          "targetReps": 5,
+          "restTimeSeconds": 90,
+          "sets": 1,
+          "orderIndex": 0,
+          "createdAt": 1767225600000,
+          "updatedAt": 1767225600000
+        }
+      ]
+    }
+  },
+  "getTrainingState": {
+    "timeZoneId": "Europe/Berlin",
+    "asOfDate": "2026-01-20",
+    "parametersSource": "defaults",
+    "parameters": {
+      "toleranceDays": 1,
+      "adherenceWindowWeeks": 4,
+      "consistencyWindowWeeks": 12,
+      "exerciseTrendPoints": 10,
+      "recentExerciseCount": 5,
+      "matchThreshold": 0.542,
+      "uncertainThreshold": 0.454
+    },
+    "consistency": {
+      "currentStreakWeeks": 3,
+      "longestStreakWeeks": 3,
+      "trainingWeekCount": 3,
+      "sessionsThisIsoWeek": 0,
+      "sessionsLast4Weeks": 8,
+      "sessionsPrior4Weeks": 0,
+      "totalCompletedSessions": 8
+    },
+    "muscleBalance": {
+      "last7Days": {
+        "setCounts": {},
+        "radar": {
+          "chest": 0,
+          "shoulders": 0,
+          "back": 0,
+          "legs": 0,
+          "core": 0,
+          "arms": 0
+        }
+      },
+      "last30Days": {
+        "setCounts": {
+          "chest": 3,
+          "quads": 1,
+          "back": 1
+        },
+        "radar": {
+          "chest": 1,
+          "shoulders": 0,
+          "back": 0.3333333333333333,
+          "legs": 0.3333333333333333,
+          "core": 0,
+          "arms": 0
+        }
+      },
+      "allTime": {
+        "setCounts": {
+          "chest": 3,
+          "quads": 1,
+          "back": 1
+        },
+        "radar": {
+          "chest": 1,
+          "shoulders": 0,
+          "back": 0.3333333333333333,
+          "legs": 0.3333333333333333,
+          "core": 0,
+          "arms": 0
+        }
+      }
+    },
+    "adherence": {
+      "window": {
+        "from": "2025-12-23",
+        "to": "2026-01-20"
+      },
+      "toleranceDays": 1,
+      "plannedCount": 4,
+      "matchedCount": 2,
+      "uncertainCount": 0,
+      "missedCount": 2,
+      "removedOccurrenceCount": 0,
+      "adherenceRatio": 0.5,
+      "explanation": "removedOccurrenceCount counts how many planned occurrences the athlete removed from the calendar inside this window. The stored data carries no timestamp for a removal, so it cannot say whether a given occurrence was cancelled ahead of its date on purpose or cleaned up afterward because it was missed — ask the athlete rather than assuming either reading. A planned occurrence that was removed entirely (its whole recurring series, or its only single date) leaves no trace inside this window at all, and this calculation treats it exactly as if nothing had ever been planned on that day."
+    },
+    "recentExercises": [
+      {
+        "exerciseId": "char150-cat-pushup",
+        "exerciseName": "P150 Push-Up",
+        "metric": "reps",
+        "lastTrainedOn": "2026-01-10",
+        "bestSetDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "sessionTotalDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "rule": "The series is split into a first half and a second half by position (for an odd number of points, the middle point falls into neither half). Null values are excluded when averaging each half. The relative change of the second half's mean versus the first half's mean is computed; a change within a 3% dead band counts as flat, below -3% as down, and above +3% as up. At least four usable (non-null) values are required overall — fewer, or a half with no usable values, yields insufficient-data."
+      },
+      {
+        "exerciseId": "char150-cat-pullup",
+        "exerciseName": "P150 Pull-Up",
+        "metric": "e1rm",
+        "lastTrainedOn": "2026-01-09",
+        "bestSetDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "sessionTotalDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "rule": "The series is split into a first half and a second half by position (for an odd number of points, the middle point falls into neither half). Null values are excluded when averaging each half. The relative change of the second half's mean versus the first half's mean is computed; a change within a 3% dead band counts as flat, below -3% as down, and above +3% as up. At least four usable (non-null) values are required overall — fewer, or a half with no usable values, yields insufficient-data."
+      },
+      {
+        "exerciseId": "char150-cat-squat",
+        "exerciseName": "P150 Squat",
+        "metric": "e1rm",
+        "lastTrainedOn": "2026-01-07",
+        "bestSetDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "sessionTotalDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "rule": "The series is split into a first half and a second half by position (for an odd number of points, the middle point falls into neither half). Null values are excluded when averaging each half. The relative change of the second half's mean versus the first half's mean is computed; a change within a 3% dead band counts as flat, below -3% as down, and above +3% as up. At least four usable (non-null) values are required overall — fewer, or a half with no usable values, yields insufficient-data."
+      },
+      {
+        "exerciseId": "char150-custom-live",
+        "exerciseName": null,
+        "metric": "reps",
+        "lastTrainedOn": "2026-01-03",
+        "bestSetDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "sessionTotalDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "rule": "The series is split into a first half and a second half by position (for an odd number of points, the middle point falls into neither half). Null values are excluded when averaging each half. The relative change of the second half's mean versus the first half's mean is computed; a change within a 3% dead band counts as flat, below -3% as down, and above +3% as up. At least four usable (non-null) values are required overall — fewer, or a half with no usable values, yields insufficient-data."
+      }
+    ],
+    "personalRecords": {
+      "maxReps": [
+        {
+          "exerciseId": "char150-cat-pushup",
+          "exerciseName": "P150 Push-Up",
+          "value": 12,
+          "achievedOn": "2026-01-10"
+        },
+        {
+          "exerciseId": "char150-cat-squat",
+          "exerciseName": "P150 Squat",
+          "value": 8,
+          "achievedOn": "2026-01-07"
+        },
+        {
+          "exerciseId": "char150-cat-pullup",
+          "exerciseName": "P150 Pull-Up",
+          "value": 6,
+          "achievedOn": "2026-01-09"
+        },
+        {
+          "exerciseId": "char150-custom-live",
+          "exerciseName": null,
+          "value": 5,
+          "achievedOn": "2026-01-03"
+        }
+      ],
+      "maxHoldSeconds": []
+    },
+    "narrative": "The current training streak is 3 weeks. 8 session(s) were logged in the last 4 weeks, versus none in the previous 4-week window. Adherence over the window is 50% (2 of 4 planned sessions matched)."
+  },
+  "getStatsExercise": {
+    "by": "exercise",
+    "exerciseId": "char150-cat-pushup",
+    "bestE1rm": null,
+    "totalVolume": 0,
+    "avgVolumePerSession": 0,
+    "setCount": 3,
+    "sessionCount": 3,
+    "firstSessionDate": "2026-01-03",
+    "lastSessionDate": "2026-01-10",
+    "trend": {
+      "firstE1rm": null,
+      "lastE1rm": null,
+      "delta": null,
+      "points": [
+        {
+          "date": "2026-01-03",
+          "sessionId": "char150-session-tpl-live-1",
+          "e1rm": null
+        },
+        {
+          "date": "2026-01-04",
+          "sessionId": "char150-session-deleted",
+          "e1rm": null
+        },
+        {
+          "date": "2026-01-10",
+          "sessionId": "char150-session-tpl-live-2",
+          "e1rm": null
+        }
+      ]
+    }
+  },
+  "getStatsMuscle": {
+    "by": "muscle",
+    "muscle": "chest",
+    "matchingExerciseIds": [
+      "char150-cat-pushup"
+    ],
+    "weightedSetCount": 3,
+    "bestE1rm": null,
+    "totalVolume": 0,
+    "avgVolumePerSession": 0,
+    "setCount": 3,
+    "sessionCount": 3,
+    "firstSessionDate": "2026-01-03",
+    "lastSessionDate": "2026-01-10",
+    "trend": {
+      "firstE1rm": null,
+      "lastE1rm": null,
+      "delta": null,
+      "points": [
+        {
+          "date": "2026-01-03",
+          "sessionId": "char150-session-tpl-live-1",
+          "e1rm": null
+        },
+        {
+          "date": "2026-01-04",
+          "sessionId": "char150-session-deleted",
+          "e1rm": null
+        },
+        {
+          "date": "2026-01-10",
+          "sessionId": "char150-session-tpl-live-2",
+          "e1rm": null
+        }
+      ]
+    }
+  },
+  "getStatsCapabilities": {
+    "by": "capabilities",
+    "axes": []
+  },
+  "getAdherence": {
+    "window": {
+      "from": "2026-01-01",
+      "to": "2026-01-20"
+    },
+    "toleranceDays": 1,
+    "plannedCount": 4,
+    "matchedCount": 2,
+    "missedCount": 2,
+    "uncertainCount": 0,
+    "removedOccurrenceCount": 0,
+    "adherenceRatio": 0.5,
+    "matches": [
+      {
+        "date": "2026-01-02",
+        "rootId": "char150-pw-2",
+        "templateId": "char150-tpl-live",
+        "sessionId": "char150-session-tpl-live-1",
+        "sessionDate": "2026-01-03",
+        "dateDistanceDays": 1,
+        "via": "templateId",
+        "similarity": null,
+        "confidence": "matched"
+      },
+      {
+        "date": "2026-01-09",
+        "rootId": "char150-pw-2",
+        "templateId": "char150-tpl-live",
+        "sessionId": "char150-session-tpl-live-2",
+        "sessionDate": "2026-01-10",
+        "dateDistanceDays": 1,
+        "via": "templateId",
+        "similarity": null,
+        "confidence": "matched"
+      }
+    ],
+    "missed": [
+      {
+        "date": "2026-01-05",
+        "rootId": "char150-pw-1",
+        "templateId": "char150-tpl-live",
+        "templateName": "P150 Vorlage (lebend)",
+        "scheduledTime": null,
+        "note": null,
+        "recurrenceGroupId": null,
+        "isRecurring": false
+      },
+      {
+        "date": "2026-01-16",
+        "rootId": "char150-pw-2",
+        "templateId": "char150-tpl-live",
+        "templateName": "P150 Vorlage (lebend)",
+        "scheduledTime": "08:00",
+        "note": null,
+        "recurrenceGroupId": "char150-pw-group",
+        "isRecurring": true
+      }
+    ],
+    "unplannedSessionIds": [
+      "char150-session-tpl-deleted",
+      "char150-session-tpl-unknown",
+      "char150-session-templateless-1",
+      "char150-session-templateless-2",
+      "char150-session-qc-1",
+      "char150-session-qc-with-template"
+    ],
+    "explanation": "removedOccurrenceCount counts how many planned occurrences the athlete removed from the calendar inside this window. The stored data carries no timestamp for a removal, so it cannot say whether a given occurrence was cancelled ahead of its date on purpose or cleaned up afterward because it was missed — ask the athlete rather than assuming either reading. A planned occurrence that was removed entirely (its whole recurring series, or its only single date) leaves no trace inside this window at all, and this calculation treats it exactly as if nothing had ever been planned on that day."
+  },
+  "getProgressExerciseAll": {
+    "kind": "exercise",
+    "series": [
+      {
+        "exerciseId": "char150-cat-pushup",
+        "exerciseName": "P150 Push-Up",
+        "mode": "REPS",
+        "usesWeight": false,
+        "metric": "reps",
+        "points": [
+          {
+            "sessionId": "char150-session-tpl-live-1",
+            "date": "2026-01-03",
+            "setCount": 1,
+            "bestSet": 10,
+            "sessionTotal": 10
+          },
+          {
+            "sessionId": "char150-session-tpl-live-2",
+            "date": "2026-01-10",
+            "setCount": 2,
+            "bestSet": 12,
+            "sessionTotal": 21
+          }
+        ],
+        "bestSetDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "sessionTotalDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "rule": "The series is split into a first half and a second half by position (for an odd number of points, the middle point falls into neither half). Null values are excluded when averaging each half. The relative change of the second half's mean versus the first half's mean is computed; a change within a 3% dead band counts as flat, below -3% as down, and above +3% as up. At least four usable (non-null) values are required overall — fewer, or a half with no usable values, yields insufficient-data."
+      },
+      {
+        "exerciseId": "char150-cat-pullup",
+        "exerciseName": "P150 Pull-Up",
+        "mode": "REPS",
+        "usesWeight": true,
+        "metric": "e1rm",
+        "points": [
+          {
+            "sessionId": "char150-session-qc-1",
+            "date": "2026-01-09",
+            "setCount": 1,
+            "bestSet": null,
+            "sessionTotal": null
+          }
+        ],
+        "bestSetDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "sessionTotalDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "rule": "The series is split into a first half and a second half by position (for an odd number of points, the middle point falls into neither half). Null values are excluded when averaging each half. The relative change of the second half's mean versus the first half's mean is computed; a change within a 3% dead band counts as flat, below -3% as down, and above +3% as up. At least four usable (non-null) values are required overall — fewer, or a half with no usable values, yields insufficient-data."
+      },
+      {
+        "exerciseId": "char150-cat-squat",
+        "exerciseName": "P150 Squat",
+        "mode": "REPS",
+        "usesWeight": true,
+        "metric": "e1rm",
+        "points": [
+          {
+            "sessionId": "char150-session-templateless-1",
+            "date": "2026-01-07",
+            "setCount": 1,
+            "bestSet": 50.666666666666664,
+            "sessionTotal": 320
+          }
+        ],
+        "bestSetDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "sessionTotalDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "rule": "The series is split into a first half and a second half by position (for an odd number of points, the middle point falls into neither half). Null values are excluded when averaging each half. The relative change of the second half's mean versus the first half's mean is computed; a change within a 3% dead band counts as flat, below -3% as down, and above +3% as up. At least four usable (non-null) values are required overall — fewer, or a half with no usable values, yields insufficient-data."
+      },
+      {
+        "exerciseId": "char150-custom-live",
+        "exerciseName": null,
+        "mode": "REPS",
+        "usesWeight": false,
+        "metric": "reps",
+        "points": [
+          {
+            "sessionId": "char150-session-tpl-live-1",
+            "date": "2026-01-03",
+            "setCount": 1,
+            "bestSet": 5,
+            "sessionTotal": 5
+          }
+        ],
+        "bestSetDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "sessionTotalDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "rule": "The series is split into a first half and a second half by position (for an odd number of points, the middle point falls into neither half). Null values are excluded when averaging each half. The relative change of the second half's mean versus the first half's mean is computed; a change within a 3% dead band counts as flat, below -3% as down, and above +3% as up. At least four usable (non-null) values are required overall — fewer, or a half with no usable values, yields insufficient-data."
+      }
+    ]
+  },
+  "getProgressExerciseOne": {
+    "kind": "exercise",
+    "series": [
+      {
+        "exerciseId": "char150-cat-pushup",
+        "exerciseName": "P150 Push-Up",
+        "mode": "REPS",
+        "usesWeight": false,
+        "metric": "reps",
+        "points": [
+          {
+            "sessionId": "char150-session-tpl-live-1",
+            "date": "2026-01-03",
+            "setCount": 1,
+            "bestSet": 10,
+            "sessionTotal": 10
+          },
+          {
+            "sessionId": "char150-session-tpl-live-2",
+            "date": "2026-01-10",
+            "setCount": 2,
+            "bestSet": 12,
+            "sessionTotal": 21
+          }
+        ],
+        "bestSetDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "sessionTotalDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "rule": "The series is split into a first half and a second half by position (for an odd number of points, the middle point falls into neither half). Null values are excluded when averaging each half. The relative change of the second half's mean versus the first half's mean is computed; a change within a 3% dead band counts as flat, below -3% as down, and above +3% as up. At least four usable (non-null) values are required overall — fewer, or a half with no usable values, yields insufficient-data."
+      }
+    ]
+  },
+  "getPlannedWorkouts": {
+    "occurrences": [
+      {
+        "date": "2026-01-02",
+        "rootId": "char150-pw-2",
+        "templateId": "char150-tpl-live",
+        "templateName": "P150 Vorlage (lebend)",
+        "scheduledTime": "08:00",
+        "note": null,
+        "recurrenceGroupId": "char150-pw-group",
+        "isRecurring": true
+      },
+      {
+        "date": "2026-01-05",
+        "rootId": "char150-pw-1",
+        "templateId": "char150-tpl-live",
+        "templateName": "P150 Vorlage (lebend)",
+        "scheduledTime": null,
+        "note": null,
+        "recurrenceGroupId": null,
+        "isRecurring": false
+      },
+      {
+        "date": "2026-01-09",
+        "rootId": "char150-pw-2",
+        "templateId": "char150-tpl-live",
+        "templateName": "P150 Vorlage (lebend)",
+        "scheduledTime": "08:00",
+        "note": null,
+        "recurrenceGroupId": "char150-pw-group",
+        "isRecurring": true
+      },
+      {
+        "date": "2026-01-16",
+        "rootId": "char150-pw-2",
+        "templateId": "char150-tpl-live",
+        "templateName": "P150 Vorlage (lebend)",
+        "scheduledTime": "08:00",
+        "note": null,
+        "recurrenceGroupId": "char150-pw-group",
+        "isRecurring": true
+      },
+      {
+        "date": "2026-01-23",
+        "rootId": "char150-pw-2",
+        "templateId": "char150-tpl-live",
+        "templateName": "P150 Vorlage (lebend)",
+        "scheduledTime": "08:00",
+        "note": null,
+        "recurrenceGroupId": "char150-pw-group",
+        "isRecurring": true
+      },
+      {
+        "date": "2026-01-30",
+        "rootId": "char150-pw-2",
+        "templateId": "char150-tpl-live",
+        "templateName": "P150 Vorlage (lebend)",
+        "scheduledTime": "08:00",
+        "note": null,
+        "recurrenceGroupId": "char150-pw-group",
+        "isRecurring": true
+      }
+    ],
+    "roots": [
+      {
+        "id": "char150-pw-1",
+        "templateId": "char150-tpl-live",
+        "scheduledDate": "2026-01-05",
+        "scheduledTime": null,
+        "note": null,
+        "recurrenceRule": null,
+        "recurrenceGroupId": null,
+        "freq": "WEEKLY",
+        "interval": 1,
+        "byDay": [],
+        "until": null,
+        "weekOffset": 0,
+        "deletedOccurrences": [],
+        "completedSessionId": null
+      },
+      {
+        "id": "char150-pw-2",
+        "templateId": "char150-tpl-live",
+        "scheduledDate": "2026-01-02",
+        "scheduledTime": "08:00",
+        "note": null,
+        "recurrenceRule": "FREQ=WEEKLY;INTERVAL=1",
+        "recurrenceGroupId": "char150-pw-group",
+        "freq": "WEEKLY",
+        "interval": 1,
+        "byDay": [],
+        "until": null,
+        "weekOffset": 0,
+        "deletedOccurrences": [],
+        "completedSessionId": null
+      }
+    ]
+  },
+  "newPlanPayloadJson": "{\"name\":\"P150 Neuplan (reiner Blockplan)\",\"blocks\":[{\"tempBlockId\":\"char150-newplan-block-1\",\"rounds\":3,\"orderIndex\":0,\"exercises\":[{\"exercise\":{\"source\":\"catalog\",\"exerciseId\":\"char150-cat-pushup\"},\"mode\":\"REPS\",\"restTimeSeconds\":60,\"sets\":3,\"orderIndex\":0}]},{\"tempBlockId\":\"char150-newplan-block-2\",\"rounds\":4,\"orderIndex\":1,\"exercises\":[{\"exercise\":{\"source\":\"catalog\",\"exerciseId\":\"char150-cat-pullup\"},\"mode\":\"REPS\",\"targetReps\":8,\"restTimeSeconds\":90,\"sets\":3,\"orderIndex\":0}]}],\"newExercises\":[]}",
+  "newPlanChangeHash": "84af55d047cc51843e534aefc21ca3e5d8dadf43e41d6a988e1c52d18aefaeb6"
 }

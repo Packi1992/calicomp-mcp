@@ -26,6 +26,18 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import type { DecryptedSnapshot, CatalogExercise } from '../src/types.js';
 import { getHistory, type GetHistoryArgs } from '../src/tools/get_history.js';
+import { getTemplate } from '../src/tools/get_template.js';
+import { getTrainingState, type GetTrainingStateArgs } from '../src/tools/get_training_state.js';
+import { getStats } from '../src/tools/get_stats.js';
+import { getAdherence, type GetAdherenceArgs } from '../src/tools/get_adherence.js';
+import { getProgress, type GetProgressArgs } from '../src/tools/get_progress.js';
+import { getPlannedWorkouts, type GetPlannedWorkoutsArgs } from '../src/tools/get_planned_workouts.js';
+import {
+  buildNewPlanPayload,
+  type ProposeNewPlanArgs,
+} from '../src/tools/propose_new_plan.js';
+import { computeChangeHash } from '../src/hash.js';
+import { COACH_PARAMETER_DEFAULTS } from '../src/coach-parameters.js';
 
 // ---------------------------------------------------------------------------
 // Vergleichshelfer (D-03/D-07): jeder alte Schlüssel muss tief gleich bleiben,
@@ -156,8 +168,12 @@ export const CHAR_CATALOG: CatalogExercise[] = [
 export const CHAR_TEMPLATE_ID_LIVE = 'char150-tpl-live';
 export const CHAR_TEMPLATE_ID_DELETED = 'char150-tpl-deleted';
 export const CHAR_TEMPLATE_ID_UNKNOWN_REF = 'char150-tpl-unknown-ref';
+// Task 2 (getTemplate): eine dritte, lebende Vorlage mit einer blocklosen Übung —
+// keine Blöcke, ein templateExercise ohne blockId.
+export const CHAR_TEMPLATE_ID_BLOCKLESS = 'char150-tpl-blockless';
 const CHAR_BLOCK_ID_LIVE = 'char150-block-live';
 export const CHAR_TEMPLATE_EXERCISE_ID_LIVE = 'char150-te-live-1';
+const CHAR_TEMPLATE_EXERCISE_ID_BLOCKLESS = 'char150-te-blockless-1';
 
 // Eigenübungen (D-15/D-17): eine lebende mit Set-Logs, eine gelöschte ohne.
 export const CHAR_CUSTOM_EX_LIVE = 'char150-custom-live';
@@ -217,6 +233,13 @@ export const CHAR_SNAPSHOT: DecryptedSnapshot = {
       deletedAt: D('2026-01-01T00:00:00Z'),
       isFavoriteForWatch: false,
     },
+    {
+      id: CHAR_TEMPLATE_ID_BLOCKLESS,
+      name: 'P150 Vorlage (blocklos)',
+      createdAt: D('2026-01-01T00:00:00Z'),
+      updatedAt: D('2026-01-01T00:00:00Z'),
+      isFavoriteForWatch: false,
+    },
   ],
 
   blocks: [
@@ -242,6 +265,19 @@ export const CHAR_SNAPSHOT: DecryptedSnapshot = {
       targetReps: 10,
       restTimeSeconds: 60,
       sets: 3,
+      orderIndex: 0,
+      createdAt: D('2026-01-01T00:00:00Z'),
+      updatedAt: D('2026-01-01T00:00:00Z'),
+    },
+    {
+      id: CHAR_TEMPLATE_EXERCISE_ID_BLOCKLESS,
+      templateId: CHAR_TEMPLATE_ID_BLOCKLESS,
+      exerciseId: CHAR_CATALOG_EX_SQUAT,
+      exerciseSource: 'CATALOG',
+      mode: 'REPS',
+      targetReps: 5,
+      restTimeSeconds: 90,
+      sets: 1,
       orderIndex: 0,
       createdAt: D('2026-01-01T00:00:00Z'),
       updatedAt: D('2026-01-01T00:00:00Z'),
@@ -495,6 +531,85 @@ export const CHAR_HISTORY_ARGS_EXERCISE: GetHistoryArgs = {
 };
 
 // ---------------------------------------------------------------------------
+// Aufgabe 2: Args für die übrigen Kennzahl- und Lesefunktionen. Alle laufen gegen
+// dasselbe CHAR_SNAPSHOT/CHAR_CATALOG/CHAR_NOW_MS aus Aufgabe 1.
+// ---------------------------------------------------------------------------
+
+export const CHAR_TRAINING_STATE_ARGS: GetTrainingStateArgs = {};
+export const CHAR_TRAINING_STATE_DATA = {
+  snapshot: CHAR_SNAPSHOT,
+  catalog: CHAR_CATALOG,
+  coachParameters: COACH_PARAMETER_DEFAULTS,
+  parametersSource: 'defaults' as const,
+};
+
+export const CHAR_STATS_DATA = { snapshot: CHAR_SNAPSHOT, catalog: CHAR_CATALOG };
+
+export const CHAR_ADHERENCE_ARGS: GetAdherenceArgs = { from: '2026-01-01', to: '2026-01-20' };
+export const CHAR_ADHERENCE_DATA = {
+  snapshot: CHAR_SNAPSHOT,
+  catalog: CHAR_CATALOG,
+  coachParameters: COACH_PARAMETER_DEFAULTS,
+};
+
+export const CHAR_PROGRESS_DATA = {
+  snapshot: CHAR_SNAPSHOT,
+  catalog: CHAR_CATALOG,
+  coachParameters: COACH_PARAMETER_DEFAULTS,
+};
+export const CHAR_PROGRESS_ARGS_ALL: GetProgressArgs = { kind: 'exercise' };
+export const CHAR_PROGRESS_ARGS_ONE: GetProgressArgs = {
+  kind: 'exercise',
+  exerciseId: CHAR_CATALOG_EX_PUSHUP,
+};
+
+export const CHAR_PLANNED_WORKOUTS_ARGS: GetPlannedWorkoutsArgs = {
+  from: '2026-01-01',
+  to: '2026-01-31',
+};
+
+// Ein reiner Blockplan mit zwei Blöcken; der newExercises-Eintrag dedupt per Name
+// gegen CHAR_CATALOG_EX_PULLUP ("P150 Pull-Up").
+export const CHAR_NEW_PLAN_ARGS: ProposeNewPlanArgs = {
+  name: 'P150 Neuplan (reiner Blockplan)',
+  rationale: 'P150 D-07 Fixtur — keine echte Absicht',
+  newExercises: [
+    { tempId: 'char150-newplan-temp-1', name: 'P150 Pull-Up', mode: 'REPS', usesWeight: true },
+  ],
+  blocks: [
+    {
+      tempBlockId: 'char150-newplan-block-1',
+      rounds: 3,
+      orderIndex: 0,
+      exercises: [
+        {
+          exercise: { source: 'catalog', exerciseId: CHAR_CATALOG_EX_PUSHUP },
+          mode: 'REPS',
+          restTimeSeconds: 60,
+          sets: 3,
+          orderIndex: 0,
+        },
+      ],
+    },
+    {
+      tempBlockId: 'char150-newplan-block-2',
+      rounds: 4,
+      orderIndex: 1,
+      exercises: [
+        {
+          exercise: { source: 'new', tempId: 'char150-newplan-temp-1' },
+          mode: 'REPS',
+          targetReps: 8,
+          restTimeSeconds: 90,
+          sets: 3,
+          orderIndex: 0,
+        },
+      ],
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
 // Tests (gated — siehe Kopfkommentar)
 // ---------------------------------------------------------------------------
 
@@ -522,6 +637,70 @@ if (!process.env.CHAR_150_PIN_GENERATE) {
       const actualWithExercise = getHistory(CHAR_HISTORY_ARGS_EXERCISE, CHAR_SNAPSHOT);
       expectOldKeysUnchanged(actualNoExercise, pins.getHistory);
       expectOldKeysUnchanged(actualWithExercise, pins.getHistoryExercise);
+    });
+
+    it('P150 D-07 getTemplate old keys unchanged', () => {
+      const pins = loadPins();
+      const actual = {
+        withBlock: getTemplate({ templateId: CHAR_TEMPLATE_ID_LIVE }, CHAR_SNAPSHOT),
+        blockless: getTemplate({ templateId: CHAR_TEMPLATE_ID_BLOCKLESS }, CHAR_SNAPSHOT),
+      };
+      expectOldKeysUnchanged(actual, pins.getTemplate);
+    });
+
+    it('P150 D-07 getTrainingState old keys unchanged', () => {
+      const pins = loadPins();
+      const actual = getTrainingState(CHAR_TRAINING_STATE_ARGS, CHAR_TRAINING_STATE_DATA, CHAR_NOW_MS);
+      expectOldKeysUnchanged(actual, pins.getTrainingState);
+      expect(typeof (pins.getTrainingState as { narrative: unknown }).narrative).toBe('string');
+      expect(actual.narrative).toBe((pins.getTrainingState as { narrative: string }).narrative);
+    });
+
+    it('P150 D-07 getStats exercise old keys unchanged', () => {
+      const pins = loadPins();
+      const actual = getStats({ by: 'exercise', exerciseId: CHAR_CATALOG_EX_PUSHUP }, CHAR_STATS_DATA);
+      expectOldKeysUnchanged(actual, pins.getStatsExercise);
+    });
+
+    it('P150 D-07 getStats muscle old keys unchanged', () => {
+      const pins = loadPins();
+      const actual = getStats({ by: 'muscle', muscle: 'chest' }, CHAR_STATS_DATA);
+      expectOldKeysUnchanged(actual, pins.getStatsMuscle);
+    });
+
+    it('P150 D-07 getStats capabilities old keys unchanged', () => {
+      const pins = loadPins();
+      const actual = getStats({ by: 'capabilities' }, CHAR_STATS_DATA);
+      expectOldKeysUnchanged(actual, pins.getStatsCapabilities);
+    });
+
+    it('P150 D-07 getAdherence old keys unchanged', () => {
+      const pins = loadPins();
+      const actual = getAdherence(CHAR_ADHERENCE_ARGS, CHAR_ADHERENCE_DATA, CHAR_NOW_MS);
+      expectOldKeysUnchanged(actual, pins.getAdherence);
+    });
+
+    it('P150 D-07 getProgress exercise old keys unchanged', () => {
+      const pins = loadPins();
+      const actualAll = getProgress(CHAR_PROGRESS_ARGS_ALL, CHAR_PROGRESS_DATA);
+      const actualOne = getProgress(CHAR_PROGRESS_ARGS_ONE, CHAR_PROGRESS_DATA);
+      expectOldKeysUnchanged(actualAll, pins.getProgressExerciseAll);
+      expectOldKeysUnchanged(actualOne, pins.getProgressExerciseOne);
+    });
+
+    it('P150 D-07 getPlannedWorkouts old keys unchanged', () => {
+      const pins = loadPins();
+      const actual = getPlannedWorkouts(CHAR_PLANNED_WORKOUTS_ARGS, CHAR_SNAPSHOT);
+      expectOldKeysUnchanged(actual, pins.getPlannedWorkouts);
+    });
+
+    it('P150 D-07 new_plan blocks-only payload and changeHash unchanged', () => {
+      const pins = loadPins();
+      const payload = buildNewPlanPayload(CHAR_NEW_PLAN_ARGS, CHAR_CATALOG);
+      const payloadJson = JSON.stringify(payload);
+      const changeHash = computeChangeHash('new_plan', payload);
+      expect(payloadJson).toBe(pins.newPlanPayloadJson);
+      expect(changeHash).toBe(pins.newPlanChangeHash);
     });
   });
 }
