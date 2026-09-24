@@ -326,6 +326,67 @@ export interface DecryptedSnapshot {
 }
 
 // ---------------------------------------------------------------------------
+// Per-row decode fault tolerance (Phase 150, D-08/D-09/D-10/D-11/D-12).
+//
+// `decryptMerge` (cache.ts) used to throw on the first bad row of ANY entity, failing
+// every tool that calls `getSnapshot()`. It now decodes each row, collects failures into
+// a `DecodeReport` carried BESIDE the snapshot (never inside `DecryptedSnapshot` — every
+// pure metric function above stays byte-identical and every existing snapshot fixture
+// stays valid), and leaves the strictness decision to the tool boundary
+// (`read-guard.ts`'s `assertEntitiesReadable`/`assertCalendarReadable`).
+//
+// `sessionKind` (D-10's "kind") is deliberately NOT a field here yet — it arrives with
+// the shared classifier in Plan 150-04.
+// ---------------------------------------------------------------------------
+
+/** The five row kinds `decryptMerge` can fail to decode. */
+export type UnreadableEntity = 'session' | 'setLog' | 'hrSample' | 'plannedWorkout' | 'setting';
+
+/**
+ * Why a row could not be decoded. `unknown_version` only ever applies to
+ * `plannedWorkout`/`setting` — session/setLog/hrSample payloads carry no `v` field
+ * (§Befund 3a of the phase research).
+ */
+export type UnreadableReason = 'decrypt_failed' | 'malformed_payload' | 'unknown_version';
+
+/**
+ * One row that could not be decoded, carrying only the plaintext routing fields the
+ * wire DTO already exposes — never plaintext training content, ciphertext, or key
+ * material (T-120-17). Fields beyond `entity`/`id`/`reason` are optional because they
+ * vary by entity (an HR sample has no `createdAt`/`updatedAt`; only `session` carries
+ * `templateId`/`isQuickChallenge`; only `setLog`/`hrSample` carry `sessionId`; only
+ * `setting` carries `key`).
+ */
+export interface UnreadableRow {
+  entity: UnreadableEntity;
+  id: string;
+  reason: UnreadableReason;
+  createdAt?: number;
+  updatedAt?: number;
+  templateId?: string;
+  isQuickChallenge?: boolean;
+  sessionId?: string;
+  key?: string;
+  /** Set-logs of an unreadable session are removed from the snapshot and counted here
+   *  instead of appearing individually in `unreadable` (D-10). Only on `session` rows. */
+  affectedSetLogCount?: number;
+  /** Same as `affectedSetLogCount`, for HR samples. Only on `session` rows. */
+  affectedHrSampleCount?: number;
+}
+
+/**
+ * The decode report `decryptMerge` returns beside the decrypted snapshot. `encryptedCount`
+ * is the denominator and `failedCount` the numerator `read-guard.ts`'s `assertEntitiesReadable`
+ * (D-11) uses to detect a 100% decode failure of an entity kind — never plaintext-only rows
+ * (an all-plaintext, pre-encryption account must never trip the "wrong key" guard).
+ */
+export interface DecodeReport {
+  unreadable: UnreadableRow[];
+  encryptedCount: Record<UnreadableEntity, number>;
+  failedCount: Record<UnreadableEntity, number>;
+}
+
+// ---------------------------------------------------------------------------
 // Exercise catalog (from GET /api/exercises — unauthenticated public endpoint)
 // Source: Dtos.kt ExerciseDto + MuscleGroupDto
 // ---------------------------------------------------------------------------

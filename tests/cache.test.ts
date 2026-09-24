@@ -162,6 +162,84 @@ describe('decrypt-merge: session', () => {
   });
 });
 
+// ── Decrypt-merge: session fault tolerance (Phase 150, D-08/D-12/D-13) ──────────
+
+describe('decrypt-merge: session fault tolerance', () => {
+  it('P150 D-13 SC4 one corrupt session of three is reported, the other two are read', async () => {
+    const PAYLOAD = '{"iv":"i","ct":"c"}';
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        sessions: [
+          {
+            id: 'sess-ok-1', startTime: 0, endTime: undefined, encryptedPayload: PAYLOAD,
+            isManual: false, isCorrected: false, isQuickChallenge: false, templateId: 'tpl-1',
+            createdAt: 1_709_000_000_000, updatedAt: 1_709_000_000_000,
+          },
+          {
+            id: 'sess-corrupt', startTime: 0, endTime: undefined, encryptedPayload: PAYLOAD,
+            isManual: false, isCorrected: false, isQuickChallenge: true,
+            createdAt: 1_709_100_000_000, updatedAt: 1_709_100_000_000,
+          },
+          {
+            id: 'sess-ok-2', startTime: 0, endTime: undefined, encryptedPayload: PAYLOAD,
+            isManual: false, isCorrected: false, isQuickChallenge: false, templateId: 'tpl-2',
+            createdAt: 1_709_200_000_000, updatedAt: 1_709_200_000_000,
+          },
+        ],
+      }),
+    );
+    mockDecrypt
+      .mockReturnValueOnce('{"st":1709000000000,"et":1709003600000}')
+      .mockImplementationOnce(() => { throw new Error('auth tag mismatch'); })
+      .mockReturnValueOnce('{"st":1709200000000,"et":1709203600000}');
+
+    const cache = await getSnapshot(PAT, KEY_B64, URL);
+    const decodeReport = cache.decodeReport!;
+
+    expect(cache.snapshot.sessions).toHaveLength(2);
+    expect(cache.snapshot.sessions.map((s) => s.id)).toEqual(['sess-ok-1', 'sess-ok-2']);
+    expect(decodeReport.unreadable).toHaveLength(1);
+    expect(decodeReport.unreadable[0]).toEqual({
+      entity: 'session',
+      id: 'sess-corrupt',
+      reason: 'decrypt_failed',
+      createdAt: 1_709_100_000_000,
+      updatedAt: 1_709_100_000_000,
+      templateId: undefined,
+      isQuickChallenge: true,
+    });
+    expect(decodeReport.encryptedCount.session).toBe(3);
+    expect(decodeReport.failedCount.session).toBe(1);
+  });
+
+  it('P150 D-12 a session payload without numeric st is malformed_payload', async () => {
+    const PAYLOAD = '{"iv":"i","ct":"c"}';
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        sessions: [
+          {
+            id: 'sess-malformed', startTime: 0, endTime: undefined, encryptedPayload: PAYLOAD,
+            isManual: false, isCorrected: false, isQuickChallenge: false,
+            createdAt: 0, updatedAt: 0,
+          },
+        ],
+      }),
+    );
+    mockDecrypt.mockReturnValueOnce(JSON.stringify({ et: 0 }));
+
+    const cache = await getSnapshot(PAT, KEY_B64, URL);
+    const decodeReport = cache.decodeReport!;
+
+    expect(cache.snapshot.sessions).toHaveLength(0);
+    expect(decodeReport.unreadable).toHaveLength(1);
+    expect(decodeReport.unreadable[0].entity).toBe('session');
+    expect(decodeReport.unreadable[0].id).toBe('sess-malformed');
+    expect(decodeReport.unreadable[0].reason).toBe('malformed_payload');
+    expect(decodeReport.encryptedCount.session).toBe(1);
+    expect(decodeReport.failedCount.session).toBe(1);
+  });
+});
+
 // ── Decrypt-merge: set-log paths ──────────────────────────────────────────────
 
 describe('decrypt-merge: set-log', () => {

@@ -237,7 +237,7 @@ describe('get_history — registered MCP handler', () => {
       { from: '2024-01-01', to: '2024-12-31', limit: 200 },
       mockSnapshot,
     );
-    expect(result.content[0].text).toBe(JSON.stringify(expected));
+    expect(result.content[0].text).toBe(JSON.stringify({ ...expected, unreadable: [] }));
     expect(fileChannelModule.writeExportFile).not.toHaveBeenCalled();
   });
 
@@ -252,7 +252,7 @@ describe('get_history — registered MCP handler', () => {
       { from: '2024-01-01', to: '2024-12-31', limit: 200 },
       mockSnapshot,
     );
-    expect(result.content[0].text).toBe(JSON.stringify(expected));
+    expect(result.content[0].text).toBe(JSON.stringify({ ...expected, unreadable: [] }));
     expect(fileChannelModule.writeExportFile).not.toHaveBeenCalled();
   });
 
@@ -275,16 +275,18 @@ describe('get_history — registered MCP handler', () => {
       { from: '2024-01-01', to: '2024-12-31', limit: 200 },
       mockSnapshot,
     );
-    expect(writtenPayload).toEqual(expected);
+    expect(writtenPayload).toEqual({ ...expected, unreadable: [] });
 
     const responseBody = JSON.parse(result.content[0].text) as {
       outputFile: { path: string; bytes: number; itemCount: number };
+      unreadable: unknown[];
     };
     expect(responseBody.outputFile).toEqual({
       path:      '/tmp/calicomp-mcp-exports/fake-uuid.json',
       bytes:     1234,
       itemCount: 3,
     });
+    expect(responseBody.unreadable).toEqual([]);
     expect(result.content[0].text).not.toContain('sessions');
     expect(result.content[0].text).not.toContain('setLogs');
   });
@@ -299,5 +301,69 @@ describe('get_history — registered MCP handler', () => {
     expect(description).toMatch(/targeted|TARGETED/);
     expect(description).toContain('default 200');
     expect(description).toContain('max 500');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// unreadable (Phase 150, D-08/D-10/D-11/D-13)
+// ---------------------------------------------------------------------------
+
+describe('get_history — unreadable rows', () => {
+  beforeEach(() => {
+    vi.mocked(fileChannelModule.writeExportFile).mockReset();
+  });
+
+  it('P150 D-13 SC4 get_history returns the readable sessions plus unreadable', async () => {
+    const decodeReport = {
+      unreadable: [
+        { entity: 'session' as const, id: 'sess-corrupt', reason: 'decrypt_failed' as const, createdAt: 1, updatedAt: 1 },
+      ],
+      encryptedCount: { session: 3, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+      failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+    };
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, decodeReport });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ from: '2024-01-01', to: '2024-12-31', limit: 200 });
+
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as { unreadable: unknown[] };
+    expect(body.unreadable).toEqual(decodeReport.unreadable);
+  });
+
+  it('P150 D-33 get_history carries unreadable as an empty list when nothing is broken', async () => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(MOCK_CACHE); // no decodeReport key at all
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ from: '2024-01-01', to: '2024-12-31', limit: 200 });
+
+    const body = JSON.parse(result.content[0].text) as { unreadable: unknown[] };
+    expect(body.unreadable).toEqual([]);
+  });
+
+  it('P150 D-11 get_history refuses when every encrypted session failed', async () => {
+    const decodeReport = {
+      unreadable: [{ entity: 'session' as const, id: 'sess-1', reason: 'decrypt_failed' as const }],
+      encryptedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+      failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+    };
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, decodeReport });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ from: '2024-01-01', to: '2024-12-31', limit: 200 });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('CALICOMP_KEY most likely does not match');
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.pat);
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
   });
 });

@@ -32,7 +32,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { GetHistorySchema } from '../schemas.js';
 import { getSnapshot } from '../cache.js';
 import { writeExportFile } from '../file-channel.js';
-import type { DecryptedSnapshot, DecryptedSession, DecryptedSetLog } from '../types.js';
+import { decodeReportOf, assertEntitiesReadable } from '../read-guard.js';
+import type { DecryptedSnapshot, DecryptedSession, DecryptedSetLog, UnreadableRow } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -139,29 +140,36 @@ export function registerToolGetHistory(
         'tool once you need the underlying raw sessions and set-logs. ' +
         'Optionally filter by exercise UUID. Results are capped by `limit` (default 200, max 500). ' +
         'Set `outputFile: true` to write the full result to a local file instead of returning it ' +
-        'inline — the tool result then reports only the file path, byte size and item count.',
+        'inline — the tool result then reports only the file path, byte size and item count. ' +
+        'Every result carries unreadable: rows that could not be decrypted or decoded (entity, ' +
+        'id, reason and plaintext routing fields), independent of the date window; an empty ' +
+        'list means every encrypted row was read.',
       inputSchema: GetHistorySchema,
       annotations: { readOnlyHint: true },
     },
     async (args) => {
       try {
         const data   = await getSnapshot(pat, keyB64, serverUrl);
+        const report = decodeReportOf(data);
+        assertEntitiesReadable(report, ['session', 'setLog'], 'History error');
         const result = getHistory(args as GetHistoryArgs, data.snapshot);
+        const unreadable: UnreadableRow[] = report.unreadable;
 
         if ((args as GetHistoryArgs).outputFile) {
           const itemCount = result.sessions.length + result.setLogs.length;
-          const handle    = await writeExportFile(result, itemCount);
+          const handle    = await writeExportFile({ ...result, unreadable }, itemCount);
           const summary   = {
             outputFile: { path: handle.path, bytes: handle.bytes, itemCount: handle.itemCount },
             from:       (args as GetHistoryArgs).from,
             to:         (args as GetHistoryArgs).to,
             exercise:   (args as GetHistoryArgs).exercise,
             limit:      (args as GetHistoryArgs).limit,
+            unreadable,
           };
           return { content: [{ type: 'text' as const, text: JSON.stringify(summary) }] };
         }
 
-        return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ ...result, unreadable }) }] };
       } catch (err) {
         return {
           isError: true,

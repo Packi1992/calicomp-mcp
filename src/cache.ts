@@ -51,6 +51,8 @@ import type {
   CatalogExerciseWire,
   CatalogTranslation,
   UserProfileResponse,
+  DecodeReport,
+  UnreadableReason,
 } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -63,7 +65,43 @@ export type SnapshotCache = {
   profile:  UserProfileResponse;
   /** Epoch ms when this entry was populated — used for TTL check. */
   fetchedAt: number;
+  /**
+   * Per-row decode failures collected by `decryptMerge` (Phase 150, D-08/D-10), carried
+   * BESIDE the snapshot rather than inside `DecryptedSnapshot` — every existing
+   * `SnapshotCache` test-mock that predates this field (11 at last count) stays valid,
+   * and every pure metric function that only ever reads `.snapshot` stays byte-identical.
+   * Optional at the type level for that reason; `doFetch` below always sets it. Read it
+   * via `read-guard.ts`'s `decodeReportOf()`, which supplies the empty report for a mock
+   * that omits this field.
+   */
+  decodeReport?: DecodeReport;
 };
+
+// ---------------------------------------------------------------------------
+// Per-row decode fault tolerance (Phase 150, D-08/D-09/D-10/D-11/D-12)
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown by a `decrypt*` helper for exactly one row instead of aborting the whole
+ * `decryptMerge` call. Carries the classification `read-guard.ts` and `decryptMerge`
+ * need — never plaintext, ciphertext or key material (T-120-17); the `message` names
+ * only the entity, the row id and the cause.
+ */
+export class RowDecodeError extends Error {
+  constructor(message: string, public readonly reason: UnreadableReason) {
+    super(message);
+    this.name = 'RowDecodeError';
+  }
+}
+
+/** A fresh `DecodeReport` with every entity's counters at zero and no unreadable rows. */
+function newDecodeReport(): DecodeReport {
+  return {
+    unreadable: [],
+    encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+    failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Module-level cache state
@@ -91,10 +129,21 @@ let inflightPromise: Promise<SnapshotCache> | null = null;
 function decryptSession(s: SyncSessionDto, keyB64: string): DecryptedSession {
   const { encryptedPayload, startTime, endTime, ...rest } = s;
   if (encryptedPayload) {
-    const d = JSON.parse(decrypt(encryptedPayload, keyB64)) as {
-      st: number;
-      et: number;
-    };
+    let plaintext: string;
+    try {
+      plaintext = decrypt(encryptedPayload, keyB64);
+    } catch {
+      throw new RowDecodeError(`session row ${s.id} could not be decrypted`, 'decrypt_failed');
+    }
+    let d: { st: unknown; et: unknown };
+    try {
+      d = JSON.parse(plaintext) as { st: unknown; et: unknown };
+    } catch {
+      throw new RowDecodeError(`session row ${s.id} has a malformed payload`, 'malformed_payload');
+    }
+    if (typeof d.st !== 'number' || typeof d.et !== 'number') {
+      throw new RowDecodeError(`session row ${s.id} has a malformed payload`, 'malformed_payload');
+    }
     return {
       ...rest,
       startTime: d.st,
@@ -102,6 +151,40 @@ function decryptSession(s: SyncSessionDto, keyB64: string): DecryptedSession {
     };
   }
   return { ...rest, startTime, endTime };
+}
+
+/**
+ * Decode every session row, tolerating a per-row failure (Phase 150, D-08/D-10/D-12):
+ * a `RowDecodeError` from `decryptSession` above is turned into an `UnreadableRow` on
+ * `report` and the row is left out of the returned array; any other thrown error counts
+ * as `decrypt_failed` (`decryptSession` above never throws anything else, but a defensive
+ * default here is cheap and correct). `encryptedCount.session` counts only rows that
+ * actually carry `encryptedPayload` — a plaintext, pre-encryption row can never trip the
+ * D-11 100%-failure guard.
+ */
+function decodeSessions(rows: SyncSessionDto[], keyB64: string, report: DecodeReport): DecryptedSession[] {
+  const decoded: DecryptedSession[] = [];
+  for (const row of rows) {
+    if (row.encryptedPayload) {
+      report.encryptedCount.session += 1;
+    }
+    try {
+      decoded.push(decryptSession(row, keyB64));
+    } catch (err) {
+      const reason: UnreadableReason = err instanceof RowDecodeError ? err.reason : 'decrypt_failed';
+      report.failedCount.session += 1;
+      report.unreadable.push({
+        entity: 'session',
+        id: row.id,
+        reason,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        templateId: row.templateId,
+        isQuickChallenge: row.isQuickChallenge,
+      });
+    }
+  }
+  return decoded;
 }
 
 /**
@@ -289,8 +372,16 @@ export function normalizeWireTemplateExercise(te: SyncTemplateExerciseDto): Norm
   return { ...te, sets: te.sets ?? 1, exerciseSource: te.exerciseSource ?? 'CATALOG' };
 }
 
-/** Apply decrypt-merge to every encrypted entity in the raw snapshot. */
-function decryptMerge(raw: SyncPullResponse, keyB64: string): DecryptedSnapshot {
+/**
+ * Apply decrypt-merge to every encrypted entity in the raw snapshot. Sessions decode
+ * per-row (Phase 150, D-08) and never abort the whole call — a failure is collected on
+ * the returned `decodeReport` instead. Set-logs, HR samples, planned workouts and
+ * settings still decode via `.map()` and can still throw out of this function; Plan
+ * 150-02 Task 2 makes them per-row tolerant the same way.
+ */
+function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: DecryptedSnapshot; decodeReport: DecodeReport } {
+  const decodeReport = newDecodeReport();
+
   // EVERY list below carries `?? []`, not just the two that used to. `McpDataPullResponse`
   // declares all of them `= emptyList()` and the server serializes with
   // `encodeDefaults = false`, so ANY of them can be absent from the wire the moment it is
@@ -298,19 +389,21 @@ function decryptMerge(raw: SyncPullResponse, keyB64: string): DecryptedSnapshot 
   // made this concrete. An unguarded assignment here does not fail here: it puts `undefined`
   // into the snapshot and fails much later, at whatever `.filter` touches it first, with a
   // message that names neither the field nor this function.
-  return {
+  const snapshot: DecryptedSnapshot = {
     syncedAt:             raw.syncedAt,
     exercises:            raw.exercises ?? [],
     exerciseTranslations: raw.exerciseTranslations ?? [],
     templates:            raw.templates ?? [],
     blocks:               (raw.blocks ?? []).map(normalizeWireBlock),
     templateExercises:    (raw.templateExercises ?? []).map(normalizeWireTemplateExercise),
-    sessions:  (raw.sessions  ?? []).map(s  => decryptSession(s,  keyB64)),
+    sessions:  decodeSessions(raw.sessions ?? [], keyB64, decodeReport),
     setLogs:   (raw.setLogs   ?? []).map(sl => decryptSetLog(sl,  keyB64)),
     hrSamples: (raw.hrSamples ?? []).map(hr => decryptHrSample(hr, keyB64)),
     plannedWorkouts: (raw.plannedWorkouts ?? []).map(pw => decryptPlannedWorkout(pw, keyB64)),
     settings: (raw.settings ?? []).map(s => decryptSetting(s, keyB64)),
   };
+
+  return { snapshot, decodeReport };
 }
 
 /**
@@ -412,7 +505,7 @@ async function doFetch(
     fetchCatalog(serverUrl),
   ]);
 
-  const snapshot      = decryptMerge(rawSnapshot, keyB64);
+  const { snapshot, decodeReport } = decryptMerge(rawSnapshot, keyB64);
   const curatedCatalog = normalizeCatalog(rawCatalog);
 
   // 141-18 (G-141-2-SCOPE): the one seam where snapshot and catalog are both in hand for the
@@ -425,7 +518,7 @@ async function doFetch(
     .map((ex) => projectUserExerciseToCatalog(ex, snapshot.exerciseTranslations));
   const catalog = [...curatedCatalog, ...projectedUserExercises];
 
-  return { snapshot, catalog, profile, fetchedAt: Date.now() };
+  return { snapshot, catalog, profile, fetchedAt: Date.now(), decodeReport };
 }
 
 // ---------------------------------------------------------------------------
