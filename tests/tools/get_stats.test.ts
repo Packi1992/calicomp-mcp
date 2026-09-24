@@ -82,6 +82,11 @@ describe('get_stats — schema validation', () => {
     const result = GetStatsSchema.safeParse({ by: 'muscle', muscle: 'back' });
     expect(result.success).toBe(true);
   });
+
+  it('P150 D-14 get_stats accepts lang on the strict capabilities branch', () => {
+    const result = GetStatsSchema.safeParse({ by: 'capabilities', lang: 'de' });
+    expect(result.success).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -896,5 +901,150 @@ describe('get_stats — registered MCP handler (Phase 150, D-10/D-11)', () => {
     expect(result.content[0].text).toContain('every encrypted setLog');
     expect(result.content[0].text).not.toContain(DUMMY_CFG.pat);
     expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Exercise names in all three branches (Phase 150, D-15/D-35) — the pure `getStats`
+// function stays untouched (proven above by the characterization pins); these tests
+// exercise the registered handler, where `withExerciseNames` does the enrichment.
+// ---------------------------------------------------------------------------
+
+describe('get_stats — registered MCP handler (Phase 150, D-15/D-35 exercise names)', () => {
+  beforeEach(() => {
+    vi.mocked(cacheModule.getSnapshot).mockReset();
+  });
+
+  it('P150 D-15 get_stats by exercise names the echoed exerciseId', async () => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(mockSnapshot));
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetStats(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ by: 'exercise', exerciseId: CATALOG_EXERCISE_ID_PULLUP });
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as {
+      exerciseId: string;
+      exerciseName: string | null;
+      exerciseKey: string | null;
+    };
+    expect(body.exerciseId).toBe(CATALOG_EXERCISE_ID_PULLUP);
+    expect(body.exerciseName).toBe('Pull-Up');
+    expect(body.exerciseKey).toBe('pull_up');
+  });
+
+  it('P150 D-35 get_stats matchingExercises parallels matchingExerciseIds in order', async () => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(mockSnapshot));
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetStats(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ by: 'muscle', muscle: 'back' });
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as {
+      matchingExerciseIds: string[];
+      matchingExercises: Array<{ exerciseId: string; exerciseName: string | null; exerciseKey: string | null }>;
+    };
+    // The existing id list stays exactly a string array (T-150-25).
+    for (const id of body.matchingExerciseIds) {
+      expect(typeof id).toBe('string');
+    }
+    expect(body.matchingExercises.map((e) => e.exerciseId)).toEqual(body.matchingExerciseIds);
+    const pullup = body.matchingExercises.find((e) => e.exerciseId === CATALOG_EXERCISE_ID_PULLUP);
+    expect(pullup?.exerciseName).toBe('Pull-Up');
+    expect(pullup?.exerciseKey).toBe('pull_up');
+  });
+
+  it('P150 D-35 get_stats contributingExercises parallels contributingExerciseIds per axis', async () => {
+    const EX_ID = 'aaaaaaaa-0013-4000-a000-000000000001';
+    const catalogWithCapability: CatalogExercise[] = [
+      {
+        id: EX_ID,
+        key: 'balance_capability_exercise',
+        nameEn: 'Balance Capability Exercise',
+        mode: 'REPS',
+        usesWeight: false,
+        lastModifiedAt: 1_700_000_000_000,
+        translations: [],
+        muscleGroups: [],
+        equipment: [],
+        capabilities: [
+          {
+            id: 'cap-balance-150-06',
+            key: 'balance',
+            translations: [{ languageCode: 'en', name: 'Balance' }],
+            capabilityLevel: 'HAUPTREIZ',
+          },
+        ],
+        origin: 'CATALOG',
+      },
+    ];
+    const S_ID = 'bbbbbbbb-0013-4000-b000-000000000001';
+    const S_START = Date.UTC(2024, 0, 1, 8, 0);
+    const snapshotWithCapability: DecryptedSnapshot = {
+      syncedAt: 1_700_000_000_000,
+      exercises: [],
+      exerciseTranslations: [],
+      templates: [],
+      blocks: [],
+      templateExercises: [],
+      sessions: [
+        {
+          id: S_ID,
+          startTime: S_START,
+          endTime: S_START + 3_600_000,
+          isManual: false,
+          isCorrected: false,
+          isQuickChallenge: false,
+          createdAt: S_START,
+          updatedAt: S_START,
+        },
+      ],
+      setLogs: [
+        {
+          id: 'sl-150-06-cap',
+          sessionId: S_ID,
+          exerciseId: EX_ID,
+          completedReps: 5,
+          completedTimeSeconds: null,
+          weightUsed: null,
+          startedAt: null,
+          measuredTimeSeconds: null,
+          createdAt: S_START,
+          updatedAt: S_START,
+        },
+      ],
+      hrSamples: [],
+      plannedWorkouts: [],
+      settings: [],
+    };
+
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(
+      mockCacheFor(snapshotWithCapability, catalogWithCapability),
+    );
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetStats(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ by: 'capabilities' });
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as {
+      axes: Array<{
+        key: string;
+        contributingExerciseIds: string[];
+        contributingExercises: Array<{ exerciseId: string; exerciseName: string | null; exerciseKey: string | null }>;
+      }>;
+    };
+    const axis = body.axes.find((a) => a.key === 'balance');
+    expect(axis).toBeDefined();
+    for (const id of axis!.contributingExerciseIds) {
+      expect(typeof id).toBe('string');
+    }
+    expect(axis!.contributingExercises.map((e) => e.exerciseId)).toEqual(axis!.contributingExerciseIds);
+    expect(axis!.contributingExercises[0]).toMatchObject({
+      exerciseId: EX_ID,
+      exerciseName: 'Balance Capability Exercise',
+      exerciseKey: 'balance_capability_exercise',
+    });
   });
 });

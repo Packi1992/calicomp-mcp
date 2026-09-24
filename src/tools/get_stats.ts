@@ -55,9 +55,24 @@
  *   null/zero fields, so the coach can see that an axis did NOT occur, not just that it
  *   was not asked about.
  *
+ * Exercise names (Phase 150, D-15/D-35):
+ *   `getStats(args, data)` above stays completely UNTOUCHED — Phase 121's WRITE tools
+ *   import it directly as a pure function, and its own characterization pins
+ *   (tests/characterization-150.test.ts) assert its result shape is unaffected by this
+ *   plan. All name enrichment lives in the registered tool layer's `withExerciseNames`,
+ *   built from a resolver (`exercise-names.ts`) over the SAME catalog/snapshot/`lang`
+ *   the pure call already used: the `exercise` branch gets `exerciseName`/`exerciseKey`
+ *   next to its echoed `exerciseId`; the `muscle` branch gets a `matchingExercises` array
+ *   parallel to (never replacing) `matchingExerciseIds`; the `capabilities` branch gets a
+ *   `contributingExercises` array parallel to each axis's `contributingExerciseIds`. Both
+ *   id lists stay exactly the string arrays they always were (T-150-25).
+ *
  * Security (threat model):
  *   T-120-17: catch → { isError:true }; never include key/PAT in error text
  *   T-120-18: no console.* anywhere — stdout is JSON-RPC only
+ *   T-150-25: `matchingExerciseIds`/`contributingExerciseIds` are never turned into
+ *             objects — `withExerciseNames` only ADDS a parallel `matchingExercises`/
+ *             `contributingExercises` field, never restructures the existing id lists.
  *   T-138-17: the raw reps × weight volume sum must never be scaled by an involvement-
  *             level factor — enforced by leaving `computeAggregates` untouched and adding
  *             `weightedSetCount` strictly alongside it, never inside it.
@@ -79,6 +94,7 @@ import { weightFor } from '../training-state/muscle-balance.js';
 import { weightedCounts as capabilityWeightedCounts } from '../training-state/capability-balance.js';
 import type { CapabilityLevelSetCount } from '../training-state/capability-balance.js';
 import { decodeReportOf, assertEntitiesReadable } from '../read-guard.js';
+import { createExerciseNameResolver, type ExerciseNameFields, type ExerciseNameResolver } from '../exercise-names.js';
 import type { DecryptedSnapshot, DecryptedSetLog, CatalogExercise, UnreadableRow } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -473,6 +489,43 @@ export function getStats(
 }
 
 // ---------------------------------------------------------------------------
+// Exercise-name enrichment (Phase 150, D-15/D-35) — tool layer only, see doc-header.
+// ---------------------------------------------------------------------------
+
+/** `{ exerciseId } & ExerciseNameFields` — one entry of a `matchingExercises`/
+ * `contributingExercises` parallel array. */
+type NamedExerciseRef = { exerciseId: string } & ExerciseNameFields;
+
+/**
+ * Additively enrich a `getStats` result with exercise names, one resolver call per id.
+ * `getStats` itself (above) is never touched — this is a pure, additive transform of its
+ * output, applied only by the registered tool handler below.
+ */
+function withExerciseNames(
+  result: GetStatsResult,
+  resolver: ExerciseNameResolver,
+): GetStatsResult & Record<string, unknown> {
+  if (result.by === 'exercise') {
+    return { ...result, ...resolver.forExerciseId(result.exerciseId) };
+  }
+  if (result.by === 'muscle') {
+    const matchingExercises: NamedExerciseRef[] = result.matchingExerciseIds.map((exerciseId) => ({
+      exerciseId,
+      ...resolver.forExerciseId(exerciseId),
+    }));
+    return { ...result, matchingExercises };
+  }
+  const axes = result.axes.map((axis) => {
+    const contributingExercises: NamedExerciseRef[] = axis.contributingExerciseIds.map((exerciseId) => ({
+      exerciseId,
+      ...resolver.forExerciseId(exerciseId),
+    }));
+    return { ...axis, contributingExercises };
+  });
+  return { ...result, axes };
+}
+
+// ---------------------------------------------------------------------------
 // Tool registration — used by src/index.ts (Phase 120-07)
 // ---------------------------------------------------------------------------
 
@@ -501,9 +554,14 @@ export function registerToolGetStats(
         '(`by: "muscle"`), or break down over every capability axis at once with no further ' +
         'argument (`by: "capabilities"` — balance, mobility, breath, etc.). e1RM uses the same ' +
         'Epley formula as the app. `trend.points` carries the full per-session e1RM series ' +
-        'alongside the existing first-vs-last delta. Every result carries unreadable: rows that ' +
-        'could not be decrypted or decoded (entity, id, reason and plaintext routing fields); an ' +
-        'empty list means every encrypted row was read.',
+        'alongside the existing first-vs-last delta. The `exercise` branch carries exerciseName ' +
+        'and exerciseKey next to its echoed exerciseId (optional lang, default English); the ' +
+        '`muscle` branch additionally carries matchingExercises (exerciseId, exerciseName, ' +
+        'exerciseKey) parallel to matchingExerciseIds, in the same order; the `capabilities` ' +
+        'branch carries contributingExercises parallel to each axis\'s contributingExerciseIds, ' +
+        'same rule. The existing id lists are unchanged. Every result carries unreadable: rows ' +
+        'that could not be decrypted or decoded (entity, id, reason and plaintext routing ' +
+        'fields); an empty list means every encrypted row was read.',
       inputSchema: GetStatsSchema,
       annotations: { readOnlyHint: true },
     },
@@ -517,7 +575,13 @@ export function registerToolGetStats(
           catalog:  data.catalog,
         });
         const unreadable: UnreadableRow[] = report.unreadable;
-        return { content: [{ type: 'text' as const, text: JSON.stringify({ ...result, unreadable }) }] };
+        const resolver = createExerciseNameResolver({
+          catalog:  data.catalog,
+          snapshot: data.snapshot,
+          lang:     (args as { lang?: string }).lang,
+        });
+        const named = withExerciseNames(result, resolver);
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ ...named, unreadable }) }] };
       } catch (err) {
         return {
           isError: true,

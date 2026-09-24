@@ -202,14 +202,16 @@ export const GetAdherenceSchema = z
  * to ask about. D-14 requires the capability axes to be surfaced without that prior
  * knowledge, so the coach can see whether balance/mobility/etc. occurred at all across
  * the training history, not just how much of one axis it already knew to ask for. The
- * branch is `.strict()` — it carries no further fields, so an unknown extra field (e.g.
- * a caller mistakenly passing a single `axis` filter) is rejected here rather than
- * silently ignored.
+ * branch is `.strict()` — it carries no further fields other than the shared optional
+ * `lang` (Phase 150, D-14/D-35) added below; an unknown extra field (e.g. a caller
+ * mistakenly passing a single `axis` filter) is rejected here rather than silently
+ * ignored. `lang` localizes every name the tool layer additively attaches — see
+ * `get_stats.ts`'s `withExerciseNames` — identically across all three branches.
  */
 export const GetStatsSchema = z.discriminatedUnion('by', [
-  z.object({ by: z.literal('exercise'), exerciseId: UUID_STRING }),
-  z.object({ by: z.literal('muscle'), muscle: MUSCLE_KEY }),
-  z.object({ by: z.literal('capabilities') }).strict(),
+  z.object({ by: z.literal('exercise'), exerciseId: UUID_STRING, lang: LANG.optional() }),
+  z.object({ by: z.literal('muscle'), muscle: MUSCLE_KEY, lang: LANG.optional() }),
+  z.object({ by: z.literal('capabilities'), lang: LANG.optional() }).strict(),
 ]);
 
 /**
@@ -937,9 +939,14 @@ export const GetSuggestionsSchema = z.object({
   limit: z.number().int().optional(),
 });
 
-/** get_suggestion — D-08/D-09. One own proposal in full by id. */
+/**
+ * get_suggestion — D-08/D-09. One own proposal in full by id. `lang` (Phase 150,
+ * D-14/D-35) is optional and localizes every name in `payloadResolved`/
+ * `appliedPayloadResolved` — see `get_suggestion.ts`.
+ */
 export const GetSuggestionSchema = z.object({
   id: UUID_STRING,
+  lang: LANG.optional(),
 });
 
 /** withdraw_suggestion — D-08, PROP-11. Withdraw one own still-pending proposal.
