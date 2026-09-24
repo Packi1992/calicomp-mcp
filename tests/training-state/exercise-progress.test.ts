@@ -368,6 +368,35 @@ describe('computeExerciseProgress', () => {
 
     expect(series.rule).toBe(DIRECTION_RULE);
   });
+
+  it('P150 D-06 computeExerciseProgress applies the sessionFilter after the session lookup', () => {
+    const kept = buildSession({ id: 's-kept', startTime: dayStart(0), templateId: 'tpl-a' });
+    const dropped = buildSession({ id: 's-dropped', startTime: dayStart(1) }); // no templateId
+    const snapshot = buildSnapshot({
+      sessions: [kept, dropped],
+      setLogs: [
+        buildSetLog({ id: 'sl-kept', sessionId: kept.id, createdAt: kept.startTime, completedReps: 10 }),
+        buildSetLog({ id: 'sl-dropped', sessionId: dropped.id, createdAt: dropped.startTime, completedReps: 10 }),
+      ],
+    });
+
+    const [unfiltered] = computeExerciseProgress(
+      { exerciseId: EX_REPS, maxPoints: 30, recentExerciseCount: 5 },
+      { snapshot, catalog: CATALOG, timeZoneId: TZ },
+    );
+    const [filtered] = computeExerciseProgress(
+      {
+        exerciseId: EX_REPS,
+        maxPoints: 30,
+        recentExerciseCount: 5,
+        sessionFilter: (session) => session.templateId !== undefined,
+      },
+      { snapshot, catalog: CATALOG, timeZoneId: TZ },
+    );
+
+    expect(unfiltered.points).toHaveLength(2);
+    expect(filtered.points).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

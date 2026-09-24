@@ -53,6 +53,7 @@ import {
 } from '../training-state/exercise-progress.js';
 import { computeFormatProgress, type FormatProgressSeries } from '../training-state/format-progress.js';
 import { decodeReportOf, assertEntitiesReadable, assertTimeZoneReadable } from '../read-guard.js';
+import { matchesSessionFilter, type SessionKind } from '../session-kind.js';
 import type { DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
 import type { CoachParameters } from '../coach-parameters.js';
 
@@ -61,7 +62,15 @@ import type { CoachParameters } from '../coach-parameters.js';
 // ---------------------------------------------------------------------------
 
 export type GetProgressArgs =
-  | { kind: 'exercise'; exerciseId?: string; points?: number; outputFile?: boolean }
+  | {
+      kind: 'exercise';
+      exerciseId?: string;
+      /** Phase 150, D-06: filters which sessions' points feed the series. */
+      templateId?: string;
+      sessionKind?: SessionKind;
+      points?: number;
+      outputFile?: boolean;
+    }
   | { kind: 'format'; templateId?: string; points?: number; outputFile?: boolean };
 
 /**
@@ -73,6 +82,12 @@ export type GetProgressArgs =
 export interface GetProgressExerciseResult {
   kind: 'exercise';
   series: ExerciseProgressSeries[];
+  /**
+   * Phase 150, D-06 — echoes the applied session filter, present ONLY when at least one
+   * of `templateId`/`sessionKind` was set. Without a filter, this key is absent and the
+   * result is byte-identical to before D-06.
+   */
+  sessionFilter?: { templateId?: string; sessionKind?: SessionKind };
 }
 
 export interface GetProgressFormatResult {
@@ -101,15 +116,29 @@ export function getProgress(
   const maxPoints = args.points ?? data.coachParameters.exerciseTrendPoints;
 
   if (args.kind === 'exercise') {
+    // Phase 150, D-06: a sessionFilter predicate is built ONLY when at least one of
+    // templateId/sessionKind is set — omitting it keeps computeExerciseProgress's series
+    // byte-identical to before this filter existed.
+    const hasSessionFilter = args.templateId !== undefined || args.sessionKind !== undefined;
+    const sessionFilter = hasSessionFilter
+      ? (session: { templateId?: string; isQuickChallenge: boolean }) =>
+          matchesSessionFilter(session, { templateId: args.templateId, sessionKind: args.sessionKind })
+      : undefined;
+
     const series = computeExerciseProgress(
       {
         exerciseId: args.exerciseId,
         maxPoints,
         recentExerciseCount: data.coachParameters.recentExerciseCount,
+        sessionFilter,
       },
       { snapshot: data.snapshot, catalog: data.catalog, timeZoneId },
     );
-    return { kind: 'exercise', series };
+    return {
+      kind: 'exercise',
+      series,
+      ...(hasSessionFilter ? { sessionFilter: { templateId: args.templateId, sessionKind: args.sessionKind } } : {}),
+    };
   }
 
   const series = computeFormatProgress(
@@ -146,7 +175,12 @@ export function registerToolGetProgress(
         'the metric appropriate to that exercise (e1RM for weighted exercises, reps or hold time ' +
         'for bodyweight exercises), plus a direction label with its own rule and the raw values it ' +
         'was computed from. Omit `exerciseId` to get the most recently trained exercises instead ' +
-        'of one specific exercise. `kind: "format"` returns the format-specific progression ' +
+        'of one specific exercise. Under `kind: "exercise"`, optional `templateId` and/or ' +
+        '`sessionKind` (one of "template", "templateless", "quick_challenge") FILTER which ' +
+        'sessions\' points feed the series — e.g. excluding QuickChallenge points from a ' +
+        'template-specific progress series; without either, the series is unchanged. The applied ' +
+        'filter is echoed back as `sessionFilter` only when one was set. `kind: "format"` returns ' +
+        'the format-specific progression ' +
         '(AMRAP rounds+reps, Death-By highest round, EMOM intervals) for one template, or all ' +
         'format templates if `templateId` is omitted. `points` overrides how many recent points ' +
         'each series returns (3-30) for this one call. A call with no matching data returns an ' +

@@ -280,7 +280,18 @@ function buildSeriesForExercise(
  * @param data.timeZoneId          The athlete's resolved IANA zone — every `date` maps through it.
  */
 export function computeExerciseProgress(
-  args: { exerciseId?: string; maxPoints: number; recentExerciseCount: number },
+  args: {
+    exerciseId?: string;
+    maxPoints: number;
+    recentExerciseCount: number;
+    /**
+     * Optional session predicate (Phase 150, D-06) — e.g. from `matchesSessionFilter`.
+     * Applied directly after the session lookup, before exercise resolution. Omitting it
+     * evaluates NOTHING extra, so the series stays byte-identical to before this filter
+     * existed.
+     */
+    sessionFilter?: (session: DecryptedSession) => boolean;
+  },
   data: { snapshot: DecryptedSnapshot; catalog: CatalogExercise[]; timeZoneId: string },
 ): ExerciseProgressSeries[] {
   const { snapshot, catalog, timeZoneId } = data;
@@ -289,8 +300,10 @@ export function computeExerciseProgress(
   const sessionById = new Map(snapshot.sessions.map((s) => [s.id, s]));
 
   // Group valid set-logs by resolved exerciseId. NO templateId is read anywhere in this
-  // loop — STATE-05's whole point is that this progress spans every session the exercise
-  // ever appeared in, template-bound or not.
+  // loop by default — STATE-05's whole point is that this progress spans every session
+  // the exercise ever appeared in, template-bound or not. `args.sessionFilter` (Phase 150,
+  // D-06) is the ONE opt-in exception: a caller-supplied predicate, evaluated right after
+  // the session lookup, that can narrow the series to one template and/or one session kind.
   const setLogsByExerciseId = new Map<string, DecryptedSetLog[]>();
   for (const setLog of snapshot.setLogs) {
     if (setLog.deletedAt !== undefined) continue;
@@ -299,6 +312,7 @@ export function computeExerciseProgress(
     if (session === undefined) continue;
     if (session.deletedAt !== undefined) continue;
     if (session.endTime === undefined) continue;
+    if (args.sessionFilter && !args.sessionFilter(session)) continue;
 
     // Exercise resolution mirrors muscle-balance.ts's COALESCE(sl.exerciseId, we.exerciseId).
     const exerciseId =

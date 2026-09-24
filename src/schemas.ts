@@ -200,8 +200,7 @@ export const GetStatsSchema = z.discriminatedUnion('by', [
  * 'exercise' | 'muscle'`). D-22 merges what would have been two separate tools
  * (`get_exercise_progress`/`get_format_progress`) into this ONE tool with a discriminator,
  * so an agent picking the wrong argument for a branch (an `exerciseId` under `kind:
- * 'format'`, or a `templateId` under `kind: 'exercise'`) is rejected at this Zod boundary
- * rather than silently ignored.
+ * 'format'`) is rejected at this Zod boundary rather than silently ignored.
  *
  * `points` (D-13: depth is an argument, never a second tool) overrides the coach's
  * `exerciseTrendPoints` parameter for this one call only, bounded 3..30 like the
@@ -209,12 +208,23 @@ export const GetStatsSchema = z.discriminatedUnion('by', [
  * instead of returning it inline; see `OUTPUT_FILE_FLAG`. Neither branch requires its own
  * id — omitting `exerciseId`/`templateId` selects the "all" view (D-27 c: a call with no
  * matching data returns a structurally empty result, never an error).
+ *
+ * Phase 150, D-06: under `kind: 'exercise'`, `templateId` and `sessionKind` no longer mean
+ * "select a series" (that is what `kind: 'format'`'s own `templateId` does) — they FILTER
+ * which sessions' points feed the returned exercise series, restricting it to one template
+ * and/or one session kind (`session-kind.ts`). This is a deliberate behavior change from
+ * this schema's earlier stance of rejecting a `templateId` under `kind: 'exercise'`
+ * outright; it fixes a real mixed series (a `pull_up` progress series polluted by
+ * QuickChallenge points a template filter could not previously exclude). The branch stays
+ * `.strict()` — the same field never means two different things in the same request.
  */
 export const GetProgressSchema = z.discriminatedUnion('kind', [
   z
     .object({
       kind: z.literal('exercise'),
       exerciseId: UUID_STRING.optional(),
+      templateId: UUID_STRING.optional(),
+      sessionKind: z.enum(SESSION_KINDS).optional(),
       points: z.number().int().min(3).max(30).optional(),
       outputFile: OUTPUT_FILE_FLAG,
     })

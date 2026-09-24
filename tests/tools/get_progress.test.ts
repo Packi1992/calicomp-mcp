@@ -118,15 +118,21 @@ describe('GetProgressSchema', () => {
     expect(GetProgressSchema.safeParse({ kind: 'muscle' }).success).toBe(false);
   });
 
-  it('rejects an exerciseId under kind: "format", and a templateId under kind: "exercise"', () => {
+  it('rejects an exerciseId under kind: "format"', () => {
     expect(
       GetProgressSchema.safeParse({ kind: 'format', exerciseId: '11111111-1111-4111-8111-111111111111' })
         .success,
     ).toBe(false);
+  });
+
+  // Phase 150, D-06: this is a DELIBERATE behavior change. templateId under kind:
+  // "exercise" used to be rejected outright; it now filters which sessions' points feed
+  // the series — see GetProgressSchema's own D-06 doc comment.
+  it('P150 D-06 templateId under kind exercise now filters instead of being rejected', () => {
     expect(
       GetProgressSchema.safeParse({ kind: 'exercise', templateId: '11111111-1111-4111-8111-111111111111' })
         .success,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('accepts points 3 and 30; rejects 2 and 31', () => {
@@ -139,6 +145,14 @@ describe('GetProgressSchema', () => {
   it('accepts outputFile: true and outputFile: false', () => {
     expect(GetProgressSchema.safeParse({ kind: 'exercise', outputFile: true }).success).toBe(true);
     expect(GetProgressSchema.safeParse({ kind: 'exercise', outputFile: false }).success).toBe(true);
+  });
+
+  it('P150 D-37 the filter parameter is sessionKind, never kind', () => {
+    expect(GetProgressSchema.safeParse({ kind: 'exercise', sessionKind: 'template' }).success).toBe(true);
+    expect(
+      GetProgressSchema.safeParse({ kind: 'exercise', kindFilter: 'template' } as unknown as Record<string, unknown>)
+        .success,
+    ).toBe(false);
   });
 });
 
@@ -244,6 +258,49 @@ describe('getProgress — pure function', () => {
 
     if (result.kind !== 'exercise') throw new Error('expected exercise result');
     expect(result.series[0].points).toHaveLength(2);
+  });
+
+  it('P150 D-06 sessionKind template drops quick challenge points from a pull_up series', () => {
+    const templateSession = buildSession({ id: 's-template', startTime: 1_700_000_000_000, templateId: 'tpl-a' });
+    const quickSession = buildSession({ id: 's-quick', startTime: 1_700_100_000_000, isQuickChallenge: true });
+    const snapshot = snapshotWithZone(TZ, {
+      sessions: [templateSession, quickSession],
+      setLogs: [
+        buildSetLog({ id: 'sl-template', sessionId: templateSession.id, createdAt: templateSession.startTime }),
+        buildSetLog({ id: 'sl-quick', sessionId: quickSession.id, createdAt: quickSession.startTime }),
+      ],
+    });
+
+    const unfiltered = getProgress(
+      { kind: 'exercise', exerciseId: CATALOG_EXERCISE_ID_PUSHUP },
+      { snapshot, catalog: mockCatalog, coachParameters: COACH_PARAMETER_DEFAULTS },
+    );
+    const filtered = getProgress(
+      { kind: 'exercise', exerciseId: CATALOG_EXERCISE_ID_PUSHUP, sessionKind: 'template' },
+      { snapshot, catalog: mockCatalog, coachParameters: COACH_PARAMETER_DEFAULTS },
+    );
+
+    if (unfiltered.kind !== 'exercise' || filtered.kind !== 'exercise') throw new Error('expected exercise result');
+    expect(unfiltered.series[0].points).toHaveLength(2);
+    expect(filtered.series[0].points).toHaveLength(1);
+    expect(filtered.sessionFilter).toEqual({ sessionKind: 'template' });
+  });
+
+  it('P150 D-06 without a filter the series is unchanged', () => {
+    const s1 = buildSession({ id: 's1', startTime: 1_700_000_000_000 });
+    const snapshot = snapshotWithZone(TZ, {
+      sessions: [s1],
+      setLogs: [buildSetLog({ id: 'sl1', sessionId: s1.id, createdAt: s1.startTime })],
+    });
+
+    const result = getProgress(
+      { kind: 'exercise', exerciseId: CATALOG_EXERCISE_ID_PUSHUP },
+      { snapshot, catalog: mockCatalog, coachParameters: COACH_PARAMETER_DEFAULTS },
+    );
+
+    if (result.kind !== 'exercise') throw new Error('expected exercise result');
+    expect(result.series[0].points).toHaveLength(1);
+    expect(result).not.toHaveProperty('sessionFilter');
   });
 });
 
