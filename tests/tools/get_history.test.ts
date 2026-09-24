@@ -366,4 +366,25 @@ describe('get_history — unreadable rows', () => {
     expect(result.content[0].text).not.toContain(DUMMY_CFG.pat);
     expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
   });
+
+  it('P150 D-13 D-09 a corrupt planned row does not stop get_history', async () => {
+    const decodeReport = {
+      unreadable: [{ entity: 'plannedWorkout' as const, id: 'row-broken', reason: 'decrypt_failed' as const }],
+      encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0 },
+      failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0 },
+    };
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, decodeReport });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ from: '2024-01-01', to: '2024-12-31', limit: 200 });
+
+    expect(result.isError).toBeUndefined();
+    const expected = getHistory({ from: '2024-01-01', to: '2024-12-31', limit: 200 }, mockSnapshot);
+    const body = JSON.parse(result.content[0].text) as { sessions: unknown[]; unreadable: unknown[] };
+    expect(body.sessions).toEqual(expected.sessions);
+    expect(body.unreadable).toEqual(decodeReport.unreadable);
+  });
 });

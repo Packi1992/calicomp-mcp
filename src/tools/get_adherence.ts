@@ -42,7 +42,8 @@ import { loadCoachParameters } from '../coach-parameters.js';
 import { resolveTimeZoneId, toCalendarDay } from '../training-state/time-zone.js';
 import { parseIsoDate, formatIsoDate, plusDays } from '../recurrence.js';
 import { computeAdherence, ADHERENCE_EXPLANATION, type AdherenceResult } from '../training-state/adherence.js';
-import type { DecryptedSnapshot, CatalogExercise } from '../types.js';
+import { decodeReportOf, assertEntitiesReadable, assertCalendarReadable, assertTimeZoneReadable } from '../read-guard.js';
+import type { DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
 import type { CoachParameters } from '../coach-parameters.js';
 
 // ---------------------------------------------------------------------------
@@ -59,6 +60,8 @@ export interface GetAdherenceArgs {
 
 export interface GetAdherenceResult extends AdherenceResult {
   parametersSource: 'server' | 'defaults';
+  /** Rows that could not be decrypted or decoded, independent of the window (D-10). */
+  unreadable: UnreadableRow[];
 }
 
 // ---------------------------------------------------------------------------
@@ -141,20 +144,29 @@ export function registerToolGetAdherence(
         '(with their confidence and, for similarity-derived matches, the similarity value), the ' +
         'missed occurrences, and an explanation sentence describing what removedOccurrenceCount ' +
         'does and does NOT mean (verbatim: "' + ADHERENCE_EXPLANATION + '"). Set `outputFile: true` ' +
-        'to write the full pair/missed lists to a local file instead of returning them inline.',
+        'to write the full pair/missed lists to a local file instead of returning them inline. ' +
+        'Every result carries unreadable: rows that could not be decrypted or decoded (entity, ' +
+        'id, reason and plaintext routing fields), independent of the date window; an empty ' +
+        'list means every encrypted row was read. If any session/set-log/setting row of a kind ' +
+        'this tool needs, any planned_workout row, or the athlete\'s time-zone setting cannot be ' +
+        'decoded, this tool fails instead of returning a partial or misleading answer.',
       inputSchema: GetAdherenceSchema,
       annotations: { readOnlyHint: true },
     },
     async (args) => {
       try {
         const data = await getSnapshot(pat, keyB64, serverUrl);
+        const report = decodeReportOf(data);
+        assertEntitiesReadable(report, ['session', 'setLog', 'setting'], 'Adherence error');
+        assertCalendarReadable(report, 'Adherence error');
+        assertTimeZoneReadable(report, 'Adherence error');
         const { params, source } = await loadCoachParameters({ pat, serverUrl });
         const result = getAdherence(
           args as GetAdherenceArgs,
           { snapshot: data.snapshot, catalog: data.catalog, coachParameters: params },
           Date.now(),
         );
-        const full: GetAdherenceResult = { ...result, parametersSource: source };
+        const full: GetAdherenceResult = { ...result, parametersSource: source, unreadable: report.unreadable };
 
         if ((args as GetAdherenceArgs).outputFile) {
           const itemCount = result.matches.length + result.missed.length;
@@ -171,6 +183,7 @@ export function registerToolGetAdherence(
             adherenceRatio: result.adherenceRatio,
             explanation: result.explanation,
             parametersSource: source,
+            unreadable: report.unreadable,
           };
           return { content: [{ type: 'text' as const, text: JSON.stringify(summary) }] };
         }

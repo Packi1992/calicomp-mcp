@@ -296,4 +296,89 @@ describe('get_adherence — registered MCP handler', () => {
     expect(result.content[0].text).not.toContain(DUMMY_CFG.pat);
     expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
   });
+
+  // -------------------------------------------------------------------------
+  // unreadable / decode-fault-tolerance guards (Phase 150, D-09/D-11)
+  // -------------------------------------------------------------------------
+
+  it('P150 D-09 get_adherence fails on an unreadable planned row', async () => {
+    const snapshot = snapshotWithZone(TZ);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(snapshot),
+      decodeReport: {
+        unreadable: [{ entity: 'plannedWorkout', id: 'row-1', reason: 'unknown_version' }],
+        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0 },
+        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0 },
+      },
+    });
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetAdherence(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ from: '2026-06-01', to: '2026-06-10' });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('row-1');
+    expect(result.content[0].text).toContain('partial calendar');
+  });
+
+  it('P150 D-11 get_adherence refuses when every encrypted session failed', async () => {
+    const snapshot = snapshotWithZone(TZ);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(snapshot),
+      decodeReport: {
+        unreadable: [{ entity: 'session', id: 'sess-1', reason: 'decrypt_failed' }],
+        encryptedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+        failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+      },
+    });
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetAdherence(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ from: '2026-06-01', to: '2026-06-10' });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('CALICOMP_KEY most likely does not match');
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.pat);
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
+  });
+
+  it('P150 get_adherence names the unreadable tz setting instead of a missing key', async () => {
+    const snapshot = snapshotWithZone(null);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(snapshot),
+      decodeReport: {
+        // setting.encryptedCount > failedCount so assertEntitiesReadable (D-11) does not
+        // fire first — this test isolates assertTimeZoneReadable's own message.
+        unreadable: [{ entity: 'setting', id: 'row-tz', reason: 'malformed_payload', key: TRAINING_TIMEZONE_SETTING_KEY }],
+        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 2 },
+        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 1 },
+      },
+    });
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetAdherence(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain(TRAINING_TIMEZONE_SETTING_KEY);
+    expect(result.content[0].text).not.toContain('Missing synchronized settings key');
+  });
 });

@@ -116,6 +116,7 @@ import {
   compareCalDate,
   parseRRuleConfig,
 } from '../recurrence.js';
+import { decodeReportOf, assertEntitiesReadable, assertCalendarReadable } from '../read-guard.js';
 import type { DecryptedPlannedWorkout } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -772,6 +773,13 @@ export async function proposePlannedUpdate(
   cfg: ProposePlannedUpdateConfig,
 ): Promise<{ suggestionId: string; status: string }> {
   const data = await getSnapshot(cfg.pat, cfg.keyB64, cfg.serverUrl);
+  // Phase 150, D-09: the calendar this tool reasons about must be complete — an
+  // unreadable planned_workout row (whichever entity kind failed) fails this proposal
+  // rather than risk building an envelope against a partial calendar. No `unreadable`
+  // in the output (this is a WRITE tool; nothing here is a snapshot for the LLM to read).
+  const report = decodeReportOf(data);
+  assertEntitiesReadable(report, ['plannedWorkout'], 'Propose planned update error');
+  assertCalendarReadable(report, 'Propose planned update error');
 
   let envelope: PlannedUpdateEnvelope;
 

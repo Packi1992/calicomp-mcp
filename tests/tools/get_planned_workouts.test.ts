@@ -15,9 +15,15 @@
  * fixture (tests/fixture.ts) stays untouched.
  */
 
-import { describe, it, expect } from 'vitest';
-import { getPlannedWorkouts } from '../../src/tools/get_planned_workouts.js';
-import { mockSnapshot, TEMPLATE_ID_PUSH } from '../fixture.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
+// Module mocks — hoisted before static imports by Vitest.
+vi.mock('../../src/cache.js');
+
+import * as cacheModule from '../../src/cache.js';
+import { getPlannedWorkouts, registerToolGetPlannedWorkouts } from '../../src/tools/get_planned_workouts.js';
+import { mockSnapshot, mockCatalog, TEMPLATE_ID_PUSH } from '../fixture.js';
 import type { DecryptedSnapshot, DecryptedPlannedWorkout } from '../../src/types.js';
 
 function epochMs(y: number, m: number, d: number): number {
@@ -255,5 +261,78 @@ describe('get_planned_workouts — transform', () => {
     const emitted = result.roots.find((r) => r.id === 'root-unordered-byday');
     expect(emitted?.byDay).toEqual(['MO', 'WE', 'SU']);
     expect(emitted?.recurrenceRule).toBe(storedRule);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Registered MCP handler — unreadable / D-09 calendar strictness (Phase 150)
+// ---------------------------------------------------------------------------
+
+const DUMMY_CFG = { pat: 'calicomp_pat_test', keyB64: 'AAAA', serverUrl: 'https://example.test' };
+
+function mockCacheFor(snapshot: DecryptedSnapshot) {
+  return {
+    snapshot,
+    catalog: mockCatalog,
+    profile: {
+      userId: 'user-test-1',
+      email: 'test@example.com',
+      displayName: 'Test User',
+      avatarUrl: 'https://example.com/avatar.svg',
+      isPremium: false,
+      createdAt: 1_700_000_000_000,
+    },
+    fetchedAt: Date.now(),
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getHandler(server: McpServer): (args: unknown) => Promise<{ isError?: boolean; content: { type: string; text: string }[] }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (server as any)._registeredTools['get_planned_workouts'].handler;
+}
+
+describe('get_planned_workouts — registered MCP handler', () => {
+  beforeEach(() => {
+    vi.mocked(cacheModule.getSnapshot).mockReset();
+  });
+
+  it('P150 D-09 get_planned_workouts fails on one unreadable planned row and names its id', async () => {
+    const snapshot = snapshotWith([root({ id: 'root-inside', scheduledDate: epochMs(2026, 6, 10) })]);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(snapshot),
+      decodeReport: {
+        unreadable: [{ entity: 'plannedWorkout', id: 'row-broken', reason: 'decrypt_failed' }],
+        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0 },
+        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0 },
+      },
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetPlannedWorkouts(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ from: '2026-06-01', to: '2026-06-14' });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('row-broken');
+    expect(result.content[0].text).toContain('partial calendar');
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.pat);
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
+  });
+
+  it('P150 D-33 get_planned_workouts carries unreadable as an empty list when nothing is broken', async () => {
+    const snapshot = snapshotWith([root({ id: 'root-inside', scheduledDate: epochMs(2026, 6, 10) })]);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetPlannedWorkouts(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ from: '2026-06-01', to: '2026-06-14' });
+
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as { unreadable: unknown[] };
+    expect(body.unreadable).toEqual([]);
   });
 });

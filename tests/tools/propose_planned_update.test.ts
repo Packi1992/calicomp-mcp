@@ -321,6 +321,38 @@ describe('propose_planned_update — registered MCP handler', () => {
     expect(httpModule.postSuggest).not.toHaveBeenCalled();
   });
 
+  it('P150 D-09 propose_planned_update fails on an unreadable planned row', async () => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCache([RECURRING_ROOT]),
+      decodeReport: {
+        // plannedWorkout.encryptedCount > failedCount so assertEntitiesReadable (D-11)
+        // does not fire first — this test isolates assertCalendarReadable's own message.
+        unreadable: [{ entity: 'plannedWorkout', id: 'row-broken', reason: 'unknown_version' }],
+        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 2, setting: 0 },
+        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0 },
+      },
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolProposePlannedUpdate(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({
+      intent: 'move_occurrence',
+      rootId: ROOT_ID_RECURRING,
+      occurrenceDate: '2026-06-09',
+      newDate: '2026-06-10',
+      rationale: 'test',
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('row-broken');
+    expect(result.content[0].text).toContain('partial calendar');
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.pat);
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
+    expect(httpModule.postSuggest).not.toHaveBeenCalled();
+  });
+
   it('occurrenceDate outside the root expansion: isError naming OCCURRENCE_NOT_IN_EXPANSION, no network call', async () => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCache([RECURRING_ROOT]));
 

@@ -41,7 +41,8 @@ import {
   weekOffsetsForGroups,
   renderSeriesFields,
 } from '../recurrence.js';
-import type { DecryptedSnapshot } from '../types.js';
+import { decodeReportOf, assertCalendarReadable } from '../read-guard.js';
+import type { DecryptedSnapshot, UnreadableRow } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -257,15 +258,22 @@ export function registerToolGetPlannedWorkouts(
         'are NOT excluded — a past date alone is not evidence of a missed workout. Each root ' +
         'also carries structured series fields (freq, interval, byDay, until, weekOffset) ' +
         'alongside the raw recurrenceRule, so a series can be described ("every 2 days", ' +
-        '"every other week on Monday and Friday") without parsing the RRULE string.',
+        '"every other week on Monday and Friday") without parsing the RRULE string. ' +
+        'Every result carries unreadable: rows that could not be decrypted or decoded (entity, ' +
+        'id, reason and plaintext routing fields), independent of the date window; an empty ' +
+        'list means every encrypted row was read. If any planned_workout row cannot be decoded, ' +
+        'this tool fails instead of returning a partial calendar.',
       inputSchema: GetPlannedWorkoutsSchema,
       annotations: { readOnlyHint: true },
     },
     async (args) => {
       try {
         const data = await getSnapshot(pat, keyB64, serverUrl);
+        const report = decodeReportOf(data);
+        assertCalendarReadable(report, 'Planned workouts error');
         const result = getPlannedWorkouts(args as GetPlannedWorkoutsArgs, data.snapshot);
-        return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
+        const unreadable: UnreadableRow[] = report.unreadable;
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ ...result, unreadable }) }] };
       } catch (err) {
         return {
           isError: true,
