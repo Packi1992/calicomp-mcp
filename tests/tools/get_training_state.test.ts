@@ -32,7 +32,7 @@ import { computeConsistency } from '../../src/training-state/consistency.js';
 import { computeMuscleBalance } from '../../src/training-state/muscle-balance.js';
 import { TRAINING_TIMEZONE_SETTING_KEY, TimeZoneUnavailableError } from '../../src/training-state/time-zone.js';
 import { mockSnapshot, mockCatalog } from '../fixture.js';
-import type { DecryptedSnapshot } from '../../src/types.js';
+import type { DecryptedSnapshot, DecodeReport } from '../../src/types.js';
 
 const TZ = 'Europe/Berlin';
 const NOW_MS = Date.UTC(2026, 2, 16, 12, 0); // 2026-03-16, a Monday
@@ -89,6 +89,7 @@ describe('getTrainingState', () => {
       { snapshot, catalog: mockCatalog, coachParameters: COACH_PARAMETER_DEFAULTS, parametersSource: 'server' },
       NOW_MS,
     );
+    if (result.adherence === null) throw new Error('expected a readable-calendar adherence object');
     expect(result.adherence).not.toHaveProperty('matches');
     expect(result.adherence).not.toHaveProperty('missed');
     expect(result.adherence).toHaveProperty('window');
@@ -110,6 +111,7 @@ describe('getTrainingState', () => {
       { snapshot, catalog: mockCatalog, coachParameters: params, parametersSource: 'server' },
       NOW_MS,
     );
+    if (result.adherence === null) throw new Error('expected a readable-calendar adherence object');
     expect(result.adherence.window.to).toBe(result.asOfDate);
     // asOfDate is 2026-03-16 in Europe/Berlin; 2 weeks (14 days) back is 2026-03-02.
     expect(result.adherence.window.from).toBe('2026-03-02');
@@ -193,6 +195,21 @@ describe('getTrainingState', () => {
     expect(first).toEqual(second);
     expect(first.narrative).toBe(second.narrative);
   });
+
+  it('P150 D-32 a readable calendar keeps adherence and narrative unchanged', () => {
+    const snapshot = snapshotWithZone(TZ);
+    const data = {
+      snapshot,
+      catalog: mockCatalog,
+      coachParameters: COACH_PARAMETER_DEFAULTS,
+      parametersSource: 'server' as const,
+    };
+    const withoutFlag = getTrainingState({}, data, NOW_MS);
+    const withTrueFlag = getTrainingState({}, { ...data, calendarReadable: true }, NOW_MS);
+    expect(withoutFlag).toEqual(withTrueFlag);
+    expect(withoutFlag).not.toHaveProperty('adherenceUnavailableReason');
+    expect(withoutFlag.adherence).not.toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -265,5 +282,98 @@ describe('get_training_state — registered MCP handler', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).not.toContain(DUMMY_CFG.pat);
     expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 150 (D-32/D-11/D-09-ermessen) — per-row decode fault tolerance
+  // -------------------------------------------------------------------------
+
+  const EMPTY_COUNTS = { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 };
+
+  const REPORT_ONE_BROKEN_PLANNED: DecodeReport = {
+    unreadable: [{ entity: 'plannedWorkout', id: 'pw-broken', reason: 'decrypt_failed' }],
+    encryptedCount: { ...EMPTY_COUNTS, plannedWorkout: 1 },
+    failedCount: { ...EMPTY_COUNTS, plannedWorkout: 1 },
+  };
+
+  const REPORT_ALL_SESSIONS_FAILED: DecodeReport = {
+    unreadable: [{ entity: 'session', id: 'sess-broken', reason: 'decrypt_failed' }],
+    encryptedCount: { ...EMPTY_COUNTS, session: 1 },
+    failedCount: { ...EMPTY_COUNTS, session: 1 },
+  };
+
+  // Two encrypted settings, only the tz one fails — so the D-11 100%-failure guard on
+  // 'setting' never trips before assertTimeZoneReadable gets a chance to run.
+  const REPORT_TZ_UNREADABLE: DecodeReport = {
+    unreadable: [{ entity: 'setting', id: 'set-tz', reason: 'malformed_payload', key: TRAINING_TIMEZONE_SETTING_KEY }],
+    encryptedCount: { ...EMPTY_COUNTS, setting: 2 },
+    failedCount: { ...EMPTY_COUNTS, setting: 1 },
+  };
+
+  it('P150 D-32 an unreadable planned row degrades adherence to null with a reason', async () => {
+    const snapshot = snapshotWithZone(TZ);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(snapshot),
+      decodeReport: REPORT_ONE_BROKEN_PLANNED,
+    });
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({});
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as Record<string, unknown>;
+    expect(body.adherence).toBeNull();
+    expect(body.adherenceUnavailableReason).toBe('calendar_unreadable');
+    expect(body.narrative as string).toContain('The training calendar could not be read');
+    expect(body.unreadable).toEqual(REPORT_ONE_BROKEN_PLANNED.unreadable);
+  });
+
+  it('P150 D-11 get_training_state refuses when every encrypted session failed', async () => {
+    const snapshot = snapshotWithZone(TZ);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(snapshot),
+      decodeReport: REPORT_ALL_SESSIONS_FAILED,
+    });
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({});
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('every encrypted session');
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.pat);
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
+  });
+
+  it('P150 get_training_state names the unreadable tz setting', async () => {
+    const snapshot = snapshotWithZone(TZ);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(snapshot),
+      decodeReport: REPORT_TZ_UNREADABLE,
+    });
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({});
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).not.toContain('Missing synchronized settings key');
+    expect(result.content[0].text).toContain(TRAINING_TIMEZONE_SETTING_KEY);
   });
 });

@@ -67,7 +67,8 @@ import {
   type DirectionOutcome,
 } from '../training-state/exercise-progress.js';
 import { buildNarrative } from '../training-state/narrative.js';
-import type { DecryptedSnapshot, CatalogExercise } from '../types.js';
+import { decodeReportOf, assertEntitiesReadable, assertTimeZoneReadable } from '../read-guard.js';
+import type { DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -118,7 +119,18 @@ export interface GetTrainingStateResult {
     last30Days: MuscleBalanceWindow;
     allTime: MuscleBalanceWindow;
   };
-  adherence: GetTrainingStateAdherence;
+  /**
+   * `null` when the training calendar is unreadable (Phase 150, D-32) — never reused for
+   * "nothing was scheduled", which stays inside `GetTrainingStateAdherence.adherenceRatio`.
+   * See `adherenceUnavailableReason` for why.
+   */
+  adherence: GetTrainingStateAdherence | null;
+  /**
+   * Present ONLY when `adherence` is `null` — a conditional spread, never set to
+   * `undefined`, so a readable calendar's result stays byte-identical to before this
+   * field existed (D-32).
+   */
+  adherenceUnavailableReason?: 'calendar_unreadable';
   recentExercises: GetTrainingStateRecentExercise[];
   personalRecords: PersonalRecordsResult;
   narrative: string;
@@ -147,10 +159,18 @@ export function getTrainingState(
     catalog: CatalogExercise[];
     coachParameters: CoachParameters;
     parametersSource: 'server' | 'defaults';
+    /**
+     * Whether the training calendar (`planned_workout` rows) is fully readable — default
+     * `true`, so every existing caller that never learned about Phase 150 stays
+     * byte-identical. The registered handler below is the one place that knows this
+     * (`report.failedCount.plannedWorkout === 0`, Phase 150, D-32); this pure function
+     * never inspects a `DecodeReport` itself.
+     */
+    calendarReadable?: boolean;
   },
   nowMs: number,
 ): GetTrainingStateResult {
-  const { snapshot, catalog, coachParameters, parametersSource } = data;
+  const { snapshot, catalog, coachParameters, parametersSource, calendarReadable = true } = data;
 
   // Exactly ONE resolution for this whole tool call — every calculator below receives
   // `timeZoneId` as a plain parameter, never resolving it again itself.
@@ -163,32 +183,45 @@ export function getTrainingState(
   // Adherence short form: window ends on the athlete's own calendar day and spans back
   // the coach's adherenceWindowWeeks parameter — the same rangfolge get_adherence.ts
   // uses for its own no-from/to default.
-  const adherenceTo = asOfDate;
-  const adherenceFrom = formatIsoDate(
-    plusDays(parseIsoDate(asOfDate), -coachParameters.adherenceWindowWeeks * 7),
-  );
-  const fullAdherence = computeAdherence(
-    {
-      from: adherenceFrom,
-      to: adherenceTo,
-      toleranceDays: coachParameters.toleranceDays,
-      matchThreshold: coachParameters.matchThreshold,
-      uncertainThreshold: coachParameters.uncertainThreshold,
-    },
-    { snapshot, catalog, timeZoneId },
-  );
-  // Only the short form travels in the overview — `matches`/`missed` stay in get_adherence (D-14).
-  const adherence: GetTrainingStateAdherence = {
-    window: fullAdherence.window,
-    toleranceDays: fullAdherence.toleranceDays,
-    plannedCount: fullAdherence.plannedCount,
-    matchedCount: fullAdherence.matchedCount,
-    uncertainCount: fullAdherence.uncertainCount,
-    missedCount: fullAdherence.missedCount,
-    removedOccurrenceCount: fullAdherence.removedOccurrenceCount,
-    adherenceRatio: fullAdherence.adherenceRatio,
-    explanation: fullAdherence.explanation,
-  };
+  //
+  // D-32: an unreadable calendar (`calendarReadable === false`) skips `computeAdherence`
+  // entirely — running it against a snapshot with unreadable rows silently missing would
+  // compute a plausible-looking but wrong ratio. `adherence` degrades to `null` with a
+  // named reason instead (never `adherenceRatio: null`, which means something different —
+  // "nothing was scheduled" — see this file's own `GetTrainingStateResult` doc).
+  let adherence: GetTrainingStateAdherence | null;
+  let adherenceUnavailableReason: 'calendar_unreadable' | undefined;
+  if (calendarReadable) {
+    const adherenceTo = asOfDate;
+    const adherenceFrom = formatIsoDate(
+      plusDays(parseIsoDate(asOfDate), -coachParameters.adherenceWindowWeeks * 7),
+    );
+    const fullAdherence = computeAdherence(
+      {
+        from: adherenceFrom,
+        to: adherenceTo,
+        toleranceDays: coachParameters.toleranceDays,
+        matchThreshold: coachParameters.matchThreshold,
+        uncertainThreshold: coachParameters.uncertainThreshold,
+      },
+      { snapshot, catalog, timeZoneId },
+    );
+    // Only the short form travels in the overview — `matches`/`missed` stay in get_adherence (D-14).
+    adherence = {
+      window: fullAdherence.window,
+      toleranceDays: fullAdherence.toleranceDays,
+      plannedCount: fullAdherence.plannedCount,
+      matchedCount: fullAdherence.matchedCount,
+      uncertainCount: fullAdherence.uncertainCount,
+      missedCount: fullAdherence.missedCount,
+      removedOccurrenceCount: fullAdherence.removedOccurrenceCount,
+      adherenceRatio: fullAdherence.adherenceRatio,
+      explanation: fullAdherence.explanation,
+    };
+  } else {
+    adherence = null;
+    adherenceUnavailableReason = 'calendar_unreadable';
+  }
 
   // Recently trained exercises: header data only — no `points` (D-14).
   const progressSeries = computeExerciseProgress(
@@ -215,11 +248,14 @@ export function getTrainingState(
     currentStreakWeeks: consistency.currentStreakWeeks,
     sessionsLast4Weeks: consistency.sessionsLast4Weeks,
     sessionsPrior4Weeks: consistency.sessionsPrior4Weeks,
-    adherence: {
-      plannedCount: adherence.plannedCount,
-      matchedCount: adherence.matchedCount,
-      adherenceRatio: adherence.adherenceRatio,
-    },
+    adherence:
+      adherence === null
+        ? null
+        : {
+            plannedCount: adherence.plannedCount,
+            matchedCount: adherence.matchedCount,
+            adherenceRatio: adherence.adherenceRatio,
+          },
     recentExercises: recentExercises.map((e) => ({
       exerciseId: e.exerciseId,
       exerciseName: e.exerciseName,
@@ -236,6 +272,7 @@ export function getTrainingState(
     consistency,
     muscleBalance,
     adherence,
+    ...(adherenceUnavailableReason !== undefined ? { adherenceUnavailableReason } : {}),
     recentExercises,
     personalRecords,
     narrative,
@@ -275,20 +312,35 @@ export function registerToolGetTrainingState(
         'narrow on purpose: it carries no point series and no pair lists. For per-exercise or ' +
         'per-format progress series, call get_progress. For the full adherence pair/missed lists, ' +
         'call get_adherence. For raw session history, call get_history. All calendar-day mapping ' +
-        'binds to the athlete\'s own synchronized time zone, never the coach\'s own clock.',
+        'binds to the athlete\'s own synchronized time zone, never the coach\'s own clock. ' +
+        'Every result carries unreadable: rows that could not be decrypted or decoded (entity, ' +
+        'id, reason and plaintext routing fields); an empty list means every encrypted row was ' +
+        'read. If the training calendar is unreadable, adherence is null with ' +
+        'adherenceUnavailableReason \'calendar_unreadable\' instead of failing.',
       inputSchema: GetTrainingStateSchema,
       annotations: { readOnlyHint: true },
     },
     async (args) => {
       try {
         const data = await getSnapshot(pat, keyB64, serverUrl);
+        const report = decodeReportOf(data);
+        assertEntitiesReadable(report, ['session', 'setLog', 'setting'], 'Training state error');
+        assertTimeZoneReadable(report, 'Training state error');
+        const calendarReadable = report.failedCount.plannedWorkout === 0;
         const { params, source } = await loadCoachParameters({ pat, serverUrl });
         const result = getTrainingState(
           args as GetTrainingStateArgs,
-          { snapshot: data.snapshot, catalog: data.catalog, coachParameters: params, parametersSource: source },
+          {
+            snapshot: data.snapshot,
+            catalog: data.catalog,
+            coachParameters: params,
+            parametersSource: source,
+            calendarReadable,
+          },
           Date.now(),
         );
-        return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
+        const unreadable: UnreadableRow[] = report.unreadable;
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ ...result, unreadable }) }] };
       } catch (err) {
         return {
           isError: true,

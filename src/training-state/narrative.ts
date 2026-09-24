@@ -63,12 +63,18 @@ export interface NarrativeAdherence {
 /**
  * Everything `buildNarrative` is allowed to see — ALREADY COMPUTED values, never a
  * snapshot or a catalog. If a fact is not in this shape, the sentence cannot claim it.
+ *
+ * `adherence: null` (Phase 150, D-32) means the training calendar itself could not be
+ * decoded — a DIFFERENT absence than `NarrativeAdherence.adherenceRatio === null`
+ * ("nothing was scheduled in a readable window"). Conflating the two would tell the
+ * coach something false: an unreadable calendar is not evidence that nothing was
+ * planned, and must never read as "Nothing was scheduled…".
  */
 export interface NarrativeInput {
   currentStreakWeeks: number;
   sessionsLast4Weeks: number;
   sessionsPrior4Weeks: number;
-  adherence: NarrativeAdherence;
+  adherence: NarrativeAdherence | null;
   recentExercises: NarrativeRecentExercise[];
 }
 
@@ -112,11 +118,18 @@ function frequencyClause(sessionsLast4Weeks: number, sessionsPrior4Weeks: number
 }
 
 /**
- * `adherenceRatio: null` means "nothing was planned in the window" (see
- * `ADHERENCE_EXPLANATION` in `adherence.ts`) — that absence is named directly rather than
- * silently dropping the adherence clause from the sentence.
+ * `adherence: null` (Phase 150, D-32) means the training calendar could not be read at
+ * all — checked FIRST and returns its own sentence, never the `adherenceRatio === null`
+ * ("nothing was planned in the window", see `ADHERENCE_EXPLANATION` in `adherence.ts`)
+ * branch below. Reusing that branch for an unreadable calendar would claim "nothing was
+ * scheduled" when the truth is "the schedule could not be read" — a false statement the
+ * coach would act on. Both absences are named directly rather than silently dropping the
+ * adherence clause from the sentence.
  */
-function adherenceClause(adherence: NarrativeAdherence): string {
+function adherenceClause(adherence: NarrativeAdherence | null): string {
+  if (adherence === null) {
+    return 'The training calendar could not be read, so no adherence statement is made.';
+  }
   if (adherence.adherenceRatio === null) {
     return 'Nothing was scheduled in the adherence window, so no adherence percentage applies.';
   }

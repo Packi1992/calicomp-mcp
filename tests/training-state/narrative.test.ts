@@ -82,6 +82,13 @@ describe('buildNarrative', () => {
     expect(result).toContain('6 of 8');
   });
 
+  it('P150 D-32 a null adherence yields the calendar-unreadable sentence, never nothing-scheduled', () => {
+    const input = baseInput({ adherence: null });
+    const result = buildNarrative(input);
+    expect(result).toContain('The training calendar could not be read, so no adherence statement is made.');
+    expect(result.toLowerCase()).not.toContain('nothing was scheduled');
+  });
+
   it('names a null adherence ratio instead of omitting or fabricating a percentage', () => {
     const input = baseInput({
       sessionsLast4Weeks: 3,
