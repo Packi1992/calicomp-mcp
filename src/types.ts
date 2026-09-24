@@ -335,8 +335,10 @@ export interface DecryptedSnapshot {
 // stays valid), and leaves the strictness decision to the tool boundary
 // (`read-guard.ts`'s `assertEntitiesReadable`/`assertCalendarReadable`).
 //
-// `sessionKind` (D-10's "kind") is deliberately NOT a field here yet — it arrives with
-// the shared classifier in Plan 150-04.
+// `sessionKind` (D-10's "kind") is set on `session`-entity `UnreadableRow`s by the shared
+// classifier introduced in Plan 150-04 (`session-kind.ts`'s `classifySession`), computed
+// WITHOUT a template index (no `templateStatus`) — the plaintext routing fields already on
+// the row (`templateId`, `isQuickChallenge`) are all `classifySession` needs.
 // ---------------------------------------------------------------------------
 
 /** The five row kinds `decryptMerge` can fail to decode. */
@@ -365,6 +367,9 @@ export interface UnreadableRow {
   updatedAt?: number;
   templateId?: string;
   isQuickChallenge?: boolean;
+  /** Only on `session` rows (Plan 150-04) — computed by `classifySession` without a
+   *  template index, so never carries `templateStatus`. */
+  sessionKind?: import('./session-kind.js').SessionKind;
   sessionId?: string;
   key?: string;
   /** Set-logs of an unreadable session are removed from the snapshot and counted here

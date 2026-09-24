@@ -207,6 +207,9 @@ describe('decrypt-merge: session fault tolerance', () => {
       updatedAt: 1_709_100_000_000,
       templateId: undefined,
       isQuickChallenge: true,
+      // Phase 150, D-10/D-37: classifySession(row) without a template index.
+      // isQuickChallenge:true takes precedence over the (absent) templateId (D-01).
+      sessionKind: 'quick_challenge',
     });
     expect(decodeReport.encryptedCount.session).toBe(3);
     expect(decodeReport.failedCount.session).toBe(1);

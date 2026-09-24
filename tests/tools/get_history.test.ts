@@ -41,9 +41,29 @@ import {
   mockSnapshot,
   mockCatalog,
   CATALOG_EXERCISE_ID_PUSHUP,
+  CATALOG_EXERCISE_ID_SQUAT,
   SESSION_ID_A,
   SESSION_ID_B,
+  TEMPLATE_ID_PUSH,
+  TEMPLATE_ID_LEGS,
 } from '../fixture.js';
+import type { DecryptedSnapshot, DecryptedSession } from '../../src/types.js';
+
+// ---------------------------------------------------------------------------
+// Phase 150 (D-04/D-05/D-10) test helpers
+// ---------------------------------------------------------------------------
+
+function buildSession(overrides: Partial<DecryptedSession> & { id: string; startTime: number }): DecryptedSession {
+  return {
+    isManual: false,
+    isCorrected: false,
+    isQuickChallenge: false,
+    createdAt: overrides.startTime,
+    updatedAt: overrides.startTime,
+    endTime: overrides.startTime + 3_600_000,
+    ...overrides,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Schema validation (these tests exercise Zod without calling getHistory)
@@ -386,5 +406,152 @@ describe('get_history — unreadable rows', () => {
     const body = JSON.parse(result.content[0].text) as { sessions: unknown[]; unreadable: unknown[] };
     expect(body.sessions).toEqual(expected.sessions);
     expect(body.unreadable).toEqual(decodeReport.unreadable);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sessionarten und Vorlagenfilter (Phase 150, D-01/D-02/D-04/D-05)
+// ---------------------------------------------------------------------------
+
+describe('get_history — session classification and template filter', () => {
+  it('P150 D-04 SC2 filters before the limit and reports truncation', () => {
+    const snapshot: DecryptedSnapshot = {
+      ...mockSnapshot,
+      sessions: [
+        buildSession({ id: 's1', startTime: 1_710_000_000_000, templateId: TEMPLATE_ID_PUSH }),
+        buildSession({ id: 's2', startTime: 1_710_100_000_000, templateId: TEMPLATE_ID_PUSH }),
+        buildSession({ id: 's3', startTime: 1_710_200_000_000, templateId: TEMPLATE_ID_PUSH }),
+      ],
+      setLogs: [],
+    };
+
+    const result = getHistory(
+      { from: '2024-01-01', to: '2024-12-31', templateId: TEMPLATE_ID_PUSH, limit: 1 },
+      snapshot,
+    );
+
+    expect(result.sessions).toHaveLength(1);
+    expect(result.matchingSessions).toBe(3);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('P150 D-04 an unknown templateId returns an empty result without an error', () => {
+    expect(() =>
+      getHistory(
+        { from: '2024-01-01', to: '2024-12-31', templateId: 'tpl-does-not-exist', limit: 200 },
+        mockSnapshot,
+      ),
+    ).not.toThrow();
+
+    const result = getHistory(
+      { from: '2024-01-01', to: '2024-12-31', templateId: 'tpl-does-not-exist', limit: 200 },
+      mockSnapshot,
+    );
+    expect(result.sessions).toEqual([]);
+    expect(result.matchingSessions).toBe(0);
+    expect(result.truncated).toBe(false);
+  });
+
+  it('P150 D-04 templateId, sessionKind and exercise combine with AND', () => {
+    const matching = buildSession({ id: 's-match', startTime: 1_710_000_000_000, templateId: TEMPLATE_ID_PUSH });
+    const wrongExercise = buildSession({
+      id: 's-wrong-exercise',
+      startTime: 1_710_010_000_000,
+      templateId: TEMPLATE_ID_PUSH,
+    });
+    const wrongTemplate = buildSession({
+      id: 's-wrong-template',
+      startTime: 1_710_020_000_000,
+      templateId: TEMPLATE_ID_LEGS,
+    });
+    const quickChallenge = buildSession({
+      id: 's-quick',
+      startTime: 1_710_030_000_000,
+      templateId: TEMPLATE_ID_PUSH,
+      isQuickChallenge: true,
+    });
+
+    const snapshot: DecryptedSnapshot = {
+      ...mockSnapshot,
+      sessions: [matching, wrongExercise, wrongTemplate, quickChallenge],
+      setLogs: [
+        { id: 'sl-match', sessionId: matching.id, exerciseId: CATALOG_EXERCISE_ID_PUSHUP, completedReps: 10,
+          completedTimeSeconds: null, weightUsed: null, startedAt: null, measuredTimeSeconds: null,
+          createdAt: matching.startTime, updatedAt: matching.startTime },
+        { id: 'sl-wrong-exercise', sessionId: wrongExercise.id, exerciseId: CATALOG_EXERCISE_ID_SQUAT,
+          completedReps: 5, completedTimeSeconds: null, weightUsed: null, startedAt: null, measuredTimeSeconds: null,
+          createdAt: wrongExercise.startTime, updatedAt: wrongExercise.startTime },
+        { id: 'sl-wrong-template', sessionId: wrongTemplate.id, exerciseId: CATALOG_EXERCISE_ID_PUSHUP,
+          completedReps: 10, completedTimeSeconds: null, weightUsed: null, startedAt: null, measuredTimeSeconds: null,
+          createdAt: wrongTemplate.startTime, updatedAt: wrongTemplate.startTime },
+        { id: 'sl-quick', sessionId: quickChallenge.id, exerciseId: CATALOG_EXERCISE_ID_PUSHUP,
+          completedReps: 10, completedTimeSeconds: null, weightUsed: null, startedAt: null, measuredTimeSeconds: null,
+          createdAt: quickChallenge.startTime, updatedAt: quickChallenge.startTime },
+      ],
+    };
+
+    const result = getHistory(
+      {
+        from: '2024-01-01',
+        to: '2024-12-31',
+        templateId: TEMPLATE_ID_PUSH,
+        sessionKind: 'template',
+        exercise: CATALOG_EXERCISE_ID_PUSHUP,
+        limit: 200,
+      },
+      snapshot,
+    );
+
+    expect(result.sessions.map((s) => s.id)).toEqual([matching.id]);
+    expect(result.matchingSessions).toBe(1);
+  });
+
+  it('P150 D-05 the outputFile summary reports matchingSessions and truncated', async () => {
+    vi.mocked(fileChannelModule.writeExportFile).mockReset();
+    vi.mocked(fileChannelModule.writeExportFile).mockResolvedValue({
+      path:      '/tmp/calicomp-mcp-exports/fake-uuid.json',
+      bytes:     42,
+      itemCount: 1,
+    });
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(MOCK_CACHE);
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ from: '2024-01-01', to: '2024-12-31', limit: 1, outputFile: true });
+
+    const body = JSON.parse(result.content[0].text) as { matchingSessions: number; truncated: boolean };
+    expect(body.matchingSessions).toBe(2); // mockSnapshot has 2 sessions in range
+    expect(body.truncated).toBe(true); // limit 1 < 2 matching sessions
+  });
+
+  it('P150 D-10 an unreadable session row carries its sessionKind', async () => {
+    const decodeReport = {
+      unreadable: [
+        {
+          entity: 'session' as const,
+          id: 'sess-corrupt',
+          reason: 'decrypt_failed' as const,
+          createdAt: 1,
+          updatedAt: 1,
+          templateId: TEMPLATE_ID_PUSH,
+          isQuickChallenge: false,
+          sessionKind: 'template' as const,
+        },
+      ],
+      encryptedCount: { session: 3, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+      failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+    };
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, decodeReport });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ from: '2024-01-01', to: '2024-12-31', limit: 200 });
+
+    const body = JSON.parse(result.content[0].text) as { unreadable: { sessionKind?: string }[] };
+    expect(body.unreadable[0].sessionKind).toBe('template');
   });
 });

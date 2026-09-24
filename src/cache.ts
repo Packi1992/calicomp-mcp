@@ -45,6 +45,7 @@
 
 import { decrypt } from './crypto.js';
 import { fetchSnapshot, fetchProfile, fetchCatalog } from './http.js';
+import { classifySession } from './session-kind.js';
 import type {
   SyncPullResponse,
   SyncSessionDto,
@@ -197,6 +198,7 @@ function decodeSessions(rows: SyncSessionDto[], keyB64: string, report: DecodeRe
         updatedAt: row.updatedAt,
         templateId: row.templateId,
         isQuickChallenge: row.isQuickChallenge,
+        sessionKind: classifySession(row).sessionKind,
       });
     }
   }

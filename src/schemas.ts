@@ -11,6 +11,7 @@
 
 import { z } from 'zod';
 import { CoachParametersSchema } from './coach-parameters.js';
+import { SESSION_KINDS } from './session-kind.js';
 
 // ---------------------------------------------------------------------------
 // Primitive helpers
@@ -84,6 +85,14 @@ export const OUTPUT_FILE_FLAG = z.boolean().optional();
  *   - `to` must be >= `from` (T-120-10 input validation)
  *   - `limit` bounds response size (T-120-11 DoS mitigation): 1..500, default 200
  *   - `exercise` is an optional UUID to filter by a specific exercise
+ *   - `templateId` (Phase 150, D-04) optionally restricts to sessions belonging to one
+ *     template — matched directly against `session.templateId`; an unknown `templateId`
+ *     is never rejected, it simply matches nothing.
+ *   - `sessionKind` (Phase 150, D-01/D-04/D-37) optionally restricts to one of the three
+ *     session kinds (`'template' | 'templateless' | 'quick_challenge'`, see
+ *     `session-kind.ts`). Named `sessionKind`, never `kind` — `get_progress` already uses
+ *     `kind` as its own top-level discriminator (D-37).
+ *   - `templateId`, `sessionKind` and `exercise` all AND-combine, applied before `limit`.
  *   - `outputFile` (D-15) writes the full result to a local file instead of
  *     returning it inline; see `OUTPUT_FILE_FLAG`. D-17 leaves every bound
  *     above untouched — `get_history` is not throttled, only re-framed as a
@@ -94,6 +103,8 @@ export const GetHistorySchema = z
     from: ISO_DATE,
     to: ISO_DATE,
     exercise: UUID_STRING.optional(),
+    templateId: UUID_STRING.optional(),
+    sessionKind: z.enum(SESSION_KINDS).optional(),
     limit: z.number().int().min(1).max(500).optional().default(200),
     outputFile: OUTPUT_FILE_FLAG,
   })
