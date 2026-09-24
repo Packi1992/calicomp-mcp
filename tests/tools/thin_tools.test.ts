@@ -318,6 +318,65 @@ describe('getTemplate — Phase 150 (D-15/D-34)', () => {
     expect(result!.templateExercises.map((te) => te.id)).toEqual(['te-standalone', 'te-in-block']);
   });
 
+  // Phase 150 review WR-03 — two cases where the display order used to diverge from the app.
+  it('P150 WR-03 getTemplate drops live exercises under a deleted, unknown or foreign block', () => {
+    const templateId = 'ffffaaaa-0007-4000-a000-000000000002';
+    const otherTemplateId = 'ffffaaaa-0007-4000-a000-000000000003';
+    const base = { exerciseSource: 'CATALOG' as const, mode: 'REPS' as const, restTimeSeconds: 60, sets: 1, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 };
+    const snapshot = {
+      ...mockSnapshot,
+      templates: [
+        { id: templateId, name: 'Orphans', createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000, isFavoriteForWatch: false },
+      ],
+      blocks: [
+        { id: 'block-live', templateId, name: 'B', rounds: 3, orderIndex: 1, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 },
+        { id: 'block-deleted', templateId, name: 'D', rounds: 2, orderIndex: 2, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000, deletedAt: 1_700_000_100_000 },
+        { id: 'block-foreign', templateId: otherTemplateId, name: 'F', rounds: 2, orderIndex: 0, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 },
+      ],
+      templateExercises: [
+        { ...base, id: 'te-standalone', templateId, exerciseId: CATALOG_EXERCISE_ID_PUSHUP, orderIndex: 0 },
+        { ...base, id: 'te-in-block', templateId, blockId: 'block-live', exerciseId: CATALOG_EXERCISE_ID_PULLUP, orderIndex: 0 },
+        // Live, but its block is tombstoned — the app shows it nowhere.
+        { ...base, id: 'te-orphan-deleted', templateId, blockId: 'block-deleted', exerciseId: CATALOG_EXERCISE_ID_SQUAT, orderIndex: 0 },
+        // Live, but its block does not exist at all.
+        { ...base, id: 'te-orphan-unknown', templateId, blockId: 'block-missing', exerciseId: CATALOG_EXERCISE_ID_SQUAT, orderIndex: 0 },
+        // Live, but its block belongs to another template.
+        { ...base, id: 'te-orphan-foreign', templateId, blockId: 'block-foreign', exerciseId: CATALOG_EXERCISE_ID_SQUAT, orderIndex: 0 },
+      ],
+    };
+
+    const result = getTemplate({ templateId }, snapshot);
+    expect(result!.templateExercises.map((te) => te.id)).toEqual(['te-standalone', 'te-in-block']);
+  });
+
+  it('P150 WR-03 getTemplate keeps the exercises of two blocks with the same orderIndex grouped per block', () => {
+    const templateId = 'ffffaaaa-0007-4000-a000-000000000004';
+    const base = { exerciseSource: 'CATALOG' as const, mode: 'REPS' as const, restTimeSeconds: 60, sets: 1, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 };
+    const snapshot = {
+      ...mockSnapshot,
+      templates: [
+        { id: templateId, name: 'Tied blocks', createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000, isFavoriteForWatch: false },
+      ],
+      blocks: [
+        // Listed B before A on purpose: the (orderIndex, id) order puts A first.
+        { id: 'block-b', templateId, name: 'B', rounds: 2, orderIndex: 0, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 },
+        { id: 'block-a', templateId, name: 'A', rounds: 2, orderIndex: 0, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 },
+      ],
+      templateExercises: [
+        { ...base, id: 'te-b0', templateId, blockId: 'block-b', exerciseId: CATALOG_EXERCISE_ID_PUSHUP, orderIndex: 0 },
+        { ...base, id: 'te-a1', templateId, blockId: 'block-a', exerciseId: CATALOG_EXERCISE_ID_PULLUP, orderIndex: 1 },
+        { ...base, id: 'te-b1', templateId, blockId: 'block-b', exerciseId: CATALOG_EXERCISE_ID_SQUAT, orderIndex: 1 },
+        { ...base, id: 'te-a0', templateId, blockId: 'block-a', exerciseId: CATALOG_EXERCISE_ID_PUSHUP, orderIndex: 0 },
+        // A standalone at the same top-level index still sorts after both blocks.
+        { ...base, id: 'te-standalone', templateId, exerciseId: CATALOG_EXERCISE_ID_SQUAT, orderIndex: 0 },
+      ],
+    };
+
+    const result = getTemplate({ templateId }, snapshot);
+    expect(result!.blocks.map((b) => b.id)).toEqual(['block-a', 'block-b']);
+    expect(result!.templateExercises.map((te) => te.id)).toEqual(['te-a0', 'te-a1', 'te-b0', 'te-b1', 'te-standalone']);
+  });
+
   it('P150 SC5 getTemplate names every template exercise including a user exercise', () => {
     const userExerciseId = 'ffffaaaa-0007-4000-a000-000000000099';
     const snapshot = {

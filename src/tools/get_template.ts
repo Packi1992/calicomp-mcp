@@ -83,14 +83,18 @@ export interface TemplateDetail {
  *   2. Return `null` if not found (the MCP handler converts this to structured isError).
  *   3. Join `snapshot.blocks` where `block.templateId === id`, drop tombstones
  *      (`deletedAt` set, D-34), sort by `(orderIndex, id)`.
- *   4. Join `snapshot.templateExercises` where `te.templateId === id`, drop tombstones,
- *      sort into DISPLAY order (D-34): key `(topLevelIndex, indexInBlock, id)` — a
- *      standalone exercise's `topLevelIndex` is its own `orderIndex`; a block exercise's
- *      is its block's `orderIndex`. `indexInBlock` is the block-local `orderIndex` for a
- *      block exercise, `+Infinity` for a standalone one — guaranteeing a block sorts
- *      before a standalone exercise that shares its top-level index, exactly like the
- *      app's own stable sort (`WorkoutDetailViewModel.kt:644-654`, which appends blocks to
- *      the candidate list before standalone exercises).
+ *   4. Join `snapshot.templateExercises` where `te.templateId === id`, drop tombstones
+ *      AND orphans (a `blockId` that is not a live block of this template — the app never
+ *      shows them, `hash.ts` WR-04 rule 3 excludes them), sort into DISPLAY order (D-34):
+ *      key `(topLevelIndex, blockRank, indexInBlock, id)` — a standalone exercise's
+ *      `topLevelIndex` is its own `orderIndex`; a block exercise's is its block's
+ *      `orderIndex`. `blockRank` is the block's position in the `(orderIndex, id)`-sorted
+ *      block list, `+Infinity` for a standalone exercise — keeping two blocks that share
+ *      an index grouped one after the other, and guaranteeing a block sorts before a
+ *      standalone exercise that shares its top-level index, exactly like the app's own
+ *      stable sort (`WorkoutDetailViewModel.kt` `flatWorkoutItems`, which appends blocks
+ *      to the candidate list before standalone exercises and emits each block with all
+ *      its exercises). `indexInBlock` is the block-local `orderIndex`.
  *   5. With `resolver`, additively name every template exercise (D-15).
  *   6. Return the assembled `TemplateDetail`.
  *
@@ -112,18 +116,39 @@ export function getTemplate(
     .filter(b => b.templateId === args.templateId && b.deletedAt === undefined)
     .sort((a, b) => a.orderIndex - b.orderIndex || a.id.localeCompare(b.id));
 
-  const blocksById = new Map(blocks.map(b => [b.id, b]));
+  // Rank of each live block in the `(orderIndex, id)` order of `blocks` above — the
+  // tiebreak between two blocks that share a top-level `orderIndex` (WR-03 of the Phase 150
+  // review), so their exercises stay grouped per block (A0, A1, B0, B1) exactly like the
+  // app's `flatWorkoutItems`, which emits one block with all its exercises before the next.
+  const blockRankById = new Map(blocks.map((b, rank) => [b.id, rank]));
+  const orderIndexByBlockId = new Map(blocks.map(b => [b.id, b.orderIndex]));
 
+  // Only called on exercises that passed the orphan filter below, so a set `blockId`
+  // always resolves to a live block of this template.
   const topLevelIndexOf = (te: NormalizedTemplateExercise): number =>
-    te.blockId != null ? (blocksById.get(te.blockId)?.orderIndex ?? te.orderIndex) : te.orderIndex;
+    te.blockId != null ? (orderIndexByBlockId.get(te.blockId) ?? te.orderIndex) : te.orderIndex;
+  const blockRankOf = (te: NormalizedTemplateExercise): number =>
+    te.blockId != null ? (blockRankById.get(te.blockId) ?? 0) : Number.POSITIVE_INFINITY;
   const indexInBlockOf = (te: NormalizedTemplateExercise): number =>
     te.blockId != null ? te.orderIndex : Number.POSITIVE_INFINITY;
 
   const templateExercises: TemplateExerciseWithName[] = snapshot.templateExercises
-    .filter(te => te.templateId === args.templateId && te.deletedAt === undefined)
+    // WR-03: a live exercise whose `blockId` points at a soft-deleted, unknown or foreign
+    // block is an orphan — the app's `flatWorkoutItems` shows it nowhere (standalone takes
+    // only `blockId == null`, a block only its own exercises), and `hash.ts` (WR-04 rule 3)
+    // and `AppliedOutcome.buildPlanAfterState` leave it out too. Listing it here, under a
+    // block-local index read as a top-level one, let the coach see and target a row the
+    // athlete never sees.
+    .filter(
+      te =>
+        te.templateId === args.templateId &&
+        te.deletedAt === undefined &&
+        (te.blockId == null || orderIndexByBlockId.has(te.blockId)),
+    )
     .sort(
       (a, b) =>
         topLevelIndexOf(a) - topLevelIndexOf(b) ||
+        blockRankOf(a) - blockRankOf(b) ||
         indexInBlockOf(a) - indexInBlockOf(b) ||
         a.id.localeCompare(b.id),
     )
