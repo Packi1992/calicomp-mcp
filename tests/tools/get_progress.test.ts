@@ -525,3 +525,91 @@ describe('get_progress — registered MCP handler', () => {
     expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Exercise names (Phase 150, D-15/D-17)
+// ---------------------------------------------------------------------------
+
+describe('get_progress — exercise names (D-15/D-17)', () => {
+  beforeEach(() => {
+    vi.mocked(cacheModule.getSnapshot).mockReset();
+    vi.mocked(coachParametersModule.loadCoachParameters).mockReset();
+    vi.mocked(fileChannelModule.writeExportFile).mockReset();
+  });
+
+  it('P150 D-15 get_progress series carry exerciseKey next to exerciseId, also in the outputFile summary', async () => {
+    const s1 = buildSession({ id: 's1', startTime: 1_700_000_000_000 });
+    const snapshot = snapshotWithZone(TZ, {
+      sessions: [s1],
+      setLogs: [buildSetLog({ id: 'sl1', sessionId: 's1', createdAt: s1.startTime })],
+    });
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+    vi.mocked(fileChannelModule.writeExportFile).mockResolvedValue({
+      path: '/tmp/calicomp-mcp-exports/fake-uuid.json',
+      bytes: 555,
+      itemCount: 1,
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetProgress(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const inlineResult = await handler({ kind: 'exercise', exerciseId: CATALOG_EXERCISE_ID_PUSHUP });
+    const inlineBody = JSON.parse(inlineResult.content[0].text) as {
+      series: Array<{ exerciseKey?: string | null }>;
+    };
+    expect(inlineBody.series[0].exerciseKey).toBe('push_up');
+
+    const outputFileResult = await handler({
+      kind: 'exercise',
+      exerciseId: CATALOG_EXERCISE_ID_PUSHUP,
+      outputFile: true,
+    });
+    const summaryBody = JSON.parse(outputFileResult.content[0].text) as {
+      series: Array<{ exerciseKey?: string | null }>;
+    };
+    expect(summaryBody.series[0].exerciseKey).toBe('push_up');
+  });
+
+  it('P150 D-17 get_progress names a deleted user exercise instead of null', async () => {
+    const deletedUserExerciseId = 'dddddddd-0009-4000-d000-000000000001';
+    const s1 = buildSession({ id: 's1', startTime: 1_700_000_000_000 });
+    const snapshot = snapshotWithZone(TZ, {
+      sessions: [s1],
+      setLogs: [
+        buildSetLog({ id: 'sl1', sessionId: 's1', createdAt: s1.startTime, exerciseId: deletedUserExerciseId }),
+      ],
+      exercises: [
+        {
+          id: deletedUserExerciseId,
+          name: 'Alte Übung',
+          mode: 'REPS',
+          usesWeight: false,
+          createdAt: 1_700_000_000_000,
+          updatedAt: 1_700_000_000_000,
+          deletedAt: 1_700_000_100_000,
+        },
+      ],
+    });
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetProgress(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ kind: 'exercise', exerciseId: deletedUserExerciseId });
+    const body = JSON.parse(result.content[0].text) as {
+      series: Array<{ exerciseName: string | null; exerciseDeleted?: boolean }>;
+    };
+    expect(body.series[0].exerciseName).toBe('Alte Übung');
+    expect(body.series[0].exerciseDeleted).toBe(true);
+  });
+});

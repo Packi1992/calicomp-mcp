@@ -21,6 +21,12 @@
  * reported, including in the `outputFile` summary, so a small `limit` never silently
  * hides how many sessions actually matched.
  *
+ * Phase 150 (D-15): with a `resolver` (built by the registered handler from
+ * `data.catalog`/`data.snapshot`/`args.lang`), every returned set-log additively carries
+ * the fields `resolver.forSetLog` returns — `exerciseName`/`exerciseKey`, plus
+ * `exerciseDeleted`/`exerciseUnknown`/`exerciseNameSource` when applicable — next to its
+ * `exerciseId` (see `exercise-names.ts`).
+ *
  * Exports:
  *   getHistory(args, snapshot)      — pure function; importable by Phase 121 WRITE tools
  *   registerToolGetHistory(server, cfg) — registers the tool with the MCP server
@@ -43,6 +49,8 @@ import { writeExportFile } from '../file-channel.js';
 import { decodeReportOf, assertEntitiesReadable } from '../read-guard.js';
 import { buildTemplateIndex, classifySession, matchesSessionFilter } from '../session-kind.js';
 import type { SessionKind, TemplateStatus } from '../session-kind.js';
+import { createExerciseNameResolver } from '../exercise-names.js';
+import type { ExerciseNameResolver, SetLogExerciseNameFields } from '../exercise-names.js';
 import type { DecryptedSnapshot, DecryptedSession, DecryptedSetLog, UnreadableRow } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -57,6 +65,7 @@ export interface GetHistoryArgs {
   sessionKind?:  SessionKind;
   limit:         number;   // always present — Zod default is 200
   outputFile?:   boolean;
+  lang?:         string;
 }
 
 /** A history session, additively classified (Phase 150, D-01/D-02). */
@@ -65,9 +74,12 @@ export interface GetHistorySessionItem extends DecryptedSession {
   templateStatus?: TemplateStatus;
 }
 
+/** A history set-log, additively named when a resolver is supplied (Phase 150, D-15). */
+export type GetHistorySetLogItem = DecryptedSetLog & Partial<SetLogExerciseNameFields>;
+
 export interface GetHistoryResult {
   sessions:         GetHistorySessionItem[];
-  setLogs:          DecryptedSetLog[];
+  setLogs:          GetHistorySetLogItem[];
   /** Sessions matching every filter, BEFORE `limit` is applied (Phase 150, D-05). */
   matchingSessions: number;
   /** `matchingSessions > limit` — a small limit never silently hides a bigger match set. */
@@ -98,12 +110,19 @@ export interface GetHistoryResult {
  *   5. Slice to `limit`.
  *   6. Return those sessions + ALL setLogs whose sessionId is in the result set.
  *      Each returned session is additively classified (Phase 150, D-01/D-02):
- *      `sessionKind`, and `templateStatus` when the kind is `template`.
+ *      `sessionKind`, and `templateStatus` when the kind is `template`. With `resolver`,
+ *      each returned set-log additively carries `resolver.forSetLog`'s fields (D-15).
  *
  * @param args     Validated args (GetHistorySchema output — limit is always a number).
  * @param snapshot Pre-decrypted snapshot from the cache layer.
+ * @param resolver Optional exercise-name resolver (Phase 150, D-15) — omit for a
+ *                 byte-identical result to before this plan.
  */
-export function getHistory(args: GetHistoryArgs, snapshot: DecryptedSnapshot): GetHistoryResult {
+export function getHistory(
+  args: GetHistoryArgs,
+  snapshot: DecryptedSnapshot,
+  resolver?: ExerciseNameResolver,
+): GetHistoryResult {
   const { from, to, exercise, templateId, sessionKind, limit } = args;
 
   // Step 1: ISO-date → UTC epoch bounds
@@ -141,11 +160,12 @@ export function getHistory(args: GetHistoryArgs, snapshot: DecryptedSnapshot): G
   // Step 5: Apply limit
   sessions = sessions.slice(0, limit);
 
-  // Step 6: Collect all setLogs belonging to the retained sessions
+  // Step 6: Collect all setLogs belonging to the retained sessions; additively name each
+  // one when a resolver is supplied (Phase 150, D-15).
   const retainedSessionIds = new Set<string>(sessions.map(s => s.id));
-  const setLogs: DecryptedSetLog[] = snapshot.setLogs.filter(
-    sl => retainedSessionIds.has(sl.sessionId),
-  );
+  const setLogs: GetHistorySetLogItem[] = snapshot.setLogs
+    .filter(sl => retainedSessionIds.has(sl.sessionId))
+    .map(sl => (resolver ? { ...sl, ...resolver.forSetLog(sl) } : sl));
 
   // Classify each retained session (D-01/D-02) — templateStatus needs the full template
   // index (including tombstones) to tell "deleted" apart from "unknown".
@@ -201,19 +221,27 @@ export function registerToolGetHistory(
         'limit) are always reported, so a small limit never silently hides a bigger match ' +
         'set. Set `outputFile: true` to write the full result to a local file instead of ' +
         'returning it inline — the tool result then reports only the file path, byte size ' +
-        'and item count, plus matchingSessions/truncated. Every result carries unreadable: ' +
-        'rows that could not be decrypted or decoded (entity, id, reason and plaintext ' +
-        'routing fields), independent of the date window; an empty list means every ' +
-        'encrypted row was read.',
+        'and item count, plus matchingSessions/truncated. Every set-log carries ' +
+        'exerciseName and exerciseKey next to its exerciseId (optional lang, default ' +
+        'English); a set-log with no exerciseId of its own is named through its ' +
+        'workoutExerciseId instead, tagged exerciseNameSource: "workoutExerciseId". Every ' +
+        'result carries unreadable: rows that could not be decrypted or decoded (entity, ' +
+        'id, reason and plaintext routing fields), independent of the date window; an ' +
+        'empty list means every encrypted row was read.',
       inputSchema: GetHistorySchema,
       annotations: { readOnlyHint: true },
     },
     async (args) => {
       try {
-        const data   = await getSnapshot(pat, keyB64, serverUrl);
-        const report = decodeReportOf(data);
+        const data     = await getSnapshot(pat, keyB64, serverUrl);
+        const report   = decodeReportOf(data);
         assertEntitiesReadable(report, ['session', 'setLog'], 'History error');
-        const result = getHistory(args as GetHistoryArgs, data.snapshot);
+        const resolver = createExerciseNameResolver({
+          catalog: data.catalog,
+          snapshot: data.snapshot,
+          lang: (args as GetHistoryArgs).lang,
+        });
+        const result = getHistory(args as GetHistoryArgs, data.snapshot, resolver);
         const unreadable: UnreadableRow[] = report.unreadable;
 
         if ((args as GetHistoryArgs).outputFile) {

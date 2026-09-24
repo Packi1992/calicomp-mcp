@@ -113,6 +113,7 @@ export const OUTPUT_FILE_FLAG = z.boolean().optional();
  *     returning it inline; see `OUTPUT_FILE_FLAG`. D-17 leaves every bound
  *     above untouched — `get_history` is not throttled, only re-framed as a
  *     targeted detail lookup (see the tool's registered description).
+ *   - `lang` (Phase 150, D-14) optionally localizes each set-log's `exerciseName`.
  */
 export const GetHistorySchema = z
   .object({
@@ -123,6 +124,7 @@ export const GetHistorySchema = z
     sessionKind: z.enum(SESSION_KINDS).optional(),
     limit: z.number().int().min(1).max(500).optional().default(200),
     outputFile: OUTPUT_FILE_FLAG,
+    lang: LANG.optional(),
   })
   .refine((d) => d.from <= d.to, { message: '`to` must be >= `from`' });
 
@@ -233,6 +235,9 @@ export const GetStatsSchema = z.discriminatedUnion('by', [
  * outright; it fixes a real mixed series (a `pull_up` progress series polluted by
  * QuickChallenge points a template filter could not previously exclude). The branch stays
  * `.strict()` — the same field never means two different things in the same request.
+ *
+ * `lang` (Phase 150, D-14) optionally localizes each series' `exerciseName` under
+ * `kind: 'exercise'` only — `kind: 'format'` names no exercise.
  */
 export const GetProgressSchema = z.discriminatedUnion('kind', [
   z
@@ -243,6 +248,7 @@ export const GetProgressSchema = z.discriminatedUnion('kind', [
       sessionKind: z.enum(SESSION_KINDS).optional(),
       points: z.number().int().min(3).max(30).optional(),
       outputFile: OUTPUT_FILE_FLAG,
+      lang: LANG.optional(),
     })
     .strict(),
   z

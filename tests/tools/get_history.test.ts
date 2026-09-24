@@ -37,6 +37,7 @@ import * as cacheModule from '../../src/cache.js';
 import * as fileChannelModule from '../../src/file-channel.js';
 import { GetHistorySchema } from '../../src/schemas.js';
 import { getHistory, registerToolGetHistory } from '../../src/tools/get_history.js';
+import { createExerciseNameResolver } from '../../src/exercise-names.js';
 import {
   mockSnapshot,
   mockCatalog,
@@ -253,9 +254,14 @@ describe('get_history — registered MCP handler', () => {
 
     const result = await handler({ from: '2024-01-01', to: '2024-12-31', limit: 200 });
 
+    // Phase 150, D-15: the registered handler now builds and passes a resolver — this
+    // pin mirrors that exact construction, so it stays a self-consistency check rather
+    // than a hardcoded literal that a purely additive field would legitimately break.
+    const resolver = createExerciseNameResolver({ catalog: mockCatalog, snapshot: mockSnapshot });
     const expected = getHistory(
       { from: '2024-01-01', to: '2024-12-31', limit: 200 },
       mockSnapshot,
+      resolver,
     );
     expect(result.content[0].text).toBe(JSON.stringify({ ...expected, unreadable: [] }));
     expect(fileChannelModule.writeExportFile).not.toHaveBeenCalled();
@@ -268,9 +274,11 @@ describe('get_history — registered MCP handler', () => {
 
     const result = await handler({ from: '2024-01-01', to: '2024-12-31', limit: 200, outputFile: false });
 
+    const resolver = createExerciseNameResolver({ catalog: mockCatalog, snapshot: mockSnapshot });
     const expected = getHistory(
       { from: '2024-01-01', to: '2024-12-31', limit: 200 },
       mockSnapshot,
+      resolver,
     );
     expect(result.content[0].text).toBe(JSON.stringify({ ...expected, unreadable: [] }));
     expect(fileChannelModule.writeExportFile).not.toHaveBeenCalled();
@@ -291,9 +299,11 @@ describe('get_history — registered MCP handler', () => {
 
     expect(fileChannelModule.writeExportFile).toHaveBeenCalledTimes(1);
     const [writtenPayload] = vi.mocked(fileChannelModule.writeExportFile).mock.calls[0];
+    const resolver = createExerciseNameResolver({ catalog: mockCatalog, snapshot: mockSnapshot });
     const expected = getHistory(
       { from: '2024-01-01', to: '2024-12-31', limit: 200 },
       mockSnapshot,
+      resolver,
     );
     expect(writtenPayload).toEqual({ ...expected, unreadable: [] });
 
@@ -553,5 +563,43 @@ describe('get_history — session classification and template filter', () => {
 
     const body = JSON.parse(result.content[0].text) as { unreadable: { sessionKind?: string }[] };
     expect(body.unreadable[0].sessionKind).toBe('template');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 150 (D-15) — exercise names on set-logs
+// ---------------------------------------------------------------------------
+
+describe('get_history — exercise names on set-logs (D-15)', () => {
+  it('P150 D-15 get_history set-logs carry exerciseName and exerciseKey', () => {
+    const resolver = createExerciseNameResolver({ catalog: mockCatalog, snapshot: mockSnapshot });
+
+    const result = getHistory(
+      { from: '2024-01-01', to: '2024-12-31', limit: 200 },
+      mockSnapshot,
+      resolver,
+    );
+
+    expect(result.setLogs.length).toBeGreaterThan(0);
+    for (const setLog of result.setLogs) {
+      expect(setLog.exerciseName).toBeTruthy();
+      expect(setLog.exerciseKey).toBeTruthy();
+    }
+    const pushupLog = result.setLogs.find((sl) => sl.exerciseId === CATALOG_EXERCISE_ID_PUSHUP);
+    expect(pushupLog!.exerciseName).toBe('Push-Up');
+    expect(pushupLog!.exerciseKey).toBe('push_up');
+  });
+
+  it('P150 D-14 get_history names follow lang', () => {
+    const resolver = createExerciseNameResolver({ catalog: mockCatalog, snapshot: mockSnapshot, lang: 'de' });
+
+    const result = getHistory(
+      { from: '2024-01-01', to: '2024-12-31', limit: 200 },
+      mockSnapshot,
+      resolver,
+    );
+
+    const pushupLog = result.setLogs.find((sl) => sl.exerciseId === CATALOG_EXERCISE_ID_PUSHUP);
+    expect(pushupLog!.exerciseName).toBe('Liegestütz');
   });
 });

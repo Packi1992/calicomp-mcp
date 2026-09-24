@@ -54,6 +54,7 @@ import {
 import { computeFormatProgress, type FormatProgressSeries } from '../training-state/format-progress.js';
 import { decodeReportOf, assertEntitiesReadable, assertTimeZoneReadable } from '../read-guard.js';
 import { matchesSessionFilter, type SessionKind } from '../session-kind.js';
+import { createExerciseNameResolver, type ExerciseNameFields } from '../exercise-names.js';
 import type { DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
 import type { CoachParameters } from '../coach-parameters.js';
 
@@ -70,8 +71,13 @@ export type GetProgressArgs =
       sessionKind?: SessionKind;
       points?: number;
       outputFile?: boolean;
+      /** Phase 150, D-14: localizes each series' `exerciseName`. */
+      lang?: string;
     }
   | { kind: 'format'; templateId?: string; points?: number; outputFile?: boolean };
+
+/** An exercise-progress series, additively named (Phase 150, D-15) — always applied for `kind: 'exercise'`. */
+export type ExerciseProgressSeriesWithName = ExerciseProgressSeries & ExerciseNameFields;
 
 /**
  * The pure function's own result — deliberately WITHOUT `parametersSource`: this function
@@ -81,7 +87,7 @@ export type GetProgressArgs =
  */
 export interface GetProgressExerciseResult {
   kind: 'exercise';
-  series: ExerciseProgressSeries[];
+  series: ExerciseProgressSeriesWithName[];
   /**
    * Phase 150, D-06 — echoes the applied session filter, present ONLY when at least one
    * of `templateId`/`sessionKind` was set. Without a filter, this key is absent and the
@@ -134,9 +140,19 @@ export function getProgress(
       },
       { snapshot: data.snapshot, catalog: data.catalog, timeZoneId },
     );
+    // Phase 150, D-15: every series gets exerciseKey + flags, and exerciseName is
+    // OVERWRITTEN with the resolver's value — without `lang` this is byte-identical to
+    // `computeExerciseProgress`'s own `exercise?.nameEn ?? null` for a live catalog
+    // exercise; a deleted user exercise's name only now stops being `null` (D-17).
+    // `computeExerciseProgress` itself stays unchanged (enrichment lives in this layer).
+    const nameResolver = createExerciseNameResolver({ catalog: data.catalog, snapshot: data.snapshot, lang: args.lang });
+    const namedSeries: ExerciseProgressSeriesWithName[] = series.map((s) => ({
+      ...s,
+      ...nameResolver.forExerciseId(s.exerciseId),
+    }));
     return {
       kind: 'exercise',
-      series,
+      series: namedSeries,
       ...(hasSessionFilter ? { sessionFilter: { templateId: args.templateId, sessionKind: args.sessionKind } } : {}),
     };
   }
@@ -185,7 +201,9 @@ export function registerToolGetProgress(
         'format templates if `templateId` is omitted. `points` overrides how many recent points ' +
         'each series returns (3-30) for this one call. A call with no matching data returns an ' +
         'empty series, never an error. Set `outputFile: true` to write the full point series to a ' +
-        'local file instead of returning it inline. Every result carries unreadable: rows that ' +
+        'local file instead of returning it inline. Under `kind: "exercise"`, each series carries ' +
+        'exerciseName and exerciseKey next to its exerciseId (optional lang, default English) — ' +
+        'including in the outputFile summary. Every result carries unreadable: rows that ' +
         'could not be decrypted or decoded (entity, id, reason and plaintext routing fields); an ' +
         'empty list means every encrypted row was read — including in the outputFile summary.',
       inputSchema: GetProgressSchema,
@@ -217,6 +235,9 @@ export function registerToolGetProgress(
                   series: full.series.map((s) => ({
                     exerciseId: s.exerciseId,
                     exerciseName: s.exerciseName,
+                    exerciseKey: s.exerciseKey,
+                    ...(s.exerciseDeleted ? { exerciseDeleted: s.exerciseDeleted } : {}),
+                    ...(s.exerciseUnknown ? { exerciseUnknown: s.exerciseUnknown } : {}),
                     mode: s.mode,
                     usesWeight: s.usesWeight,
                     metric: s.metric,
