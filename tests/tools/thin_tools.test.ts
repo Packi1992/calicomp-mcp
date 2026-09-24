@@ -39,6 +39,7 @@ import { listTemplates }        from '../../src/tools/list_templates.js';
 import { getTemplate }          from '../../src/tools/get_template.js';
 import { getExerciseCatalog }   from '../../src/tools/get_exercise_catalog.js';
 import { registerToolGetTemplate } from '../../src/tools/get_template.js';
+import { createExerciseNameResolver } from '../../src/exercise-names.js';
 
 import type { UserProfileResponse } from '../../src/types.js';
 import {
@@ -51,6 +52,9 @@ import {
   TE_ID_PUSH_PUSHUP,
   TE_ID_PUSH_PULLUP,
   TE_ID_LEGS_SQUAT,
+  CATALOG_EXERCISE_ID_PUSHUP,
+  CATALOG_EXERCISE_ID_PULLUP,
+  CATALOG_EXERCISE_ID_SQUAT,
 } from '../fixture.js';
 
 // ---------------------------------------------------------------------------
@@ -279,6 +283,85 @@ describe('getTemplate — pure handler', () => {
     const result = getTemplate({ templateId: TEMPLATE_ID_PUSH }, snapshotWithNullFormatFields);
     expect('workoutType' in result!).toBe(false);
     expect('formatParams' in result!).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// get_template — Phase 150 (D-15, D-34, tracer)
+// ---------------------------------------------------------------------------
+
+describe('getTemplate — Phase 150 (D-15/D-34)', () => {
+  it('P150 D-34 getTemplate drops tombstones and sorts blocks and exercises in display order', () => {
+    const templateId = 'ffffaaaa-0007-4000-a000-000000000001';
+    const snapshot = {
+      ...mockSnapshot,
+      templates: [
+        { id: templateId, name: 'Mixed Day', createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000, isFavoriteForWatch: false },
+      ],
+      blocks: [
+        // orderIndex 1 — the live block; ends up AFTER the standalone exercise below.
+        { id: 'block-live', templateId, name: 'B', rounds: 3, orderIndex: 1, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 },
+        // orderIndex 0 — tombstoned, must be dropped entirely.
+        { id: 'block-deleted', templateId, name: 'D', rounds: 2, orderIndex: 0, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000, deletedAt: 1_700_000_100_000 },
+      ],
+      templateExercises: [
+        // Standalone exercise, top-level orderIndex 0 — sorts BEFORE block-live (orderIndex 1).
+        { id: 'te-standalone', templateId, exerciseId: CATALOG_EXERCISE_ID_PUSHUP, exerciseSource: 'CATALOG', mode: 'REPS', restTimeSeconds: 60, sets: 1, orderIndex: 0, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 },
+        { id: 'te-in-block', templateId, blockId: 'block-live', exerciseId: CATALOG_EXERCISE_ID_PULLUP, exerciseSource: 'CATALOG', mode: 'REPS', restTimeSeconds: 60, sets: 1, orderIndex: 0, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 },
+        // Tombstoned template exercise inside the live block — must be dropped.
+        { id: 'te-deleted', templateId, blockId: 'block-live', exerciseId: CATALOG_EXERCISE_ID_SQUAT, exerciseSource: 'CATALOG', mode: 'REPS', restTimeSeconds: 60, sets: 1, orderIndex: 1, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000, deletedAt: 1_700_000_100_000 },
+      ],
+    };
+
+    const result = getTemplate({ templateId }, snapshot);
+    expect(result!.blocks.map((b) => b.id)).toEqual(['block-live']);
+    expect(result!.templateExercises.map((te) => te.id)).toEqual(['te-standalone', 'te-in-block']);
+  });
+
+  it('P150 SC5 getTemplate names every template exercise including a user exercise', () => {
+    const userExerciseId = 'ffffaaaa-0007-4000-a000-000000000099';
+    const snapshot = {
+      ...mockSnapshot,
+      exercises: [
+        { id: userExerciseId, name: 'Meine Übung', mode: 'REPS', usesWeight: false, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 },
+      ],
+      templateExercises: [
+        ...mockSnapshot.templateExercises,
+        { id: 'te-user-exercise', templateId: TEMPLATE_ID_PUSH, exerciseId: userExerciseId, exerciseSource: 'CUSTOM', mode: 'REPS', restTimeSeconds: 60, sets: 1, orderIndex: 5, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 },
+      ],
+    };
+    const catalogWithUserExercise = [
+      ...mockCatalog,
+      {
+        id: userExerciseId,
+        key: `user_exercise:${userExerciseId}`,
+        nameEn: 'Meine Übung',
+        mode: 'REPS',
+        usesWeight: false,
+        lastModifiedAt: 1_700_000_000_000,
+        translations: [],
+        muscleGroups: [],
+        equipment: [],
+        capabilities: [],
+        origin: 'CUSTOM' as const,
+      },
+    ];
+    const resolver = createExerciseNameResolver({ catalog: catalogWithUserExercise, snapshot });
+
+    const result = getTemplate({ templateId: TEMPLATE_ID_PUSH }, snapshot, resolver);
+    for (const te of result!.templateExercises) {
+      expect(te.exerciseName).toBeTruthy();
+      expect(te.exerciseKey).toBeTruthy();
+    }
+    const userTe = result!.templateExercises.find((te) => te.id === 'te-user-exercise');
+    expect(userTe!.exerciseName).toBe('Meine Übung');
+    expect(userTe!.exerciseKey).toBe(`user_exercise:${userExerciseId}`);
+  });
+
+  it('P150 getTemplate without a resolver adds no name fields', () => {
+    const result = getTemplate({ templateId: TEMPLATE_ID_PUSH }, mockSnapshot);
+    expect('exerciseName' in result!.templateExercises[0]).toBe(false);
+    expect('exerciseKey' in result!.templateExercises[0]).toBe(false);
   });
 });
 

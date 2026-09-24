@@ -23,6 +23,15 @@ export const ISO_DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM
 /** RFC 4122 UUID string. */
 export const UUID_STRING = z.string().uuid();
 
+/**
+ * Shared BCP-47-ish language tag bound (Phase 150, D-14) — the same 2-5 character bound
+ * `GetExerciseCatalogSchema` already used before this constant existed. Reused by every
+ * schema that accepts an optional `lang` for exercise-name localization
+ * (`GetTemplateSchema`, `GetHistorySchema`, the `exercise` branch of `GetProgressSchema`,
+ * `GetTrainingStateSchema`) so the bound cannot drift between them.
+ */
+export const LANG = z.string().min(2).max(5);
+
 // ---------------------------------------------------------------------------
 // Muscle group enum (18 canonical keys — sourced from MuscleGroupSeed.kt lines 29–48)
 // [VERIFIED: TrainCounter/.../data/local/seed/MuscleGroupSeed.kt]
@@ -62,9 +71,16 @@ export const GetProfileSchema = z.object({});
 /** list_templates — no input, returns all non-deleted templates. */
 export const ListTemplatesSchema = z.object({});
 
-/** get_template — one template by ID with its blocks and templateExercises. */
+/**
+ * get_template — one template by ID with its blocks and templateExercises.
+ *
+ * `lang` (Phase 150, D-14) optionally localizes every template exercise's `exerciseName` —
+ * same fallback rule as `GetExerciseCatalogSchema`: no translation for the requested
+ * language falls back to English, never an error.
+ */
 export const GetTemplateSchema = z.object({
   templateId: UUID_STRING,
+  lang: LANG.optional(),
 });
 
 /**

@@ -24,16 +24,35 @@
  * compiled, derived image, recomputed from `formatParams` on every save. A coach that wants to
  * propose a change reads `formatParams` and proposes a new `formatParams` (`plan_update`'s
  * `formatParams` field), never an op against `blocks`/`templateExercises`.
+ *
+ * Phase 150 (D-34, tracer): `blocks` and `templateExercises` drop every soft-deleted row
+ * (`deletedAt` set) and are returned in DISPLAY order — the exact order the app itself
+ * renders (`WorkoutDetailViewModel.kt`'s `flatWorkoutItems`, lines 644-654). Blocks and
+ * standalone exercises (`blockId` null) share ONE top-level `orderIndex` space; an
+ * exercise inside a block has its OWN block-local `orderIndex`. When a block and a
+ * standalone exercise land on the same top-level index, the block sorts first — the same
+ * outcome the app's own stable `sortBy` produces because it appends blocks to the
+ * candidate list before standalone exercises.
+ *
+ * Phase 150 (D-15, tracer): with a `resolver` (built by the registered handler from
+ * `data.catalog`/`data.snapshot`/`args.lang`), every returned template exercise carries
+ * `exerciseName`/`exerciseKey` (plus `exerciseDeleted`/`exerciseUnknown` when applicable)
+ * next to its `exerciseId` — see `exercise-names.ts`. `propose_plan_update.ts` calls
+ * `getTemplate` WITHOUT a resolver and is therefore unaffected by this addition.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { GetTemplateSchema } from '../schemas.js';
 import { getSnapshot } from '../cache.js';
+import { createExerciseNameResolver, type ExerciseNameFields, type ExerciseNameResolver } from '../exercise-names.js';
 import type { DecryptedSnapshot, NormalizedBlock, NormalizedTemplateExercise } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+/** A template exercise, additively named when a resolver is supplied (Phase 150, D-15). */
+export type TemplateExerciseWithName = NormalizedTemplateExercise & Partial<ExerciseNameFields>;
 
 export interface TemplateDetail {
   id:                  string;
@@ -49,7 +68,7 @@ export interface TemplateDetail {
   workoutType?:        string;
   formatParams?:       string;
   blocks:              NormalizedBlock[];
-  templateExercises:   NormalizedTemplateExercise[];
+  templateExercises:   TemplateExerciseWithName[];
 }
 
 // ---------------------------------------------------------------------------
@@ -62,28 +81,53 @@ export interface TemplateDetail {
  * Algorithm:
  *   1. Find the template by id in `snapshot.templates`.
  *   2. Return `null` if not found (the MCP handler converts this to structured isError).
- *   3. Join `snapshot.blocks` where `block.templateId === id`.
- *   4. Join `snapshot.templateExercises` where `te.templateId === id`.
- *   5. Return the assembled `TemplateDetail`.
+ *   3. Join `snapshot.blocks` where `block.templateId === id`, drop tombstones
+ *      (`deletedAt` set, D-34), sort by `(orderIndex, id)`.
+ *   4. Join `snapshot.templateExercises` where `te.templateId === id`, drop tombstones,
+ *      sort into DISPLAY order (D-34): key `(topLevelIndex, indexInBlock, id)` — a
+ *      standalone exercise's `topLevelIndex` is its own `orderIndex`; a block exercise's
+ *      is its block's `orderIndex`. `indexInBlock` is the block-local `orderIndex` for a
+ *      block exercise, `+Infinity` for a standalone one — guaranteeing a block sorts
+ *      before a standalone exercise that shares its top-level index, exactly like the
+ *      app's own stable sort (`WorkoutDetailViewModel.kt:644-654`, which appends blocks to
+ *      the candidate list before standalone exercises).
+ *   5. With `resolver`, additively name every template exercise (D-15).
+ *   6. Return the assembled `TemplateDetail`.
  *
  * @param args      Validated args — `templateId` is a UUID string.
  * @param snapshot  Pre-decrypted snapshot from the cache layer.
+ * @param resolver  Optional exercise-name resolver (Phase 150, D-15) — omit for a
+ *                  byte-identical result to before this plan (e.g. `propose_plan_update.ts`).
  * @returns `TemplateDetail` if found, `null` if the template does not exist.
  */
 export function getTemplate(
   args: { templateId: string },
   snapshot: DecryptedSnapshot,
+  resolver?: ExerciseNameResolver,
 ): TemplateDetail | null {
   const template = snapshot.templates.find(t => t.id === args.templateId);
   if (!template) return null;
 
-  const blocks: NormalizedBlock[] = snapshot.blocks.filter(
-    b => b.templateId === args.templateId,
-  );
+  const blocks: NormalizedBlock[] = snapshot.blocks
+    .filter(b => b.templateId === args.templateId && b.deletedAt === undefined)
+    .sort((a, b) => a.orderIndex - b.orderIndex || a.id.localeCompare(b.id));
 
-  const templateExercises: NormalizedTemplateExercise[] = snapshot.templateExercises.filter(
-    te => te.templateId === args.templateId,
-  );
+  const blocksById = new Map(blocks.map(b => [b.id, b]));
+
+  const topLevelIndexOf = (te: NormalizedTemplateExercise): number =>
+    te.blockId != null ? (blocksById.get(te.blockId)?.orderIndex ?? te.orderIndex) : te.orderIndex;
+  const indexInBlockOf = (te: NormalizedTemplateExercise): number =>
+    te.blockId != null ? te.orderIndex : Number.POSITIVE_INFINITY;
+
+  const templateExercises: TemplateExerciseWithName[] = snapshot.templateExercises
+    .filter(te => te.templateId === args.templateId && te.deletedAt === undefined)
+    .sort(
+      (a, b) =>
+        topLevelIndexOf(a) - topLevelIndexOf(b) ||
+        indexInBlockOf(a) - indexInBlockOf(b) ||
+        a.id.localeCompare(b.id),
+    )
+    .map(te => (resolver ? { ...te, ...resolver.forExerciseId(te.exerciseId) } : te));
 
   return {
     id:                 template.id,
@@ -130,14 +174,21 @@ export function registerToolGetTemplate(
       description:
         'Return one workout template with its blocks and template-exercises joined. ' +
         'Pass the UUID from `list_templates`. Returns an error if the template is not found. ' +
+        'Blocks and template exercises are returned without soft-deleted rows, in display ' +
+        'order. Blocks and standalone exercises (blockId null) share one top-level ' +
+        'orderIndex space; exercises inside a block have their own block-local orderIndex. ' +
+        'Every template exercise carries exerciseName and exerciseKey next to its ' +
+        'exerciseId (optional lang, default English). ' +
         'This tool reads no encrypted training data and therefore carries no unreadable list.',
       inputSchema: GetTemplateSchema,
       annotations: { readOnlyHint: true },
     },
     async (args) => {
       try {
-        const data   = await getSnapshot(pat, keyB64, serverUrl);
-        const result = getTemplate(args as { templateId: string }, data.snapshot);
+        const data = await getSnapshot(pat, keyB64, serverUrl);
+        const typedArgs = args as { templateId: string; lang?: string };
+        const resolver = createExerciseNameResolver({ catalog: data.catalog, snapshot: data.snapshot, lang: typedArgs.lang });
+        const result = getTemplate({ templateId: typedArgs.templateId }, data.snapshot, resolver);
         if (!result) {
           return {
             isError: true,
