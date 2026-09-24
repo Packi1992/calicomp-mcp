@@ -45,6 +45,7 @@
 
 import type { DecryptedSession, DecryptedSnapshot, CatalogExercise } from '../types.js';
 import { toCalendarDay, isoWeekKey } from './time-zone.js';
+import { classifySession, type SessionKind } from '../session-kind.js';
 
 // ---------------------------------------------------------------------------
 // Port of TrainingStreakCalculator.kt
@@ -232,6 +233,28 @@ export function computeFrequency(
   };
 }
 
+/** The 143-Dreiteilung: how many completed sessions fall into each session kind. */
+export type SessionsByKind = Record<SessionKind, number>;
+
+/**
+ * Counts completed sessions by `sessionKind` (Phase 150, D-03) over the SAME
+ * `completedSessions` set `computeFrequency` uses (`deletedAt == null && endTime !==
+ * undefined`), so the three counts always sum to `totalCompletedSessions`. Classification
+ * runs WITHOUT a template index — `sessionKind` never depends on `templateStatus`.
+ */
+export function computeSessionsByKind(sessions: DecryptedSession[]): SessionsByKind {
+  const completedSessions = sessions.filter((s) => s.deletedAt == null && s.endTime !== undefined);
+
+  const sessionsByKind: SessionsByKind = { template: 0, templateless: 0, quick_challenge: 0 };
+
+  for (const session of completedSessions) {
+    const { sessionKind } = classifySession(session);
+    sessionsByKind[sessionKind] += 1;
+  }
+
+  return sessionsByKind;
+}
+
 // ---------------------------------------------------------------------------
 // Personal records — Phase 137-11, STATE-02 (paritaetsfrei; see the doc header above)
 // ---------------------------------------------------------------------------
@@ -351,17 +374,21 @@ export function computePersonalRecords(
 // ---------------------------------------------------------------------------
 
 /** Combined result shape for `computeConsistency` — the streak fields plus the frequency fields, in one object. */
-export interface ConsistencyResult extends StreakResult, FrequencyResult {}
+export interface ConsistencyResult extends StreakResult, FrequencyResult {
+  /** The 143-Dreiteilung (Phase 150, D-03) — additive; sums to `totalCompletedSessions`. */
+  sessionsByKind: SessionsByKind;
+}
 
 /**
- * Assembles the streak fields (`computeStreaks`) and the frequency fields
- * (`computeFrequency`) into a single object — the one call Plan `137-12`'s overview
- * makes. `catalog` is part of this function's published signature (matching the sibling
- * `compute*` functions in this module that DO need it) even though today's two
- * constituent calls only need `snapshot.sessions`, `timeZoneId` and `nowMs`; personal
- * records are deliberately NOT part of this result (see the interface contract this
- * function implements) — `get_training_state`/`get_progress`-style tools that also need
- * records call `computePersonalRecords` separately.
+ * Assembles the streak fields (`computeStreaks`), the frequency fields
+ * (`computeFrequency`) and the session-kind breakdown (`computeSessionsByKind`, Phase 150
+ * D-03) into a single object — the one call Plan `137-12`'s overview makes. `catalog` is
+ * part of this function's published signature (matching the sibling `compute*` functions
+ * in this module that DO need it) even though today's constituent calls only need
+ * `snapshot.sessions`, `timeZoneId` and `nowMs`; personal records are deliberately NOT
+ * part of this result (see the interface contract this function implements) —
+ * `get_training_state`/`get_progress`-style tools that also need records call
+ * `computePersonalRecords` separately.
  */
 export function computeConsistency(
   snapshot: DecryptedSnapshot,
@@ -371,5 +398,6 @@ export function computeConsistency(
 ): ConsistencyResult {
   const streaks = computeStreaks(snapshot.sessions, timeZoneId, nowMs);
   const frequency = computeFrequency(snapshot.sessions, timeZoneId, nowMs);
-  return { ...streaks, ...frequency };
+  const sessionsByKind = computeSessionsByKind(snapshot.sessions);
+  return { ...streaks, ...frequency, sessionsByKind };
 }

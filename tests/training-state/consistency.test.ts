@@ -25,6 +25,7 @@ import {
   computeFrequency,
   computePersonalRecords,
   computeConsistency,
+  computeSessionsByKind,
 } from '../../src/training-state/consistency.js';
 import type { DecryptedSession, DecryptedSetLog, DecryptedSnapshot, CatalogExercise } from '../../src/types.js';
 
@@ -422,6 +423,9 @@ describe('computeConsistency', () => {
       sessionsLast4Weeks: 1,
       sessionsPrior4Weeks: 0,
       totalCompletedSessions: 1,
+      // Phase 150, D-03: the templateless session above (no templateId, not a
+      // QuickChallenge) counts toward `templateless`.
+      sessionsByKind: { template: 0, templateless: 1, quick_challenge: 0 },
     });
   });
 
@@ -431,5 +435,51 @@ describe('computeConsistency', () => {
     for (const key of Object.keys(result)) {
       expect(key.toLowerCase()).not.toContain('month');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeSessionsByKind (Phase 150, D-03)
+// ---------------------------------------------------------------------------
+
+describe('computeSessionsByKind', () => {
+  it('P150 D-03 sessionsByKind sums to totalCompletedSessions', () => {
+    const sessions = [
+      completedSession({ id: 's1', startTime: 1_700_000_000_000, templateId: 'tpl-1' }),
+      completedSession({ id: 's2', startTime: 1_700_100_000_000 }),
+      completedSession({ id: 's3', startTime: 1_700_200_000_000, isQuickChallenge: true }),
+    ];
+
+    const byKind = computeSessionsByKind(sessions);
+    const totalCompletedSessions = sessions.filter((s) => s.deletedAt == null && s.endTime !== undefined).length;
+
+    expect(byKind.template + byKind.templateless + byKind.quick_challenge).toBe(totalCompletedSessions);
+    expect(byKind).toEqual({ template: 1, templateless: 1, quick_challenge: 1 });
+  });
+
+  it('P150 D-03 sessionsByKind counts a quick challenge with templateId as quick_challenge', () => {
+    const sessions = [
+      completedSession({
+        id: 's1',
+        startTime: 1_700_000_000_000,
+        templateId: 'tpl-1',
+        isQuickChallenge: true,
+      }),
+    ];
+
+    const byKind = computeSessionsByKind(sessions);
+
+    expect(byKind).toEqual({ template: 0, templateless: 0, quick_challenge: 1 });
+  });
+
+  it('P150 D-03 running and deleted sessions are not counted in sessionsByKind', () => {
+    const running = session({ id: 's-running', startTime: 1_700_000_000_000 }); // no endTime
+    const deleted = completedSession({ id: 's-deleted', startTime: 1_700_100_000_000, deletedAt: 1_700_100_500_000 });
+    const completed = completedSession({ id: 's-ok', startTime: 1_700_200_000_000 });
+
+    const byKind = computeSessionsByKind([running, deleted, completed]);
+
+    expect(byKind.template + byKind.templateless + byKind.quick_challenge).toBe(1);
+    expect(byKind).toEqual({ template: 0, templateless: 1, quick_challenge: 0 });
   });
 });
