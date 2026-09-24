@@ -309,6 +309,103 @@ describe('decrypt-merge: set-log', () => {
   });
 });
 
+// ── Decrypt-merge: set-log and hr-sample fault tolerance (Phase 150, D-10/D-12) ──
+
+describe('decrypt-merge: set-log and hr-sample fault tolerance', () => {
+  it('P150 D-10 a corrupt set-log inside a readable session is reported with its sessionId', async () => {
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        sessions: [
+          {
+            id: 'sess-readable', startTime: 1_709_000_000_000, endTime: 1_709_003_600_000,
+            isManual: false, isCorrected: false, isQuickChallenge: false,
+            createdAt: 1_709_000_000_000, updatedAt: 1_709_000_000_000,
+          },
+        ],
+        setLogs: [
+          {
+            id: 'sl-corrupt', sessionId: 'sess-readable', encryptedPayload: '{"iv":"i","ct":"c"}',
+            createdAt: 1_709_000_100_000, updatedAt: 1_709_000_100_000,
+          },
+        ],
+      }),
+    );
+    mockDecrypt.mockImplementationOnce(() => { throw new Error('auth tag mismatch'); });
+
+    const cache = await getSnapshot(PAT, KEY_B64, URL);
+    const decodeReport = cache.decodeReport!;
+
+    expect(cache.snapshot.sessions).toHaveLength(1);
+    expect(cache.snapshot.setLogs).toHaveLength(0);
+    expect(decodeReport.unreadable).toHaveLength(1);
+    expect(decodeReport.unreadable[0]).toEqual({
+      entity: 'setLog',
+      id: 'sl-corrupt',
+      reason: 'decrypt_failed',
+      sessionId: 'sess-readable',
+      createdAt: 1_709_000_100_000,
+      updatedAt: 1_709_000_100_000,
+    });
+  });
+
+  it('P150 D-10 set-logs of an unreadable session are removed and counted on the session row', async () => {
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        sessions: [
+          {
+            id: 'sess-corrupt', startTime: 0, endTime: undefined, encryptedPayload: '{"iv":"i","ct":"c"}',
+            isManual: false, isCorrected: false, isQuickChallenge: false,
+            createdAt: 0, updatedAt: 0,
+          },
+        ],
+        setLogs: [
+          { id: 'sl-1', sessionId: 'sess-corrupt', completedReps: 5, createdAt: 0, updatedAt: 0 },
+          { id: 'sl-2', sessionId: 'sess-corrupt', completedReps: 6, createdAt: 0, updatedAt: 0 },
+          { id: 'sl-orphan', sessionId: 'sess-unknown', completedReps: 7, createdAt: 0, updatedAt: 0 },
+        ],
+      }),
+    );
+    mockDecrypt.mockImplementationOnce(() => { throw new Error('auth tag mismatch'); });
+
+    const cache = await getSnapshot(PAT, KEY_B64, URL);
+    const decodeReport = cache.decodeReport!;
+
+    // The two set-logs of the unreadable session are removed; the orphan (unrelated to any
+    // session, readable or not) is left completely untouched.
+    expect(cache.snapshot.setLogs).toHaveLength(1);
+    expect(cache.snapshot.setLogs[0].id).toBe('sl-orphan');
+    const sessionRow = decodeReport.unreadable.find((r) => r.entity === 'session' && r.id === 'sess-corrupt');
+    expect(sessionRow?.affectedSetLogCount).toBe(2);
+    expect(sessionRow?.affectedHrSampleCount).toBeUndefined();
+  });
+
+  it('P150 D-12 a corrupt hr sample is reported as malformed_payload', async () => {
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        hrSamples: [
+          {
+            id: 'hr-corrupt', sessionId: 'sess-hr', timestampMs: 0, bpm: 0,
+            encryptedPayload: '{"iv":"i","ct":"c"}',
+          },
+        ],
+      }),
+    );
+    mockDecrypt.mockReturnValueOnce(JSON.stringify({ ts: 'not-a-number', bpm: 70 }));
+
+    const cache = await getSnapshot(PAT, KEY_B64, URL);
+    const decodeReport = cache.decodeReport!;
+
+    expect(cache.snapshot.hrSamples).toHaveLength(0);
+    expect(decodeReport.unreadable).toHaveLength(1);
+    expect(decodeReport.unreadable[0]).toEqual({
+      entity: 'hrSample',
+      id: 'hr-corrupt',
+      reason: 'malformed_payload',
+      sessionId: 'sess-hr',
+    });
+  });
+});
+
 // ── Concurrent-call coalescing (T-120-15) ────────────────────────────────────
 
 describe('concurrent-call coalescing', () => {
@@ -390,7 +487,7 @@ describe('decrypt-merge: planned workouts', () => {
     expect(mockDecrypt).toHaveBeenCalledWith(ENCRYPTED_PW_PAYLOAD, KEY_B64);
   });
 
-  it('a payload whose v is 2 makes getSnapshot reject, naming the row id and not the PAT or key', async () => {
+  it('P150 D-37 planned v=2 is reported as unknown_version instead of failing getSnapshot', async () => {
     const ENCRYPTED_PW_PAYLOAD = '{"iv":"pwIv","ct":"pwCt"}';
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
@@ -408,35 +505,20 @@ describe('decrypt-merge: planned workouts', () => {
     );
     mockDecrypt.mockReturnValueOnce(JSON.stringify({ v: 2, id: 'root-future', templateId: 'tpl-1', scheduledDate: 0 }));
 
-    await expect(getSnapshot(PAT, KEY_B64, URL)).rejects.toThrow(/row-future-schema/);
-    // Reset the cache + mocks for a second call asserting the negative (no secret leaked).
-    __resetCache();
-    mockFetchSnapshot.mockResolvedValueOnce(
-      makePull({
-        plannedWorkouts: [
-          {
-            id: 'row-future-schema',
-            kind: 'planned_workout',
-            clientLocalId: 'root-future',
-            encryptedPayload: ENCRYPTED_PW_PAYLOAD,
-            createdAt: 0,
-            updatedAt: 0,
-          },
-        ],
-      }),
-    );
-    mockDecrypt.mockReturnValueOnce(JSON.stringify({ v: 2, id: 'root-future', templateId: 'tpl-1', scheduledDate: 0 }));
-    let message = '';
-    try {
-      await getSnapshot(PAT, KEY_B64, URL);
-    } catch (err) {
-      message = (err as Error).message;
-    }
-    expect(message).not.toContain(PAT);
-    expect(message).not.toContain(KEY_B64);
+    const cache = await getSnapshot(PAT, KEY_B64, URL);
+    const decodeReport = cache.decodeReport!;
+
+    expect(cache.snapshot.plannedWorkouts).toHaveLength(0);
+    expect(decodeReport.unreadable).toHaveLength(1);
+    expect(decodeReport.unreadable[0].entity).toBe('plannedWorkout');
+    expect(decodeReport.unreadable[0].id).toBe('row-future-schema');
+    expect(decodeReport.unreadable[0].reason).toBe('unknown_version');
+    // No secret leaked into the report (T-120-17).
+    expect(JSON.stringify(decodeReport)).not.toContain(PAT);
+    expect(JSON.stringify(decodeReport)).not.toContain(KEY_B64);
   });
 
-  it('a row whose encryptedPayload is the empty string makes getSnapshot reject, naming the row id (133 D-03 tombstone contract)', async () => {
+  it('P150 D-37 an empty planned payload is reported as malformed_payload', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         plannedWorkouts: [
@@ -453,11 +535,20 @@ describe('decrypt-merge: planned workouts', () => {
       }),
     );
 
-    await expect(getSnapshot(PAT, KEY_B64, URL)).rejects.toThrow(/row-tombstone/);
+    const cache = await getSnapshot(PAT, KEY_B64, URL);
+    const decodeReport = cache.decodeReport!;
+
+    expect(cache.snapshot.plannedWorkouts).toHaveLength(0);
     expect(mockDecrypt).not.toHaveBeenCalled();
+    expect(decodeReport.unreadable).toHaveLength(1);
+    expect(decodeReport.unreadable[0].entity).toBe('plannedWorkout');
+    expect(decodeReport.unreadable[0].id).toBe('row-tombstone');
+    expect(decodeReport.unreadable[0].reason).toBe('malformed_payload');
+    expect(JSON.stringify(decodeReport)).not.toContain(PAT);
+    expect(JSON.stringify(decodeReport)).not.toContain(KEY_B64);
   });
 
-  it('a decrypt that throws makes getSnapshot reject rather than returning a shorter plannedWorkouts list', async () => {
+  it('P150 D-37 a planned decrypt failure is reported as decrypt_failed and the row is left out', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         plannedWorkouts: [
@@ -476,7 +567,16 @@ describe('decrypt-merge: planned workouts', () => {
       throw new Error('auth tag mismatch');
     });
 
-    await expect(getSnapshot(PAT, KEY_B64, URL)).rejects.toThrow(/auth tag mismatch/);
+    const cache = await getSnapshot(PAT, KEY_B64, URL);
+    const decodeReport = cache.decodeReport!;
+
+    expect(cache.snapshot.plannedWorkouts).toHaveLength(0);
+    expect(decodeReport.unreadable).toHaveLength(1);
+    expect(decodeReport.unreadable[0].entity).toBe('plannedWorkout');
+    expect(decodeReport.unreadable[0].id).toBe('row-corrupt');
+    expect(decodeReport.unreadable[0].reason).toBe('decrypt_failed');
+    expect(JSON.stringify(decodeReport)).not.toContain(PAT);
+    expect(JSON.stringify(decodeReport)).not.toContain(KEY_B64);
   });
 });
 
@@ -510,7 +610,7 @@ describe('decrypt-merge: settings', () => {
     expect(mockDecrypt).toHaveBeenCalledWith(ENCRYPTED_SETTING_PAYLOAD, KEY_B64);
   });
 
-  it('a settings row with an empty encryptedPayload makes getSnapshot reject with a named error, not a half-filled list', async () => {
+  it('P150 D-37 an empty settings payload is reported as malformed_payload with its key', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         settings: [
@@ -527,8 +627,18 @@ describe('decrypt-merge: settings', () => {
       }),
     );
 
-    await expect(getSnapshot(PAT, KEY_B64, URL)).rejects.toThrow(/row-tombstone/);
+    const cache = await getSnapshot(PAT, KEY_B64, URL);
+    const decodeReport = cache.decodeReport!;
+
+    expect(cache.snapshot.settings).toHaveLength(0);
     expect(mockDecrypt).not.toHaveBeenCalled();
+    expect(decodeReport.unreadable).toHaveLength(1);
+    expect(decodeReport.unreadable[0].entity).toBe('setting');
+    expect(decodeReport.unreadable[0].id).toBe('row-tombstone');
+    expect(decodeReport.unreadable[0].reason).toBe('malformed_payload');
+    expect(decodeReport.unreadable[0].key).toBe('training_timezone_id');
+    expect(JSON.stringify(decodeReport)).not.toContain(PAT);
+    expect(JSON.stringify(decodeReport)).not.toContain(KEY_B64);
   });
 
   it('a wire response whose settings key is entirely absent yields an empty array (server predates Plan 137-03)', async () => {

@@ -12,6 +12,7 @@
  * row id(s) and the cause, never plaintext, ciphertext or key material (T-120-17).
  */
 
+import { TimeZoneUnavailableError, TRAINING_TIMEZONE_SETTING_KEY } from './training-state/time-zone.js';
 import type { DecodeReport, UnreadableEntity } from './types.js';
 
 /** The report a `SnapshotCache` mock that predates this field (or a genuinely empty
@@ -49,5 +50,41 @@ export function assertEntitiesReadable(report: DecodeReport, entities: Unreadabl
           'report an empty result.',
       );
     }
+  }
+}
+
+/**
+ * Throw when ANY `planned_workout` row failed to decode (D-09) — the calendar tools
+ * (`get_planned_workouts`, `get_adherence`, `propose_planned_update`) keep the
+ * all-or-nothing discipline Phase 135 (D-14) established for the whole snapshot, now
+ * enforced at their own boundary instead. A tool that never reads the calendar must NOT
+ * call this guard — that is exactly what lets a corrupt planned-workout row stop
+ * blocking `get_history`/`get_stats`/etc. (Phase 150's core fix).
+ */
+export function assertCalendarReadable(report: DecodeReport, toolLabel: string): void {
+  if (report.failedCount.plannedWorkout > 0) {
+    const failed = report.unreadable.filter((r) => r.entity === 'plannedWorkout');
+    const detail = failed.map((r) => `${r.id}: ${r.reason}`).join(', ');
+    throw new Error(
+      `${toolLabel}: the training calendar is unreadable — ${report.failedCount.plannedWorkout} ` +
+        `planned_workout row(s) could not be decoded (${detail}); this tool never answers from a ` +
+        'partial calendar (Phase 135 D-14).',
+    );
+  }
+}
+
+/**
+ * Throw `TimeZoneUnavailableError` when the athlete's `training_timezone_id` settings
+ * row is itself unreadable (Claude's discretion, following the D-09 pattern: strict
+ * only where a tool actually needs the value). Other kaputte settings rows stay in
+ * `unreadable` without failing any tool.
+ */
+export function assertTimeZoneReadable(report: DecodeReport, toolLabel: string): void {
+  const tzRow = report.unreadable.find((r) => r.entity === 'setting' && r.key === TRAINING_TIMEZONE_SETTING_KEY);
+  if (tzRow) {
+    throw new TimeZoneUnavailableError(
+      `${toolLabel}: the athlete's time-zone setting (${TRAINING_TIMEZONE_SETTING_KEY}) could not be ` +
+        `decoded (reason: ${tzRow.reason}); this tool cannot fall back to a host zone.`,
+    );
   }
 }

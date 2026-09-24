@@ -16,15 +16,31 @@
  *     encryptedPayload present → decrypt() + map short keys to resolved fields
  *     encryptedPayload absent  → use plaintext DTO fields unchanged (pre-encryption data)
  *
- *   plannedWorkouts (Phase 135, D-14) — ALL-OR-NOTHING, no dual path: a
- *   `planned_workout` row is always encrypted (no plaintext fallback branch), and a
+ *   plannedWorkouts (Phase 135, D-14) — no dual path: a `planned_workout` row is
+ *   always encrypted (no plaintext fallback branch). As of Phase 150 (D-08/D-09) a
  *   decrypt failure, an empty `encryptedPayload` (tombstone shape), or an unknown
- *   payload `v` THROWS — propagating out of decryptMerge and failing the whole
- *   getSnapshot() call. There is no skip-and-count path: a corrupt or tombstoned row
- *   can never yield a partial calendar the coach reasons from.
+ *   payload `v` no longer aborts `decryptMerge` — it is collected as an `UnreadableRow`
+ *   on the `DecodeReport` returned beside the snapshot, and the row is left out of
+ *   `snapshot.plannedWorkouts`. The ALL-OR-NOTHING rule Phase 135 established is still
+ *   enforced, but at the CALENDAR TOOLS' boundary (`get_planned_workouts`,
+ *   `get_adherence`, `propose_planned_update` — `read-guard.ts`'s
+ *   `assertCalendarReadable`), not for the whole snapshot: a corrupt or tombstoned row
+ *   can still never yield a partial calendar to THOSE three tools, but a tool that
+ *   never reads the calendar (`get_history`, `get_stats`, …) is no longer taken down
+ *   by a planned-workout row it never asked for.
  *
- * Secrets discipline (T-120-16):
- *   No console.* calls — callers surface errors; this module never logs.
+ * Per-row decode fault tolerance (Phase 150, D-08/D-10/D-11/D-12):
+ *   Sessions, set-logs, HR samples, planned workouts and settings ALL decode per row —
+ *   a single bad row (`RowDecodeError` below) never aborts `decryptMerge`. Failures land
+ *   in the `DecodeReport` returned alongside the snapshot (`decodeReport`, never inside
+ *   `DecryptedSnapshot` itself), and `read-guard.ts` is where a tool decides how strict
+ *   it needs to be about a given entity kind.
+ *
+ * Secrets discipline (T-120-16/T-120-17):
+ *   No console.* calls — callers surface errors; this module never logs. No
+ *   `RowDecodeError` message or `UnreadableRow` field ever carries plaintext, ciphertext
+ *   or key material — only entity, row id, cause and the wire DTO's own plaintext
+ *   routing fields.
  */
 
 import { decrypt } from './crypto.js';
@@ -193,6 +209,8 @@ function decodeSessions(rows: SyncSessionDto[], keyB64: string, report: DecodeRe
  * Encrypted path (encryptedPayload present, all metric fields null/absent):
  *   Decrypt payload → parse {"r"?,"t"?,"w"?,"sa"?,"mt"?} → use resolved values.
  *   Keys absent in payload → null (not undefined) per DecryptedSetLog contract.
+ *   Decrypt failure → `RowDecodeError('decrypt_failed')`; a plaintext that is not a
+ *   JSON object → `RowDecodeError('malformed_payload')` (Phase 150, D-08/D-12).
  *
  * Plaintext path (no encryptedPayload):
  *   Convert optional metric fields to null if absent (undefined → null).
@@ -209,13 +227,22 @@ function decryptSetLog(sl: SyncSetLogDto, keyB64: string): DecryptedSetLog {
   } = sl;
 
   if (encryptedPayload) {
-    const d = JSON.parse(decrypt(encryptedPayload, keyB64)) as {
-      r?: number;
-      t?: number;
-      w?: number;
-      sa?: number;
-      mt?: number;
-    };
+    let plaintext: string;
+    try {
+      plaintext = decrypt(encryptedPayload, keyB64);
+    } catch {
+      throw new RowDecodeError(`set-log row ${sl.id} could not be decrypted`, 'decrypt_failed');
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(plaintext);
+    } catch {
+      throw new RowDecodeError(`set-log row ${sl.id} has a malformed payload`, 'malformed_payload');
+    }
+    if (typeof parsed !== 'object' || parsed === null) {
+      throw new RowDecodeError(`set-log row ${sl.id} has a malformed payload`, 'malformed_payload');
+    }
+    const d = parsed as { r?: number; t?: number; w?: number; sa?: number; mt?: number };
     return {
       ...rest,
       completedReps:        d.r  ?? null,
@@ -238,52 +265,135 @@ function decryptSetLog(sl: SyncSetLogDto, keyB64: string): DecryptedSetLog {
 }
 
 /**
+ * Decode every set-log row, tolerating a per-row failure (Phase 150, D-08/D-10/D-12) —
+ * same shape as `decodeSessions` above. Does NOT yet know which sessions are unreadable;
+ * `decryptMerge` removes set-logs of an unreadable session in a second pass (D-10).
+ */
+function decodeSetLogs(rows: SyncSetLogDto[], keyB64: string, report: DecodeReport): DecryptedSetLog[] {
+  const decoded: DecryptedSetLog[] = [];
+  for (const row of rows) {
+    if (row.encryptedPayload) {
+      report.encryptedCount.setLog += 1;
+    }
+    try {
+      decoded.push(decryptSetLog(row, keyB64));
+    } catch (err) {
+      const reason: UnreadableReason = err instanceof RowDecodeError ? err.reason : 'decrypt_failed';
+      report.failedCount.setLog += 1;
+      report.unreadable.push({
+        entity: 'setLog',
+        id: row.id,
+        reason,
+        sessionId: row.sessionId,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      });
+    }
+  }
+  return decoded;
+}
+
+/**
  * Decrypt-merge a single HR sample.
  *
- * Encrypted path: decrypt → parse {"ts":<ms>,"bpm":<bpm>}.
+ * Encrypted path: decrypt → parse {"ts":<ms>,"bpm":<bpm>}. Decrypt failure →
+ * `RowDecodeError('decrypt_failed')`; `ts`/`bpm` not both numbers →
+ * `RowDecodeError('malformed_payload')` (Phase 150, D-08/D-12).
  * Plaintext path: use dto fields unchanged.
  */
 function decryptHrSample(hr: SyncHrSampleDto, keyB64: string): DecryptedHrSample {
   const { encryptedPayload, timestampMs, bpm, ...rest } = hr;
   if (encryptedPayload) {
-    const d = JSON.parse(decrypt(encryptedPayload, keyB64)) as {
-      ts:  number;
-      bpm: number;
-    };
+    let plaintext: string;
+    try {
+      plaintext = decrypt(encryptedPayload, keyB64);
+    } catch {
+      throw new RowDecodeError(`hr-sample row ${hr.id} could not be decrypted`, 'decrypt_failed');
+    }
+    let d: { ts: unknown; bpm: unknown };
+    try {
+      d = JSON.parse(plaintext) as { ts: unknown; bpm: unknown };
+    } catch {
+      throw new RowDecodeError(`hr-sample row ${hr.id} has a malformed payload`, 'malformed_payload');
+    }
+    if (typeof d.ts !== 'number' || typeof d.bpm !== 'number') {
+      throw new RowDecodeError(`hr-sample row ${hr.id} has a malformed payload`, 'malformed_payload');
+    }
     return { ...rest, timestampMs: d.ts, bpm: d.bpm };
   }
   return { ...rest, timestampMs, bpm };
 }
 
 /**
- * Decrypt-merge a single `planned_workout` row (Phase 135, D-14). Unlike
- * `decryptSession`/`decryptSetLog`/`decryptHrSample` there is NO plaintext fallback
- * branch — a `planned_workout` row is always encrypted. Two explicit guards, each
- * throwing an `Error` that names the row's `id` and the cause but NEVER the key or the
- * PAT (T-120-17):
+ * Decode every HR-sample row, tolerating a per-row failure — same shape as
+ * `decodeSetLogs` above, including the second-pass removal for an unreadable session
+ * (D-10). HR samples carry no `createdAt`/`updatedAt` on the wire (`SyncHrSampleDto`).
+ */
+function decodeHrSamples(rows: SyncHrSampleDto[], keyB64: string, report: DecodeReport): DecryptedHrSample[] {
+  const decoded: DecryptedHrSample[] = [];
+  for (const row of rows) {
+    if (row.encryptedPayload) {
+      report.encryptedCount.hrSample += 1;
+    }
+    try {
+      decoded.push(decryptHrSample(row, keyB64));
+    } catch (err) {
+      const reason: UnreadableReason = err instanceof RowDecodeError ? err.reason : 'decrypt_failed';
+      report.failedCount.hrSample += 1;
+      report.unreadable.push({
+        entity: 'hrSample',
+        id: row.id,
+        reason,
+        sessionId: row.sessionId,
+      });
+    }
+  }
+  return decoded;
+}
+
+/**
+ * Decrypt-merge a single `planned_workout` row (Phase 135, D-14; Phase 150, D-08/D-09).
+ * Unlike `decryptSession`/`decryptSetLog`/`decryptHrSample` there is NO plaintext
+ * fallback branch — a `planned_workout` row is always encrypted. Four explicit guards,
+ * each throwing a `RowDecodeError` that names the row's `id` and the cause but NEVER
+ * the key or the PAT (T-120-17):
  *   (a) an empty `encryptedPayload` — the tombstone shape the server already filters
  *       out (133 D-03); its arrival means the pull contract changed, so the message
- *       says that rather than skipping the row;
- *   (b) a decrypted payload whose `v` is not `1`.
+ *       says that rather than skipping the row (`malformed_payload`);
+ *   (b) a decrypt failure (`decrypt_failed`);
+ *   (c) a decrypted payload whose `v` is not `1` (`unknown_version` — this entity DOES
+ *       carry a schema version, unlike session/setLog/hrSample);
+ *   (d) a decrypted payload missing one of the required `id`/`templateId`/
+ *       `scheduledDate` fields (`malformed_payload`).
  * Parsed with a type assertion, not Zod — matching decryptSession/decryptSetLog: Zod
  * in this codebase guards LLM-supplied tool input, not internally decrypted payloads.
  * `calendarEventId` and `createdAt` are deliberately NOT copied onto
  * `DecryptedPlannedWorkout` (D-06) — the type has no field for them.
  *
- * Exported — like `normalizeWireBlock` above — not for convenience but because the
- * shared corpus's `plannedWorkoutCipher` vector (D-12) must run through this EXACT
+ * STILL exported and STILL throws (never caught internally) — like `normalizeWireBlock`
+ * above — not for convenience but because the shared corpus's `plannedWorkoutCipher`
+ * vector (D-12) and `decodePlannedWorkouts` below both must run through this EXACT
  * function, not a test-local copy of it, so the parity proof covers the real decode
- * boundary rather than a re-implementation of it (`tests/shared-vectors.test.ts`).
+ * boundary rather than a re-implementation of it (`tests/shared-vectors.test.ts`). Only
+ * `decryptMerge` catches what this function throws — a direct caller (the corpus test)
+ * still sees the `RowDecodeError` propagate.
  */
 export function decryptPlannedWorkout(row: MiscSyncRow, keyB64: string): DecryptedPlannedWorkout {
   if (!row.encryptedPayload) {
-    throw new Error(
+    throw new RowDecodeError(
       `planned_workout row ${row.id} arrived with an empty encryptedPayload — this is the ` +
         'tombstone shape the server should already filter out of plannedWorkouts (133 D-03); ' +
         'the pull contract may have changed',
+      'malformed_payload',
     );
   }
-  const plaintext = JSON.parse(decrypt(row.encryptedPayload, keyB64)) as {
+  let plaintextJson: string;
+  try {
+    plaintextJson = decrypt(row.encryptedPayload, keyB64);
+  } catch {
+    throw new RowDecodeError(`planned_workout row ${row.id} could not be decrypted`, 'decrypt_failed');
+  }
+  let plaintext: {
     v: number;
     id: string;
     templateId: string;
@@ -295,8 +405,16 @@ export function decryptPlannedWorkout(row: MiscSyncRow, keyB64: string): Decrypt
     deletedOccurrences?: string | null;
     completedSessionId?: string | null;
   };
+  try {
+    plaintext = JSON.parse(plaintextJson) as typeof plaintext;
+  } catch {
+    throw new RowDecodeError(`planned_workout row ${row.id} has a malformed payload`, 'malformed_payload');
+  }
   if (plaintext.v !== 1) {
-    throw new Error(`planned_workout row ${row.id} has unknown schema version v=${plaintext.v}`);
+    throw new RowDecodeError(`planned_workout row ${row.id} has unknown schema version v=${plaintext.v}`, 'unknown_version');
+  }
+  if (typeof plaintext.id !== 'string' || typeof plaintext.templateId !== 'string' || typeof plaintext.scheduledDate !== 'number') {
+    throw new RowDecodeError(`planned_workout row ${row.id} has a malformed payload`, 'malformed_payload');
   }
   return {
     id: plaintext.id,
@@ -314,37 +432,107 @@ export function decryptPlannedWorkout(row: MiscSyncRow, keyB64: string): Decrypt
 }
 
 /**
- * Decrypt-merge a single `settings` row (Phase 137, D-03). Like `decryptPlannedWorkout`
- * there is NO plaintext fallback branch — a `settings` row is always encrypted — and the
- * same all-or-nothing discipline applies: a tombstone-shaped empty `encryptedPayload`, an
- * unparseable payload, an unknown schema version `v`, or a missing type tag `t` all THROW,
- * propagating out of decryptMerge and failing the whole getSnapshot() call rather than
- * silently dropping one setting out of many. Parsed with a type assertion, not Zod —
- * matching decryptSession/decryptSetLog/decryptPlannedWorkout: Zod in this codebase guards
- * LLM-supplied tool input, not internally decrypted payloads.
+ * Decode every planned-workout row, tolerating a per-row failure (Phase 150,
+ * D-08/D-09/D-10/D-12) — same shape as `decodeSessions` above, calling the exported
+ * `decryptPlannedWorkout` (which still throws) per row.
+ */
+function decodePlannedWorkouts(rows: MiscSyncRow[], keyB64: string, report: DecodeReport): DecryptedPlannedWorkout[] {
+  const decoded: DecryptedPlannedWorkout[] = [];
+  for (const row of rows) {
+    if (row.encryptedPayload) {
+      report.encryptedCount.plannedWorkout += 1;
+    }
+    try {
+      decoded.push(decryptPlannedWorkout(row, keyB64));
+    } catch (err) {
+      const reason: UnreadableReason = err instanceof RowDecodeError ? err.reason : 'decrypt_failed';
+      report.failedCount.plannedWorkout += 1;
+      report.unreadable.push({
+        entity: 'plannedWorkout',
+        id: row.id,
+        reason,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      });
+    }
+  }
+  return decoded;
+}
+
+/**
+ * Decrypt-merge a single `settings` row (Phase 137, D-03; Phase 150, D-08/D-12). Like
+ * `decryptPlannedWorkout` there is NO plaintext fallback branch — a `settings` row is
+ * always encrypted. Four explicit guards, each throwing a `RowDecodeError` — a
+ * tombstone-shaped empty `encryptedPayload`, a decrypt failure, an unknown schema
+ * version `v`, or a missing type tag `t` (all four detailed below) — instead of
+ * aborting the whole `decryptMerge` call: the row is left out of `snapshot.settings`
+ * and reported on `decodeReport` instead (Plan 150-02 Task 2 moved this off the old
+ * all-or-nothing path; the read-guard boundary that still needs "this account's time
+ * zone is unreadable" strictness is `read-guard.ts`'s `assertTimeZoneReadable`).
+ * Parsed with a type assertion, not Zod — matching decryptSession/decryptSetLog/
+ * decryptPlannedWorkout: Zod in this codebase guards LLM-supplied tool input, not
+ * internally decrypted payloads.
  *
  * Never logs the decrypted `value` or the row's own fields into an error message (T-120-17).
  */
 export function decryptSetting(row: MiscSyncRow, keyB64: string): DecryptedSetting {
   if (!row.encryptedPayload) {
-    throw new Error(
+    throw new RowDecodeError(
       `settings row ${row.id} (key "${row.clientLocalId}") arrived with an empty encryptedPayload — ` +
         'this is the tombstone shape the server should already filter out of settings; the pull ' +
         'contract may have changed',
+      'malformed_payload',
     );
   }
-  const plaintext = JSON.parse(decrypt(row.encryptedPayload, keyB64)) as {
-    v: number;
-    t: string;
-    value: string;
-  };
+  let plaintextJson: string;
+  try {
+    plaintextJson = decrypt(row.encryptedPayload, keyB64);
+  } catch {
+    throw new RowDecodeError(`settings row ${row.id} (key "${row.clientLocalId}") could not be decrypted`, 'decrypt_failed');
+  }
+  let plaintext: { v: number; t: string; value: string };
+  try {
+    plaintext = JSON.parse(plaintextJson) as { v: number; t: string; value: string };
+  } catch {
+    throw new RowDecodeError(`settings row ${row.id} (key "${row.clientLocalId}") has a malformed payload`, 'malformed_payload');
+  }
   if (plaintext.v !== 1) {
-    throw new Error(`settings row ${row.id} (key "${row.clientLocalId}") has unknown schema version v=${plaintext.v}`);
+    throw new RowDecodeError(`settings row ${row.id} (key "${row.clientLocalId}") has unknown schema version v=${plaintext.v}`, 'unknown_version');
   }
   if (!plaintext.t) {
-    throw new Error(`settings row ${row.id} (key "${row.clientLocalId}") is missing its type tag`);
+    throw new RowDecodeError(`settings row ${row.id} (key "${row.clientLocalId}") is missing its type tag`, 'malformed_payload');
   }
   return { key: row.clientLocalId, type: plaintext.t, value: plaintext.value };
+}
+
+/**
+ * Decode every settings row, tolerating a per-row failure — same shape as
+ * `decodeSessions` above, calling the exported `decryptSetting` (which still throws)
+ * per row. `key` on the `UnreadableRow` is `row.clientLocalId` — the settings key name,
+ * never the decrypted `value` (T-120-17).
+ */
+function decodeSettings(rows: MiscSyncRow[], keyB64: string, report: DecodeReport): DecryptedSetting[] {
+  const decoded: DecryptedSetting[] = [];
+  for (const row of rows) {
+    if (row.encryptedPayload) {
+      report.encryptedCount.setting += 1;
+    }
+    try {
+      decoded.push(decryptSetting(row, keyB64));
+    } catch (err) {
+      const reason: UnreadableReason = err instanceof RowDecodeError ? err.reason : 'decrypt_failed';
+      report.failedCount.setting += 1;
+      report.unreadable.push({
+        entity: 'setting',
+        id: row.id,
+        reason,
+        key: row.clientLocalId,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      });
+    }
+  }
+  return decoded;
 }
 
 /**
@@ -373,11 +561,44 @@ export function normalizeWireTemplateExercise(te: SyncTemplateExerciseDto): Norm
 }
 
 /**
- * Apply decrypt-merge to every encrypted entity in the raw snapshot. Sessions decode
- * per-row (Phase 150, D-08) and never abort the whole call — a failure is collected on
- * the returned `decodeReport` instead. Set-logs, HR samples, planned workouts and
- * settings still decode via `.map()` and can still throw out of this function; Plan
- * 150-02 Task 2 makes them per-row tolerant the same way.
+ * Remove every row of `rows` whose `sessionId` points at a session that ended up
+ * unreadable, counting each removal on that session's own `UnreadableRow` entry via
+ * `countField` (Phase 150, D-10). A row whose `sessionId` matches NO session at all
+ * (readable or unreadable — an orphan, already possible before this plan) is left
+ * completely untouched, so a clean dataset with no unreadable rows stays byte-identical.
+ */
+function removeRowsOfUnreadableSessions<T extends { sessionId: string }>(
+  rows: T[],
+  unreadableSessionIds: ReadonlySet<string>,
+  report: DecodeReport,
+  countField: 'affectedSetLogCount' | 'affectedHrSampleCount',
+): T[] {
+  const kept: T[] = [];
+  for (const row of rows) {
+    if (unreadableSessionIds.has(row.sessionId)) {
+      const sessionRow = report.unreadable.find((r) => r.entity === 'session' && r.id === row.sessionId);
+      if (sessionRow) {
+        sessionRow[countField] = (sessionRow[countField] ?? 0) + 1;
+      }
+    } else {
+      kept.push(row);
+    }
+  }
+  return kept;
+}
+
+/**
+ * Apply decrypt-merge to every encrypted entity in the raw snapshot. Every entity now
+ * decodes per row (Phase 150, D-08) and never aborts the whole call — a failure is
+ * collected on the returned `decodeReport` instead of thrown out of this function.
+ *
+ * Set-logs and HR samples get a second pass (D-10): any row whose `sessionId` points at
+ * a session that itself ended up unreadable is removed from the snapshot and counted on
+ * that session's own `UnreadableRow` (`affectedSetLogCount`/`affectedHrSampleCount`)
+ * instead of appearing as its own entry — its own decode already succeeded, it is the
+ * session context that is gone. A set-log/HR row that fails to decode ON ITS OWN merit
+ * still gets its own `UnreadableRow` via `decodeSetLogs`/`decodeHrSamples` above,
+ * regardless of whether its session is readable.
  */
 function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: DecryptedSnapshot; decodeReport: DecodeReport } {
   const decodeReport = newDecodeReport();
@@ -389,6 +610,19 @@ function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: Decryp
   // made this concrete. An unguarded assignment here does not fail here: it puts `undefined`
   // into the snapshot and fails much later, at whatever `.filter` touches it first, with a
   // message that names neither the field nor this function.
+  const sessions = decodeSessions(raw.sessions ?? [], keyB64, decodeReport);
+  const unreadableSessionIds = new Set(
+    decodeReport.unreadable.filter((r) => r.entity === 'session').map((r) => r.id),
+  );
+
+  let setLogs = decodeSetLogs(raw.setLogs ?? [], keyB64, decodeReport);
+  let hrSamples = decodeHrSamples(raw.hrSamples ?? [], keyB64, decodeReport);
+
+  if (unreadableSessionIds.size > 0) {
+    setLogs = removeRowsOfUnreadableSessions(setLogs, unreadableSessionIds, decodeReport, 'affectedSetLogCount');
+    hrSamples = removeRowsOfUnreadableSessions(hrSamples, unreadableSessionIds, decodeReport, 'affectedHrSampleCount');
+  }
+
   const snapshot: DecryptedSnapshot = {
     syncedAt:             raw.syncedAt,
     exercises:            raw.exercises ?? [],
@@ -396,11 +630,11 @@ function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: Decryp
     templates:            raw.templates ?? [],
     blocks:               (raw.blocks ?? []).map(normalizeWireBlock),
     templateExercises:    (raw.templateExercises ?? []).map(normalizeWireTemplateExercise),
-    sessions:  decodeSessions(raw.sessions ?? [], keyB64, decodeReport),
-    setLogs:   (raw.setLogs   ?? []).map(sl => decryptSetLog(sl,  keyB64)),
-    hrSamples: (raw.hrSamples ?? []).map(hr => decryptHrSample(hr, keyB64)),
-    plannedWorkouts: (raw.plannedWorkouts ?? []).map(pw => decryptPlannedWorkout(pw, keyB64)),
-    settings: (raw.settings ?? []).map(s => decryptSetting(s, keyB64)),
+    sessions,
+    setLogs,
+    hrSamples,
+    plannedWorkouts: decodePlannedWorkouts(raw.plannedWorkouts ?? [], keyB64, decodeReport),
+    settings: decodeSettings(raw.settings ?? [], keyB64, decodeReport),
   };
 
   return { snapshot, decodeReport };
