@@ -52,7 +52,8 @@ import {
   type ExerciseProgressSeries,
 } from '../training-state/exercise-progress.js';
 import { computeFormatProgress, type FormatProgressSeries } from '../training-state/format-progress.js';
-import type { DecryptedSnapshot, CatalogExercise } from '../types.js';
+import { decodeReportOf, assertEntitiesReadable, assertTimeZoneReadable } from '../read-guard.js';
+import type { DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
 import type { CoachParameters } from '../coach-parameters.js';
 
 // ---------------------------------------------------------------------------
@@ -150,20 +151,26 @@ export function registerToolGetProgress(
         'format templates if `templateId` is omitted. `points` overrides how many recent points ' +
         'each series returns (3-30) for this one call. A call with no matching data returns an ' +
         'empty series, never an error. Set `outputFile: true` to write the full point series to a ' +
-        'local file instead of returning it inline.',
+        'local file instead of returning it inline. Every result carries unreadable: rows that ' +
+        'could not be decrypted or decoded (entity, id, reason and plaintext routing fields); an ' +
+        'empty list means every encrypted row was read — including in the outputFile summary.',
       inputSchema: GetProgressSchema,
       annotations: { readOnlyHint: true },
     },
     async (args) => {
       try {
         const data = await getSnapshot(pat, keyB64, serverUrl);
+        const report = decodeReportOf(data);
+        assertEntitiesReadable(report, ['session', 'setLog', 'setting'], 'Progress error');
+        assertTimeZoneReadable(report, 'Progress error');
+        const unreadable: UnreadableRow[] = report.unreadable;
         const { params, source } = await loadCoachParameters({ pat, serverUrl });
         const result = getProgress(args as GetProgressArgs, {
           snapshot: data.snapshot,
           catalog: data.catalog,
           coachParameters: params,
         });
-        const full = { ...result, parametersSource: source };
+        const full = { ...result, parametersSource: source, unreadable };
 
         if ((args as GetProgressArgs).outputFile) {
           const itemCount = full.series.reduce((sum, s) => sum + s.points.length, 0);
@@ -184,6 +191,7 @@ export function registerToolGetProgress(
                     rule: s.rule,
                   })),
                   parametersSource: source,
+                  unreadable,
                 }
               : {
                   kind: full.kind,
@@ -195,6 +203,7 @@ export function registerToolGetProgress(
                     skippedSessionCount: s.skippedSessionCount,
                   })),
                   parametersSource: source,
+                  unreadable,
                 };
           return { content: [{ type: 'text' as const, text: JSON.stringify(summary) }] };
         }

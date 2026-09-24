@@ -28,11 +28,22 @@
  *     SL_B3: SQUAT,  w=90, r=3                  → e1RM = 90*(1+3/30) = 99.0
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { GetStatsSchema } from '../../src/schemas.js';
-import { getStats } from '../../src/tools/get_stats.js';
+import { getStats, registerToolGetStats } from '../../src/tools/get_stats.js';
 import type { GetStatsResult } from '../../src/tools/get_stats.js';
 import type { DecryptedSnapshot, CatalogExercise, CatalogExerciseWire } from '../../src/types.js';
+
+// Partial mock — only getSnapshot is replaced. `normalizeCatalog` (imported and called
+// directly by this file's own CAP-05 gap-closure tests below) MUST stay the real
+// implementation, or those tests would silently exercise a mock instead of production code.
+vi.mock('../../src/cache.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/cache.js')>('../../src/cache.js');
+  return { ...actual, getSnapshot: vi.fn() };
+});
+
+import * as cacheModule from '../../src/cache.js';
 import { normalizeCatalog } from '../../src/cache.js';
 import {
   mockSnapshot,
@@ -801,5 +812,89 @@ describe('get_stats — by capabilities, wire catalog with genuinely omitted fie
 
     const result = getStats({ by: 'capabilities' }, { snapshot: emptySnapshot, catalog: normalizedCatalog });
     expect(result.by).toBe('capabilities');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Registered MCP handler — unreadable / D-11 (Phase 150)
+// ---------------------------------------------------------------------------
+
+const DUMMY_CFG = { pat: 'calicomp_pat_test_secret', keyB64: 'AAAA', serverUrl: 'https://example.test' };
+
+function mockCacheFor(snapshot: DecryptedSnapshot, catalog: CatalogExercise[] = mockCatalog) {
+  return {
+    snapshot,
+    catalog,
+    profile: {
+      userId: 'user-test-1',
+      email: 'test@example.com',
+      displayName: 'Test User',
+      avatarUrl: 'https://example.com/avatar.svg',
+      isPremium: false,
+      createdAt: 1_700_000_000_000,
+    },
+    fetchedAt: Date.now(),
+  };
+}
+
+function getHandler(
+  server: McpServer,
+): (args: unknown) => Promise<{ isError?: boolean; content: { type: string; text: string }[] }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (server as any)._registeredTools['get_stats'].handler;
+}
+
+describe('get_stats — registered MCP handler (Phase 150, D-10/D-11)', () => {
+  beforeEach(() => {
+    vi.mocked(cacheModule.getSnapshot).mockReset();
+  });
+
+  it('P150 D-10 get_stats carries unreadable and leaves the broken session out of its counts', async () => {
+    // The broken session ("sess-broken") never appears in `mockSnapshot.sessions` — exactly
+    // as `decryptMerge` (cache.ts) already excludes an unreadable row from the snapshot
+    // itself; this decode report is the ONLY place the failure is still visible.
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(mockSnapshot),
+      decodeReport: {
+        unreadable: [{ entity: 'session', id: 'sess-broken', reason: 'decrypt_failed' }],
+        encryptedCount: { session: 2, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+        failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+      },
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetStats(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ by: 'exercise', exerciseId: CATALOG_EXERCISE_ID_PULLUP });
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as Record<string, unknown>;
+    expect(body.unreadable).toEqual([{ entity: 'session', id: 'sess-broken', reason: 'decrypt_failed' }]);
+    // Counts are computed purely from the (already-clean) snapshot — the broken session
+    // was never in it, so the pure getStats result is unaffected by the decode report.
+    const pure = getStats({ by: 'exercise', exerciseId: CATALOG_EXERCISE_ID_PULLUP }, data);
+    expect(body.setCount).toBe(pure.setCount);
+    expect(body.sessionCount).toBe(pure.sessionCount);
+  });
+
+  it('P150 D-11 get_stats refuses when every encrypted set-log failed', async () => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(mockSnapshot),
+      decodeReport: {
+        unreadable: [{ entity: 'setLog', id: 'sl-broken', reason: 'decrypt_failed' }],
+        encryptedCount: { session: 0, setLog: 1, hrSample: 0, plannedWorkout: 0, setting: 0 },
+        failedCount: { session: 0, setLog: 1, hrSample: 0, plannedWorkout: 0, setting: 0 },
+      },
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetStats(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ by: 'exercise', exerciseId: CATALOG_EXERCISE_ID_PULLUP });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('every encrypted setLog');
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.pat);
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
   });
 });

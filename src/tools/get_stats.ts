@@ -78,7 +78,8 @@ import { bestE1rm } from '../e1rm.js';
 import { weightFor } from '../training-state/muscle-balance.js';
 import { weightedCounts as capabilityWeightedCounts } from '../training-state/capability-balance.js';
 import type { CapabilityLevelSetCount } from '../training-state/capability-balance.js';
-import type { DecryptedSnapshot, DecryptedSetLog, CatalogExercise } from '../types.js';
+import { decodeReportOf, assertEntitiesReadable } from '../read-guard.js';
+import type { DecryptedSnapshot, DecryptedSetLog, CatalogExercise, UnreadableRow } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -500,18 +501,23 @@ export function registerToolGetStats(
         '(`by: "muscle"`), or break down over every capability axis at once with no further ' +
         'argument (`by: "capabilities"` — balance, mobility, breath, etc.). e1RM uses the same ' +
         'Epley formula as the app. `trend.points` carries the full per-session e1RM series ' +
-        'alongside the existing first-vs-last delta.',
+        'alongside the existing first-vs-last delta. Every result carries unreadable: rows that ' +
+        'could not be decrypted or decoded (entity, id, reason and plaintext routing fields); an ' +
+        'empty list means every encrypted row was read.',
       inputSchema: GetStatsSchema,
       annotations: { readOnlyHint: true },
     },
     async (args) => {
       try {
         const data   = await getSnapshot(pat, keyB64, serverUrl);
+        const report = decodeReportOf(data);
+        assertEntitiesReadable(report, ['session', 'setLog'], 'Stats error');
         const result = getStats(args as GetStatsArgs, {
           snapshot: data.snapshot,
           catalog:  data.catalog,
         });
-        return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
+        const unreadable: UnreadableRow[] = report.unreadable;
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ ...result, unreadable }) }] };
       } catch (err) {
         return {
           isError: true,

@@ -396,4 +396,75 @@ describe('get_progress — registered MCP handler', () => {
     expect(result.content[0].text).not.toContain(DUMMY_CFG.pat);
     expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
   });
+
+  // -------------------------------------------------------------------------
+  // unreadable / D-11 (Phase 150)
+  // -------------------------------------------------------------------------
+
+  it('P150 D-33 get_progress carries unreadable in the outputFile summary', async () => {
+    const s1 = buildSession({ id: 's1', startTime: 1_700_000_000_000 });
+    const snapshot = snapshotWithZone(TZ, {
+      sessions: [s1],
+      setLogs: [buildSetLog({ id: 'sl1', sessionId: 's1', createdAt: s1.startTime })],
+    });
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(snapshot),
+      decodeReport: {
+        unreadable: [{ entity: 'setLog', id: 'sl-broken', reason: 'decrypt_failed' }],
+        encryptedCount: { session: 0, setLog: 2, hrSample: 0, plannedWorkout: 0, setting: 0 },
+        failedCount: { session: 0, setLog: 1, hrSample: 0, plannedWorkout: 0, setting: 0 },
+      },
+    });
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+    vi.mocked(fileChannelModule.writeExportFile).mockResolvedValue({
+      path: '/tmp/calicomp-mcp-exports/fake-uuid.json',
+      bytes: 555,
+      itemCount: 1,
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetProgress(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({
+      kind: 'exercise',
+      exerciseId: CATALOG_EXERCISE_ID_PUSHUP,
+      outputFile: true,
+    });
+
+    const [writtenPayload] = vi.mocked(fileChannelModule.writeExportFile).mock.calls[0];
+    expect(writtenPayload).toHaveProperty('unreadable', [{ entity: 'setLog', id: 'sl-broken', reason: 'decrypt_failed' }]);
+
+    const body = JSON.parse(result.content[0].text) as { unreadable?: unknown };
+    expect(body.unreadable).toEqual([{ entity: 'setLog', id: 'sl-broken', reason: 'decrypt_failed' }]);
+  });
+
+  it('P150 D-11 get_progress refuses when every encrypted session failed', async () => {
+    const snapshot = snapshotWithZone(TZ, {});
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(snapshot),
+      decodeReport: {
+        unreadable: [{ entity: 'session', id: 'sess-broken', reason: 'decrypt_failed' }],
+        encryptedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+        failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+      },
+    });
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetProgress(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ kind: 'exercise' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('every encrypted session');
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.pat);
+    expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
+  });
 });
