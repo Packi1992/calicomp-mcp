@@ -57,7 +57,7 @@ import {
   computeConsistency,
   computePersonalRecords,
   type ConsistencyResult,
-  type PersonalRecordsResult,
+  type PersonalRecord,
 } from '../training-state/consistency.js';
 import { computeMuscleBalance, type MuscleBalanceWindow } from '../training-state/muscle-balance.js';
 import { computeAdherence } from '../training-state/adherence.js';
@@ -68,13 +68,17 @@ import {
 } from '../training-state/exercise-progress.js';
 import { buildNarrative } from '../training-state/narrative.js';
 import { decodeReportOf, assertEntitiesReadable, assertTimeZoneReadable } from '../read-guard.js';
+import { createExerciseNameResolver, type ExerciseNameFields, type ExerciseNameResolver } from '../exercise-names.js';
 import type { DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type GetTrainingStateArgs = Record<string, never>;
+/** Phase 150, D-14: the only argument, optional — localizes exercise names additively. */
+export interface GetTrainingStateArgs {
+  lang?: string;
+}
 
 /**
  * The adherence SHORT FORM this overview carries — counts, ratio and `explanation` only.
@@ -96,8 +100,12 @@ export interface GetTrainingStateAdherence {
 /**
  * One recently trained exercise's HEADER data — deliberately WITHOUT `points` (same
  * schmalheit reasoning; the full series is `get_progress`'s job).
+ *
+ * `exerciseKey`/`exerciseDeleted`/`exerciseUnknown` are additive (Phase 150, D-16) —
+ * present ONLY when the tool's `nameResolver` is supplied (always true for the
+ * registered handler; `Partial` keeps a caller who omits it byte-identical).
  */
-export interface GetTrainingStateRecentExercise {
+export interface GetTrainingStateRecentExercise extends Partial<Pick<ExerciseNameFields, 'exerciseKey' | 'exerciseDeleted' | 'exerciseUnknown'>> {
   exerciseId: string;
   exerciseName: string | null;
   metric: ExerciseProgressMetric;
@@ -105,6 +113,15 @@ export interface GetTrainingStateRecentExercise {
   bestSetDirection: DirectionOutcome;
   sessionTotalDirection: DirectionOutcome;
   rule: string;
+}
+
+/** One personal record, additively named (Phase 150, D-16) — same additivity story as above. */
+export type PersonalRecordWithName = PersonalRecord & Partial<Pick<ExerciseNameFields, 'exerciseKey' | 'exerciseDeleted' | 'exerciseUnknown'>>;
+
+/** `computePersonalRecords`'s result shape, additively named (Phase 150, D-16). */
+export interface GetTrainingStatePersonalRecords {
+  maxReps: PersonalRecordWithName[];
+  maxHoldSeconds: PersonalRecordWithName[];
 }
 
 /** The tool's final, additive-only result shape (D-14/D-22). */
@@ -132,7 +149,7 @@ export interface GetTrainingStateResult {
    */
   adherenceUnavailableReason?: 'calendar_unreadable';
   recentExercises: GetTrainingStateRecentExercise[];
-  personalRecords: PersonalRecordsResult;
+  personalRecords: GetTrainingStatePersonalRecords;
   narrative: string;
 }
 
@@ -143,7 +160,7 @@ export interface GetTrainingStateResult {
 /**
  * Compute the athlete's current training state — the full overview.
  *
- * @param args  Validated args from GetTrainingStateSchema (argument-less in this plan).
+ * @param args  Validated args from GetTrainingStateSchema — only an optional `lang` (D-14).
  * @param data  Decrypted snapshot + catalog + the already-loaded coach parameters and
  *              their source. The caller (the registered handler below) is the one place
  *              that knows whether `coachParameters` came from the server or the defaults.
@@ -167,10 +184,17 @@ export function getTrainingState(
      * never inspects a `DecodeReport` itself.
      */
     calendarReadable?: boolean;
+    /**
+     * Optional exercise-name resolver (Phase 150, D-16) — the registered handler below
+     * always supplies one, built from `catalog`/`snapshot`/`args.lang`. Omitting it keeps
+     * `recentExercises`/`personalRecords` byte-identical to before this plan; it is
+     * NEVER consulted while building `narrative` (D-03 — see below).
+     */
+    nameResolver?: ExerciseNameResolver;
   },
   nowMs: number,
 ): GetTrainingStateResult {
-  const { snapshot, catalog, coachParameters, parametersSource, calendarReadable = true } = data;
+  const { snapshot, catalog, coachParameters, parametersSource, calendarReadable = true, nameResolver } = data;
 
   // Exactly ONE resolution for this whole tool call — every calculator below receives
   // `timeZoneId` as a plain parameter, never resolving it again itself.
@@ -264,6 +288,21 @@ export function getTrainingState(
     })),
   });
 
+  // Phase 150 (D-03/D-16): enrichment happens AFTER the narrative is built, from the
+  // SAME unenriched recentExercises/personalRecords values the narrative already
+  // consumed above — the narrative therefore never sees a resolver-derived name, and
+  // stays byte-identical whether or not `lang` is set. Without a resolver, both stay
+  // byte-identical to before this plan (`nameResolver` is `undefined` in that case).
+  const enrichedRecentExercises: GetTrainingStateRecentExercise[] = nameResolver
+    ? recentExercises.map((e) => ({ ...e, ...nameResolver.forExerciseId(e.exerciseId) }))
+    : recentExercises;
+  const enrichedPersonalRecords: GetTrainingStatePersonalRecords = nameResolver
+    ? {
+        maxReps: personalRecords.maxReps.map((r) => ({ ...r, ...nameResolver.forExerciseId(r.exerciseId) })),
+        maxHoldSeconds: personalRecords.maxHoldSeconds.map((r) => ({ ...r, ...nameResolver.forExerciseId(r.exerciseId) })),
+      }
+    : personalRecords;
+
   return {
     timeZoneId,
     asOfDate,
@@ -273,8 +312,8 @@ export function getTrainingState(
     muscleBalance,
     adherence,
     ...(adherenceUnavailableReason !== undefined ? { adherenceUnavailableReason } : {}),
-    recentExercises,
-    personalRecords,
+    recentExercises: enrichedRecentExercises,
+    personalRecords: enrichedPersonalRecords,
     narrative,
   };
 }
@@ -308,7 +347,9 @@ export function registerToolGetTrainingState(
         'explanation about what removedOccurrenceCount does and does not mean (adherence); the ' +
         'most recently trained exercises with their direction labels (recentExercises); all-time ' +
         'personal records (personalRecords); and a short, deterministic narrative sentence built ' +
-        'from these already-computed numbers, never a second model call. This tool stays ' +
+        'from these already-computed numbers, never a second model call. Every entry in ' +
+        'recentExercises and personalRecords carries exerciseKey next to its exerciseId ' +
+        '(optional lang, default English) — the narrative itself is unaffected by lang. This tool stays ' +
         'narrow on purpose: it carries no point series and no pair lists. For per-exercise or ' +
         'per-format progress series, call get_progress. For the full adherence pair/missed lists, ' +
         'call get_adherence. For raw session history, call get_history. All calendar-day mapping ' +
@@ -328,6 +369,11 @@ export function registerToolGetTrainingState(
         assertTimeZoneReadable(report, 'Training state error');
         const calendarReadable = report.failedCount.plannedWorkout === 0;
         const { params, source } = await loadCoachParameters({ pat, serverUrl });
+        const nameResolver = createExerciseNameResolver({
+          catalog: data.catalog,
+          snapshot: data.snapshot,
+          lang: (args as GetTrainingStateArgs).lang,
+        });
         const result = getTrainingState(
           args as GetTrainingStateArgs,
           {
@@ -336,6 +382,7 @@ export function registerToolGetTrainingState(
             coachParameters: params,
             parametersSource: source,
             calendarReadable,
+            nameResolver,
           },
           Date.now(),
         );

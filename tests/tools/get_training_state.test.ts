@@ -377,3 +377,110 @@ describe('get_training_state — registered MCP handler', () => {
     expect(result.content[0].text).toContain(TRAINING_TIMEZONE_SETTING_KEY);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Exercise names (Phase 150, D-03/D-16/D-17)
+// ---------------------------------------------------------------------------
+
+describe('get_training_state — exercise names (D-03/D-16/D-17)', () => {
+  beforeEach(() => {
+    vi.mocked(cacheModule.getSnapshot).mockReset();
+    vi.mocked(coachParametersModule.loadCoachParameters).mockReset();
+  });
+
+  it('P150 D-16 recentExercises and personalRecords carry exerciseKey', async () => {
+    const snapshot = snapshotWithZone(TZ);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({});
+    const body = JSON.parse(result.content[0].text) as {
+      recentExercises: Array<{ exerciseKey?: string | null }>;
+      personalRecords: { maxReps: Array<{ exerciseKey?: string | null }> };
+    };
+    expect(body.recentExercises.length).toBeGreaterThan(0);
+    for (const entry of body.recentExercises) {
+      expect(entry.exerciseKey).toBeTruthy();
+    }
+    expect(body.personalRecords.maxReps.length).toBeGreaterThan(0);
+    for (const record of body.personalRecords.maxReps) {
+      expect(record.exerciseKey).toBeTruthy();
+    }
+  });
+
+  it('P150 D-03 the narrative is unchanged even with lang set', async () => {
+    const snapshot = snapshotWithZone(TZ);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const withoutLang = await handler({});
+    const withLang = await handler({ lang: 'de' });
+    const bodyWithoutLang = JSON.parse(withoutLang.content[0].text) as { narrative: string };
+    const bodyWithLang = JSON.parse(withLang.content[0].text) as { narrative: string };
+    expect(bodyWithLang.narrative).toBe(bodyWithoutLang.narrative);
+  });
+
+  it('P150 D-17 a deleted user exercise in personalRecords keeps its name', async () => {
+    const deletedUserExerciseId = 'eeeeeeee-0010-4000-e000-000000000001';
+    const snapshot = snapshotWithZone(TZ, {
+      exercises: [
+        {
+          id: deletedUserExerciseId,
+          name: 'Alte Übung',
+          mode: 'REPS',
+          usesWeight: false,
+          createdAt: 1_700_000_000_000,
+          updatedAt: 1_700_000_000_000,
+          deletedAt: 1_700_000_100_000,
+        },
+      ],
+      setLogs: [
+        ...mockSnapshot.setLogs,
+        {
+          id: 'sl-deleted-exercise',
+          sessionId: mockSnapshot.sessions[0].id,
+          exerciseId: deletedUserExerciseId,
+          completedReps: 12,
+          completedTimeSeconds: null,
+          weightUsed: null,
+          startedAt: null,
+          measuredTimeSeconds: null,
+          createdAt: mockSnapshot.sessions[0].startTime,
+          updatedAt: mockSnapshot.sessions[0].startTime,
+        },
+      ],
+    });
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({});
+    const body = JSON.parse(result.content[0].text) as {
+      personalRecords: { maxReps: Array<{ exerciseId: string; exerciseName: string | null; exerciseDeleted?: boolean }> };
+    };
+    const record = body.personalRecords.maxReps.find((r) => r.exerciseId === deletedUserExerciseId);
+    expect(record).toBeDefined();
+    expect(record!.exerciseName).toBe('Alte Übung');
+    expect(record!.exerciseDeleted).toBe(true);
+  });
+});

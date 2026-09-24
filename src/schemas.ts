@@ -268,11 +268,16 @@ export const GetExerciseCatalogSchema = z.object({
 
 /**
  * get_training_state — Phase 137 (D-14 TRACER SLICE): the coach's standard overview
- * entry point. Argument-less in this plan; later Phase 137 plans extend this shape
- * additively as further training-state metrics ship (volume, per-exercise progress,
- * adherence) — never replace it with a new discriminant.
+ * entry point. Later Phase 137 plans extend this shape additively as further
+ * training-state metrics ship (volume, per-exercise progress, adherence) — never
+ * replace it with a new discriminant.
+ *
+ * `lang` (Phase 150, D-14) optionally localizes every `recentExercises`/`personalRecords`
+ * `exerciseName` — the narrative sentence itself is never affected by `lang` (D-03).
  */
-export const GetTrainingStateSchema = z.object({});
+export const GetTrainingStateSchema = z.object({
+  lang: LANG.optional(),
+});
 
 // ---------------------------------------------------------------------------
 // WRITE-tool input schemas (D-05) — propose_plan_update / propose_new_plan /
