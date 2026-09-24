@@ -1,0 +1,308 @@
+{
+  "getHistory": {
+    "sessions": [
+      {
+        "id": "char150-session-running",
+        "startTime": 1768204800000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1768204800000,
+        "updatedAt": 1768204800000
+      },
+      {
+        "id": "char150-session-qc-with-template",
+        "templateId": "char150-tpl-live",
+        "startTime": 1768118400000,
+        "endTime": 1768120200000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": true,
+        "createdAt": 1768118400000,
+        "updatedAt": 1768120200000
+      },
+      {
+        "id": "char150-session-tpl-live-2",
+        "templateId": "char150-tpl-live",
+        "startTime": 1768032000000,
+        "endTime": 1768035600000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1768032000000,
+        "updatedAt": 1768035600000
+      },
+      {
+        "id": "char150-session-qc-1",
+        "startTime": 1767945600000,
+        "endTime": 1767947400000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": true,
+        "createdAt": 1767945600000,
+        "updatedAt": 1767947400000
+      },
+      {
+        "id": "char150-session-templateless-2",
+        "startTime": 1767859200000,
+        "endTime": 1767862800000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1767859200000,
+        "updatedAt": 1767862800000
+      },
+      {
+        "id": "char150-session-templateless-1",
+        "startTime": 1767772800000,
+        "endTime": 1767776400000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1767772800000,
+        "updatedAt": 1767776400000
+      },
+      {
+        "id": "char150-session-tpl-unknown",
+        "templateId": "char150-tpl-unknown-ref",
+        "startTime": 1767686400000,
+        "endTime": 1767690000000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1767686400000,
+        "updatedAt": 1767690000000
+      },
+      {
+        "id": "char150-session-tpl-deleted",
+        "templateId": "char150-tpl-deleted",
+        "startTime": 1767600000000,
+        "endTime": 1767603600000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1767600000000,
+        "updatedAt": 1767603600000
+      },
+      {
+        "id": "char150-session-deleted",
+        "startTime": 1767513600000,
+        "endTime": 1767517200000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1767513600000,
+        "updatedAt": 1768435200000,
+        "deletedAt": 1768435200000
+      },
+      {
+        "id": "char150-session-tpl-live-1",
+        "templateId": "char150-tpl-live",
+        "startTime": 1767427200000,
+        "endTime": 1767430800000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1767427200000,
+        "updatedAt": 1767430800000
+      }
+    ],
+    "setLogs": [
+      {
+        "id": "char150-sl-1",
+        "sessionId": "char150-session-tpl-live-1",
+        "exerciseId": "char150-cat-pushup",
+        "exerciseSource": "CATALOG",
+        "completedReps": 10,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1767427500000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1767427500000,
+        "updatedAt": 1767427500000
+      },
+      {
+        "id": "char150-sl-2",
+        "sessionId": "char150-session-tpl-live-1",
+        "exerciseId": "char150-custom-live",
+        "exerciseSource": "CUSTOM",
+        "completedReps": 5,
+        "completedTimeSeconds": null,
+        "weightUsed": 8,
+        "startedAt": 1767428100000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1767428100000,
+        "updatedAt": 1767428100000
+      },
+      {
+        "id": "char150-sl-3",
+        "sessionId": "char150-session-tpl-live-2",
+        "exerciseId": "char150-cat-pushup",
+        "exerciseSource": "CATALOG",
+        "completedReps": 12,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1768032300000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1768032300000,
+        "updatedAt": 1768032300000
+      },
+      {
+        "id": "char150-sl-no-exercise-id",
+        "sessionId": "char150-session-tpl-live-2",
+        "workoutExerciseId": "char150-te-live-1",
+        "exerciseSource": "CATALOG",
+        "completedReps": 9,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1768032900000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1768032900000,
+        "updatedAt": 1768032900000
+      },
+      {
+        "id": "char150-sl-4",
+        "sessionId": "char150-session-templateless-1",
+        "exerciseId": "char150-cat-squat",
+        "exerciseSource": "CATALOG",
+        "completedReps": 8,
+        "completedTimeSeconds": null,
+        "weightUsed": 40,
+        "startedAt": 1767773100000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1767773100000,
+        "updatedAt": 1767773100000
+      },
+      {
+        "id": "char150-sl-qc1",
+        "sessionId": "char150-session-qc-1",
+        "exerciseId": "char150-cat-pullup",
+        "exerciseSource": "CATALOG",
+        "completedReps": 6,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1767945900000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1767945900000,
+        "updatedAt": 1767945900000
+      },
+      {
+        "id": "char150-sl-deleted-session",
+        "sessionId": "char150-session-deleted",
+        "exerciseId": "char150-cat-pushup",
+        "exerciseSource": "CATALOG",
+        "completedReps": 10,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1767513900000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1767513900000,
+        "updatedAt": 1767513900000
+      }
+    ]
+  },
+  "getHistoryExercise": {
+    "sessions": [
+      {
+        "id": "char150-session-tpl-live-2",
+        "templateId": "char150-tpl-live",
+        "startTime": 1768032000000,
+        "endTime": 1768035600000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1768032000000,
+        "updatedAt": 1768035600000
+      },
+      {
+        "id": "char150-session-deleted",
+        "startTime": 1767513600000,
+        "endTime": 1767517200000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1767513600000,
+        "updatedAt": 1768435200000,
+        "deletedAt": 1768435200000
+      },
+      {
+        "id": "char150-session-tpl-live-1",
+        "templateId": "char150-tpl-live",
+        "startTime": 1767427200000,
+        "endTime": 1767430800000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1767427200000,
+        "updatedAt": 1767430800000
+      }
+    ],
+    "setLogs": [
+      {
+        "id": "char150-sl-1",
+        "sessionId": "char150-session-tpl-live-1",
+        "exerciseId": "char150-cat-pushup",
+        "exerciseSource": "CATALOG",
+        "completedReps": 10,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1767427500000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1767427500000,
+        "updatedAt": 1767427500000
+      },
+      {
+        "id": "char150-sl-2",
+        "sessionId": "char150-session-tpl-live-1",
+        "exerciseId": "char150-custom-live",
+        "exerciseSource": "CUSTOM",
+        "completedReps": 5,
+        "completedTimeSeconds": null,
+        "weightUsed": 8,
+        "startedAt": 1767428100000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1767428100000,
+        "updatedAt": 1767428100000
+      },
+      {
+        "id": "char150-sl-3",
+        "sessionId": "char150-session-tpl-live-2",
+        "exerciseId": "char150-cat-pushup",
+        "exerciseSource": "CATALOG",
+        "completedReps": 12,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1768032300000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1768032300000,
+        "updatedAt": 1768032300000
+      },
+      {
+        "id": "char150-sl-no-exercise-id",
+        "sessionId": "char150-session-tpl-live-2",
+        "workoutExerciseId": "char150-te-live-1",
+        "exerciseSource": "CATALOG",
+        "completedReps": 9,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1768032900000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1768032900000,
+        "updatedAt": 1768032900000
+      },
+      {
+        "id": "char150-sl-deleted-session",
+        "sessionId": "char150-session-deleted",
+        "exerciseId": "char150-cat-pushup",
+        "exerciseSource": "CATALOG",
+        "completedReps": 10,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1767513900000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1767513900000,
+        "updatedAt": 1767513900000
+      }
+    ]
+  }
+}
