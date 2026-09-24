@@ -28,6 +28,7 @@ vi.mock('../src/crypto.js');
 
 // ── Imports after mocks ──────────────────────────────────────────────────────
 import { getSnapshot, __resetCache, projectUserExerciseToCatalog } from '../src/cache.js';
+import { assertEntitiesReadable } from '../src/read-guard.js';
 import * as httpModule from '../src/http.js';
 import * as cryptoModule from '../src/crypto.js';
 
@@ -642,6 +643,64 @@ describe('decrypt-merge: settings', () => {
     expect(decodeReport.unreadable[0].key).toBe('training_timezone_id');
     expect(JSON.stringify(decodeReport)).not.toContain(PAT);
     expect(JSON.stringify(decodeReport)).not.toContain(KEY_B64);
+  });
+
+  // Phase 150 review WR-01 — the D-11 guard run over the REAL decode counters, not a
+  // hand-built report: proves `decodeSettings` and `assertEntitiesReadable` agree on
+  // which rows form the denominator.
+  it('P150 WR-01 a readable tz setting plus an empty-payload setting does not trip the key guard', async () => {
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        settings: [
+          {
+            id: 'row-tz-1', kind: 'settings', clientLocalId: 'training_timezone_id',
+            encryptedPayload: '{"iv":"tzIv","ct":"tzCt"}', createdAt: 0, updatedAt: 0,
+          },
+          {
+            id: 'row-tombstone', kind: 'settings', clientLocalId: 'some_other_key',
+            encryptedPayload: '', createdAt: 0, updatedAt: 0, deletedAt: 1_700_000_000_000,
+          },
+        ],
+      }),
+    );
+    mockDecrypt.mockReturnValueOnce(JSON.stringify({ v: 1, t: 's', value: 'Europe/Berlin' }));
+
+    const cache = await getSnapshot(PAT, KEY_B64, URL);
+    const decodeReport = cache.decodeReport!;
+
+    expect(cache.snapshot.settings).toEqual([{ key: 'training_timezone_id', type: 's', value: 'Europe/Berlin' }]);
+    expect(decodeReport.encryptedCount.setting).toBe(1);
+    expect(decodeReport.failedCount.setting).toBe(1);
+    expect(() => assertEntitiesReadable(decodeReport, ['session', 'setLog', 'setting'], 'Training state error')).not.toThrow();
+  });
+
+  it('P150 WR-01 a wrong key is detected even when an empty-payload setting is present', async () => {
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        settings: [
+          {
+            id: 'row-tz-1', kind: 'settings', clientLocalId: 'training_timezone_id',
+            encryptedPayload: '{"iv":"tzIv","ct":"tzCt"}', createdAt: 0, updatedAt: 0,
+          },
+          {
+            id: 'row-tombstone', kind: 'settings', clientLocalId: 'some_other_key',
+            encryptedPayload: '', createdAt: 0, updatedAt: 0, deletedAt: 1_700_000_000_000,
+          },
+        ],
+      }),
+    );
+    mockDecrypt.mockImplementation(() => {
+      throw new Error('auth tag mismatch');
+    });
+
+    const cache = await getSnapshot(PAT, KEY_B64, URL);
+    const decodeReport = cache.decodeReport!;
+
+    expect(decodeReport.encryptedCount.setting).toBe(1);
+    expect(decodeReport.failedCount.setting).toBe(2);
+    expect(() => assertEntitiesReadable(decodeReport, ['setting'], 'Progress error')).toThrow(
+      /every encrypted setting row \(1 of 1\) failed to decrypt — CALICOMP_KEY most likely does not match/,
+    );
   });
 
   it('a wire response whose settings key is entirely absent yields an empty array (server predates Plan 137-03)', async () => {

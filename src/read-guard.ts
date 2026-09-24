@@ -33,20 +33,35 @@ export function decodeReportOf(data: { decodeReport?: DecodeReport }): DecodeRep
 }
 
 /**
- * Throw when EVERY encrypted row of one of `entities` failed to decode (D-11) — a
+ * Throw when EVERY encrypted row of one of `entities` failed to DECRYPT (D-11) — a
  * wrong `CALICOMP_KEY` must never read as "no training", it must fail loudly. An entity
  * with zero encrypted rows (nothing to decrypt, or an all-plaintext pre-encryption
  * account) never trips this guard; the "mindestens eine" edge case (exactly one
  * encrypted row of a kind, and it fails) is accepted by design (D-11).
+ *
+ * Numerator and denominator are deliberately taken over the SAME row set (WR-01 of the
+ * Phase 150 review): `encryptedCount` counts only rows that carry ciphertext — the rows
+ * a decrypt was actually attempted on — and the numerator counts only `decrypt_failed`
+ * rows of that entity, never `failedCount`. `failedCount` also includes rows that fail
+ * WITHOUT a decrypt attempt (the empty-payload tombstone shape of `plannedWorkout` /
+ * `setting`, `malformed_payload`) and rows whose decrypt SUCCEEDED but whose content is
+ * bad (`malformed_payload`, `unknown_version`). Neither says anything about the key: a
+ * wrong key makes AES-GCM authentication fail, which is `decrypt_failed` and nothing
+ * else. Comparing `failedCount` against `encryptedCount` raised a false key alarm for
+ * "one readable setting + one empty-payload setting" (1 of 1), missed a genuinely wrong
+ * key as soon as one empty-payload row pushed `failed` past `encrypted`, and blamed the
+ * key for a newer payload version. Those non-key failures stay visible in `unreadable`
+ * and are enforced where a tool needs them (`assertCalendarReadable`,
+ * `assertTimeZoneReadable`).
  */
 export function assertEntitiesReadable(report: DecodeReport, entities: UnreadableEntity[], toolLabel: string): void {
   for (const entity of entities) {
     const encrypted = report.encryptedCount[entity];
-    const failed = report.failedCount[entity];
-    if (encrypted > 0 && failed === encrypted) {
+    const decryptFailed = report.unreadable.filter((r) => r.entity === entity && r.reason === 'decrypt_failed').length;
+    if (encrypted > 0 && decryptFailed >= encrypted) {
       throw new Error(
-        `${toolLabel}: every encrypted ${entity} row (${failed} of ${encrypted}) failed to decrypt ` +
-          "or decode — CALICOMP_KEY most likely does not match this account's key; refusing to " +
+        `${toolLabel}: every encrypted ${entity} row (${decryptFailed} of ${encrypted}) failed to decrypt ` +
+          "— CALICOMP_KEY most likely does not match this account's key; refusing to " +
           'report an empty result.',
       );
     }

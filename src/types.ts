@@ -381,9 +381,13 @@ export interface UnreadableRow {
 
 /**
  * The decode report `decryptMerge` returns beside the decrypted snapshot. `encryptedCount`
- * is the denominator and `failedCount` the numerator `read-guard.ts`'s `assertEntitiesReadable`
- * (D-11) uses to detect a 100% decode failure of an entity kind — never plaintext-only rows
- * (an all-plaintext, pre-encryption account must never trip the "wrong key" guard).
+ * counts the rows of each kind that carry ciphertext (a decrypt was attempted) — never
+ * plaintext-only rows, so an all-plaintext, pre-encryption account never trips the
+ * "wrong key" guard. It is the denominator of `read-guard.ts`'s `assertEntitiesReadable`
+ * (D-11); the numerator there is the number of `decrypt_failed` rows in `unreadable`, NOT
+ * `failedCount` (Phase 150 review WR-01). `failedCount` counts every row of a kind that
+ * could not be decoded for any reason, including rows without ciphertext (empty-payload
+ * tombstones) — `assertCalendarReadable` (D-09) and the D-32 degrade path read it.
  */
 export interface DecodeReport {
   unreadable: UnreadableRow[];

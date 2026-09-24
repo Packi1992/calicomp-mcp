@@ -64,6 +64,59 @@ describe('assertEntitiesReadable', () => {
     };
     expect(() => assertEntitiesReadable(noneEncrypted, ['session', 'setLog'], 'History error')).not.toThrow();
   });
+
+  // Phase 150 review WR-01: `failedCount` also counts rows that never carried ciphertext
+  // (the empty-payload tombstone shape), so it must not be compared against
+  // `encryptedCount`. Only `decrypt_failed` rows speak about the key.
+  it('P150 WR-01 a readable setting plus an empty-payload setting is no key alarm', () => {
+    // One valid training_timezone_id row (encrypted, decoded) + one empty-payload row
+    // (no ciphertext, malformed_payload): encrypted = 1, failed = 1 — the old
+    // `failed === encrypted` test read that as "every encrypted row failed".
+    const report: DecodeReport = {
+      unreadable: [{ entity: 'setting', id: 'row-tombstone', reason: 'malformed_payload', key: 'some_key' }],
+      encryptedCount: { ...emptyCounts(), setting: 1 },
+      failedCount: { ...emptyCounts(), setting: 1 },
+    };
+    expect(() => assertEntitiesReadable(report, ['session', 'setLog', 'setting'], 'Training state error')).not.toThrow();
+  });
+
+  it('P150 WR-01 a wrong key is still detected when an empty-payload row is present', () => {
+    // Wrong key: both ciphertext rows fail to decrypt; a third row has no ciphertext.
+    // encrypted = 2, failed = 3 — the old `===` test never fired.
+    const report: DecodeReport = {
+      unreadable: [
+        { entity: 'setting', id: 'row-tz', reason: 'decrypt_failed', key: 'training_timezone_id' },
+        { entity: 'setting', id: 'row-other', reason: 'decrypt_failed', key: 'some_key' },
+        { entity: 'setting', id: 'row-tombstone', reason: 'malformed_payload', key: 'gone_key' },
+      ],
+      encryptedCount: { ...emptyCounts(), setting: 2 },
+      failedCount: { ...emptyCounts(), setting: 3 },
+    };
+    expect(() => assertEntitiesReadable(report, ['setting'], 'Progress error')).toThrow(
+      /Progress error: every encrypted setting row \(2 of 2\) failed to decrypt — CALICOMP_KEY most likely does not match/,
+    );
+  });
+
+  it('P150 WR-01 an unknown payload version is not blamed on the key', () => {
+    // A single planned row with v=2 decrypted fine — the key works. The calendar guard
+    // must be the one that speaks, with the real cause.
+    const report: DecodeReport = {
+      unreadable: [{ entity: 'plannedWorkout', id: 'row-v2', reason: 'unknown_version' }],
+      encryptedCount: { ...emptyCounts(), plannedWorkout: 1 },
+      failedCount: { ...emptyCounts(), plannedWorkout: 1 },
+    };
+    expect(() => assertEntitiesReadable(report, ['plannedWorkout'], 'Propose planned update error')).not.toThrow();
+    expect(() => assertCalendarReadable(report, 'Propose planned update error')).toThrow(/row-v2: unknown_version/);
+  });
+
+  it('P150 WR-01 a malformed-but-decrypted payload of every row is not blamed on the key', () => {
+    const report: DecodeReport = {
+      unreadable: [{ entity: 'session', id: 'sess-1', reason: 'malformed_payload' }],
+      encryptedCount: { ...emptyCounts(), session: 1 },
+      failedCount: { ...emptyCounts(), session: 1 },
+    };
+    expect(() => assertEntitiesReadable(report, ['session'], 'History error')).not.toThrow();
+  });
 });
 
 describe('assertCalendarReadable', () => {
