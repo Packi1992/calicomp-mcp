@@ -34,6 +34,8 @@ import { calculateLongestStreak, calculateCurrentStreak } from '../src/training-
 import { toRadarValues, weightedCounts } from '../src/training-state/muscle-balance.js';
 import { weightedCounts as capabilityWeightedCounts } from '../src/training-state/capability-balance.js';
 import { amrapSummary, deathBySummary, emomIntervals } from '../src/training-state/format-progress.js';
+import { ProposeNewPlanSchema } from '../src/schemas.js';
+import { buildNewPlanPayload, type ProposeNewPlanArgs } from '../src/tools/propose_new_plan.js';
 import type { MiscSyncRow, DecryptedSetLog } from '../src/types.js';
 
 /**
@@ -461,6 +463,45 @@ describe('shared coach-planning vector corpus', () => {
     'capabilityBalance vector "$name": weightedCounts throws — D-04 has no default level across the language boundary',
     (vector) => {
       expect(() => capabilityWeightedCounts(vector.levelCounts)).toThrow();
+    },
+  );
+
+  // -----------------------------------------------------------------------
+  // newPlan (Phase 150-08, COACH-05, D-22/D-24): replays every corpus vector through
+  // the real ProposeNewPlanSchema and buildNewPlanPayload — the same two functions the
+  // registered propose_new_plan tool calls — proving the schema/payload-shape contract
+  // docs/COACH-PLANNING-PROTOCOL.md §2.6 describes actually holds for each vector.
+  // -----------------------------------------------------------------------
+
+  it('P150 D-24 the newPlan section is present and has rejection vectors', () => {
+    expect(corpus.newPlan.length).toBeGreaterThan(0);
+    const hasRejection = corpus.newPlan.some((vector) => vector.expectRejection === true);
+    expect(hasRejection).toBe(true);
+  });
+
+  it.each(corpus.newPlan)(
+    'P150 D-24 newPlan vectors replay through ProposeNewPlanSchema and buildNewPlanPayload: $name',
+    (vector) => {
+      const zodResult = ProposeNewPlanSchema.safeParse(vector.input);
+
+      if (vector.expectRejection) {
+        expect(zodResult.success, `vector "${vector.name}" expected to be rejected`).toBe(false);
+        if (!zodResult.success) {
+          const messages = zodResult.error.issues.map((issue) => issue.message);
+          expect(
+            messages.some((m) => m.includes(vector.expectedIssue ?? '')),
+            `vector "${vector.name}" expected an issue containing "${vector.expectedIssue}", got ${JSON.stringify(messages)}`,
+          ).toBe(true);
+        }
+        return;
+      }
+
+      expect(zodResult.success, `vector "${vector.name}" expected to parse`).toBe(true);
+      if (!zodResult.success) return;
+
+      const payload = buildNewPlanPayload(zodResult.data as ProposeNewPlanArgs, []);
+      expect(payload).toStrictEqual(vector.expectedPayload);
+      expect('standalone' in payload).toBe('standalone' in (vector.expectedPayload ?? {}));
     },
   );
 

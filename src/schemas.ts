@@ -332,10 +332,22 @@ export const PlanOpSchema = z.discriminatedUnion('op', [
     // already accepted `null`; these four did not until now.
     targetReps: z.number().int().min(0).nullable().optional(),
     targetTimeSeconds: z.number().int().min(0).nullable().optional(),
-    restTimeSeconds: z.number().int().min(0),
-    sets: z.number().int().min(1),
+    restTimeSeconds: z.number().int().min(0).describe(
+      'Rest after this exercise\'s set(s). A unilateral pair is two consecutive entries: the ' +
+        'first carries only the side-switch rest (about 5-10s), the second the exercise\'s normal ' +
+        'rest.',
+    ),
+    sets: z.number().int().min(1).describe(
+      'Number of times this exercise repeats back to back (expandSets). A side pair with several ' +
+        'sets each runs L, L, L, R, R, R — alternating sides across sets needs several ops instead.',
+    ),
     targetWeight: z.number().min(0).nullable().optional(),
-    orderIndex: z.number().int().min(0),
+    orderIndex: z.number().int().min(0).describe(
+      'Insert position within the level: block-local when blockId is set, or the shared ' +
+        'top-level space (blocks plus standalone exercises) when blockId is null. Existing ' +
+        'siblings at or after this index move down by one (app 4.4.0 and later); several ' +
+        'addExercise ops in one proposal apply one after another.',
+    ),
     roundTargets: z.array(RoundTargetInputSchema).max(50).nullable().optional(),
   }),
   z.object({ op: z.literal('removeExercise'), workoutExerciseId: UUID_STRING }),
@@ -750,14 +762,56 @@ export const ProposePlanUpdateSchema = z
   });
 
 /**
+ * The shape of one exercise entry inside a `new_plan` proposal — used both for a block's
+ * own `exercises[]` (block-local `orderIndex`) and for a top-level `standalone[]` entry
+ * (shared top-level `orderIndex` space with `blocks[]`, docs/COACH-PLANNING-PROTOCOL.md §2.6,
+ * D-24). Extracted as its own named schema (Phase 150, D-22) so both call sites reference
+ * the identical field set instead of two copies drifting apart.
+ */
+export const NewPlanExerciseInputSchema = z.object({
+  exercise: ExerciseRefSchema,
+  mode: z.enum(['REPS', 'TIME', 'MAX']),
+  targetReps: z.number().int().min(0).optional(),
+  targetTimeSeconds: z.number().int().min(0).optional(),
+  restTimeSeconds: z.number().int().min(0).describe(
+    'Rest after this exercise\'s set(s). A unilateral pair is two consecutive entries: the ' +
+      'first carries only the side-switch rest (about 5-10s: 5s for a pure side switch such as ' +
+      'side plank or typewriter, up to 10s when regripping or changing equipment such as clean ' +
+      'and press), the second the exercise\'s normal rest.',
+  ),
+  sets: z.number().int().min(1).describe(
+    'Number of times this exercise repeats back to back (expandSets). A standalone entry with ' +
+      'several sets runs them back to back, so a side pair with 3 sets each runs L, L, L, R, R, R ' +
+      '— alternating sides across sets needs a block instead, with rounds equal to the set count.',
+  ),
+  targetWeight: z.number().min(0).optional(),
+  orderIndex: z.number().int().min(0).describe(
+    'Position within its own order space: block-local when this entry is inside a block\'s ' +
+      'exercises[], or the shared top-level space (together with blocks[]) when this entry sits ' +
+      'in standalone[].',
+  ),
+  roundTargets: z.array(RoundTargetInputSchema).max(50).optional(),
+});
+
+/**
  * propose_new_plan — a full new-plan structure (not an op-list seeded from empty;
  * there is no existing templateId to diff against). RESEARCH.md Pattern 7.
  *
- * `.refine`: every `{source:'new', tempId}` exercise ref in `blocks[].exercises[]`
- * must reference a tempId defined in `newExercises[]` (WR-01 — mirrors the
- * ProposePlanUpdateSchema refine; dangling refs are unresolvable at apply-time);
- * `newExercises[].tempId` and `blocks[].tempBlockId` values must each be unique
- * (WR-07 — duplicates make the dedupe rewrite ambiguous, last-match-wins silently).
+ * Phase 150 (D-22/D-24, Protocol §2.6): `blocks` is now optional and `standalone[]` — an
+ * optional array of blockless exercise entries sharing the top-level `orderIndex` space with
+ * `blocks[]` — lets a coach propose an exercise whose own sets run back to back without
+ * wrapping it in a meaningless `rounds: 1` block. Neither field enforces a block-form rule
+ * (D-20): a `rounds: 1` block is accepted, never rejected — meaning is not enforcement.
+ *
+ * `.refine`s, in order: (a) at least one block or standalone entry must exist; (b) every
+ * `blocks[].orderIndex` and `standalone[].orderIndex` value is unique across BOTH lists
+ * together (D-24 — one shared top-level order space, never two independently-numbered
+ * spaces); (c) every `{source:'new', tempId}` exercise ref in `blocks[].exercises[]` OR
+ * `standalone[]` must reference a tempId defined in `newExercises[]` (WR-01 — mirrors the
+ * ProposePlanUpdateSchema refine; dangling refs are unresolvable at apply-time, now checked
+ * over both lists); (d) `newExercises[].tempId` values must each be unique (WR-07); (e)
+ * `blocks[].tempBlockId` values must each be unique (WR-07 — duplicates make the dedupe
+ * rewrite ambiguous, last-match-wins silently).
  */
 export const ProposeNewPlanSchema = z.object({
   name: z.string().min(1).max(200),
@@ -767,37 +821,57 @@ export const ProposeNewPlanSchema = z.object({
     .array(
       z.object({
         tempBlockId: z.string().min(1).max(64),   // LLM-facing placeholder, mirrors tempId pattern
-        rounds: z.number().int().min(1),
-        orderIndex: z.number().int().min(0),
-        exercises: z
-          .array(
-            z.object({
-              exercise: ExerciseRefSchema,
-              mode: z.enum(['REPS', 'TIME', 'MAX']),
-              targetReps: z.number().int().min(0).optional(),
-              targetTimeSeconds: z.number().int().min(0).optional(),
-              restTimeSeconds: z.number().int().min(0),
-              sets: z.number().int().min(1),
-              targetWeight: z.number().min(0).optional(),
-              orderIndex: z.number().int().min(0),
-              roundTargets: z.array(RoundTargetInputSchema).max(50).optional(),
-            }),
-          )
-          .min(1)
-          .max(50),
+        rounds: z.number().int().min(1).describe(
+          'A block is an exercise list that is run through rounds times; in a circuit each ' +
+            'exercise typically has sets: 1, because the repetition comes from the round, not the ' +
+            'set. A block with rounds: 1 makes no sense — use a standalone entry instead. Which ' +
+            'form to choose is up to you.',
+        ),
+        orderIndex: z.number().int().min(0).describe(
+          'Position in the shared top-level order space with standalone[]; must be unique across ' +
+            'blocks[].orderIndex and standalone[].orderIndex together.',
+        ),
+        exercises: z.array(NewPlanExerciseInputSchema).min(1).max(50),
       }),
     )
-    .min(1)
-    .max(20),
+    .max(20)
+    .optional(),
+  standalone: z.array(NewPlanExerciseInputSchema).max(50).optional().describe(
+    'A standalone entry is one exercise whose own sets run back to back with no other exercise ' +
+      'between them — the alternative to a block with rounds: 1. Shares one top-level orderIndex ' +
+      'space with blocks[] and may sit before, between, or after any of them. Optional and ' +
+      'present ONLY when at least one standalone entry exists — never an empty array.',
+  ),
 })
+  .refine(
+    (d) => (d.blocks ?? []).length + (d.standalone ?? []).length >= 1,
+    { message: 'A new plan needs at least one block or standalone entry' },
+  )
+  .refine(
+    (d) => {
+      const indices = [
+        ...(d.blocks ?? []).map((b) => b.orderIndex),
+        ...(d.standalone ?? []).map((s) => s.orderIndex),
+      ];
+      return new Set(indices).size === indices.length;
+    },
+    {
+      message:
+        'blocks[].orderIndex and standalone[].orderIndex share one top-level order space and must be unique',
+    },
+  )
   .refine(
     (d) => {
       const definedTempIds = new Set((d.newExercises ?? []).map((e) => e.tempId));
-      return d.blocks.every((b) =>
+      const blocksOk = (d.blocks ?? []).every((b) =>
         b.exercises.every(
           (ex) => ex.exercise.source !== 'new' || definedTempIds.has(ex.exercise.tempId),
         ),
       );
+      const standaloneOk = (d.standalone ?? []).every(
+        (ex) => ex.exercise.source !== 'new' || definedTempIds.has(ex.exercise.tempId),
+      );
+      return blocksOk && standaloneOk;
     },
     { message: 'Every exercise ref with source:"new" must reference a tempId defined in newExercises[]' },
   )
@@ -810,7 +884,7 @@ export const ProposeNewPlanSchema = z.object({
   )
   .refine(
     (d) => {
-      const ids = d.blocks.map((b) => b.tempBlockId);
+      const ids = (d.blocks ?? []).map((b) => b.tempBlockId);
       return new Set(ids).size === ids.length;
     },
     { message: 'blocks[].tempBlockId values must be unique' },

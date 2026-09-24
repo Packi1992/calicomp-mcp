@@ -266,4 +266,123 @@ describe('propose_new_plan — registered MCP handler', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('HTTP 400');
   });
+
+  // -------------------------------------------------------------------------
+  // Phase 150-08 (D-22/D-24/D-30): blockless standalone entries.
+  // -------------------------------------------------------------------------
+
+  it('P150 D-22 a Freitag-shaped plan posts standalone before the block', async () => {
+    vi.mocked(httpModule.postSuggest).mockResolvedValue(MOCK_SUGGESTION);
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolProposeNewPlan(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const freitagArgs = {
+      name:      'Freitag — Kettlebell-Kraft',
+      rationale: 'testing standalone entries',
+      standalone: [
+        {
+          exercise:        { source: 'catalog', exerciseId: CATALOG_EXERCISE_ID_PUSHUP },
+          mode:            'REPS',
+          targetReps:      8,
+          restTimeSeconds: 10,
+          sets:            1,
+          orderIndex:      0,
+        },
+        {
+          exercise:        { source: 'catalog', exerciseId: CATALOG_EXERCISE_ID_PUSHUP },
+          mode:            'REPS',
+          targetReps:      8,
+          restTimeSeconds: 90,
+          sets:            1,
+          orderIndex:      1,
+        },
+      ],
+      blocks: [
+        {
+          tempBlockId: 'block-1',
+          rounds:      3,
+          orderIndex:  2,
+          exercises: [
+            {
+              exercise:        { source: 'catalog', exerciseId: CATALOG_EXERCISE_ID_PUSHUP },
+              mode:            'REPS',
+              targetReps:      10,
+              restTimeSeconds: 15,
+              sets:            1,
+              orderIndex:      0,
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = await handler(freitagArgs);
+
+    expect(result.isError).toBeFalsy();
+    const [body] = vi.mocked(httpModule.postSuggest).mock.calls[0];
+    expect(body.payload).toContain('standalone');
+    const payload = JSON.parse(body.payload) as { standalone: { orderIndex: number }[] };
+    expect(payload.standalone).toHaveLength(2);
+    expect(payload.standalone[0].orderIndex).toBe(0);
+    expect(payload.standalone[1].orderIndex).toBe(1);
+  });
+
+  it('P150 D-30 a blocks-only plan posts no standalone key and keeps its changeHash', async () => {
+    vi.mocked(httpModule.postSuggest).mockResolvedValue(MOCK_SUGGESTION);
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolProposeNewPlan(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    await handler(NOVEL_PLAN_ARGS);
+    const firstHash = vi.mocked(httpModule.postSuggest).mock.calls[0][0].changeHash;
+    const [body] = vi.mocked(httpModule.postSuggest).mock.calls[0];
+    expect(body.payload).not.toContain('standalone');
+    const payload = JSON.parse(body.payload) as Record<string, unknown>;
+    expect('standalone' in payload).toBe(false);
+
+    // A second identical call must yield the identical changeHash — the payload's
+    // key set/shape did not change by adding standalone-handling code (D-30).
+    vi.mocked(httpModule.postSuggest).mockClear();
+    await handler(NOVEL_PLAN_ARGS);
+    const secondHash = vi.mocked(httpModule.postSuggest).mock.calls[0][0].changeHash;
+    expect(secondHash).toBe(firstHash);
+  });
+
+  it('P150 D-20 a block with rounds 1 is accepted without warning', async () => {
+    vi.mocked(httpModule.postSuggest).mockResolvedValue(MOCK_SUGGESTION);
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolProposeNewPlan(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const roundsOneArgs = {
+      name:      'Sinnloser aber erlaubter Block',
+      rationale: 'testing rounds:1 is accepted, not rejected (D-20)',
+      blocks: [
+        {
+          tempBlockId: 'block-1',
+          rounds:      1,
+          orderIndex:  0,
+          exercises: [
+            {
+              exercise:        { source: 'catalog', exerciseId: CATALOG_EXERCISE_ID_PUSHUP },
+              mode:            'REPS',
+              targetReps:      10,
+              restTimeSeconds: 30,
+              sets:            1,
+              orderIndex:      0,
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = await handler(roundsOneArgs);
+
+    expect(result.isError).toBeFalsy();
+    expect(httpModule.postSuggest).toHaveBeenCalledTimes(1);
+  });
 });

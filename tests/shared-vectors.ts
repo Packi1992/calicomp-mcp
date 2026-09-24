@@ -409,6 +409,32 @@ const FormatProgressVectorSchema = z.object({
   }),
 });
 
+/**
+ * Phase 150-08 (COACH-05, D-22/D-24): the `newPlan` corpus section — proves
+ * `ProposeNewPlanSchema`/`buildNewPlanPayload` accept and correctly build the new
+ * optional `standalone[]` field (blockless entries sharing the top-level `orderIndex`
+ * space with `blocks[]`, docs/COACH-PLANNING-PROTOCOL.md §2.6) exactly as the protocol
+ * specifies, while a pure-blocks plan stays byte-identical (D-30).
+ *
+ * `input` is deliberately a loosely-typed record, not `ProposeNewPlanSchema`'s own shape
+ * (mirrors `FormatProposalVectorSchema.payload` above): a rejected vector's `input` is
+ * sometimes DELIBERATELY malformed (an empty plan, a duplicate top-level `orderIndex`, a
+ * dangling `tempId`) — re-validating it structurally here would defeat the point of
+ * feeding it through the real schema in the replay (`shared-vectors.test.ts`).
+ * `expectedPayload` is loose for the same reason — it is the return shape of
+ * `buildNewPlanPayload`, asserted deep-equal by the replay, not re-modelled here.
+ * `expectedTopLevelOrder` (accepted vectors only) names the shared top-level order as
+ * `block:<tempBlockId>` / `standalone:<orderIndex>` tokens, in ascending `orderIndex`.
+ */
+const NewPlanVectorSchema = z.object({
+  name: z.string().min(1),
+  input: z.record(z.string(), z.unknown()),
+  expectedPayload: z.record(z.string(), z.unknown()).optional(),
+  expectedTopLevelOrder: z.array(z.string()).optional(),
+  expectRejection: z.boolean().optional(),
+  expectedIssue: z.string().optional(),
+});
+
 export const CoachPlanningVectorsSchema = z.object({
   _provenance: ProvenanceSchema,
   expansion: z.array(ExpansionVectorSchema).min(1),
@@ -422,6 +448,7 @@ export const CoachPlanningVectorsSchema = z.object({
   muscleBalance: z.array(MuscleBalanceVectorSchema).min(1),
   formatProgress: z.array(FormatProgressVectorSchema).min(1),
   capabilityBalance: z.array(CapabilityBalanceVectorSchema).min(1),
+  newPlan: z.array(NewPlanVectorSchema).min(1),
 });
 
 export type CoachPlanningVectors = z.infer<typeof CoachPlanningVectorsSchema>;
