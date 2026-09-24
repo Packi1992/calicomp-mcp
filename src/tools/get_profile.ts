@@ -59,7 +59,8 @@ export function registerToolGetProfile(
       title:       'Get User Profile',
       description:
         'Return the authenticated user\'s profile: email, displayName, avatarUrl, ' +
-        'isPremium, and account createdAt epoch.',
+        'isPremium, and account createdAt epoch. This tool reads no encrypted training data ' +
+        'and therefore carries no unreadable list.',
       inputSchema: GetProfileSchema,
       annotations: { readOnlyHint: true },
     },

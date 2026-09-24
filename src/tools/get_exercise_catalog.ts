@@ -102,7 +102,8 @@ export function registerToolGetExerciseCatalog(
         'exercises — check `origin` ("CATALOG" vs "CUSTOM") to tell them apart. A "CUSTOM" ' +
         'entry carries no muscle-group, equipment or capability-axis rating, so it never ' +
         'contributes to a weighted evaluation (muscle balance, capability balance) — treat ' +
-        'that absence as "not rated", never as a real zero.',
+        'that absence as "not rated", never as a real zero. This tool reads no encrypted ' +
+        'training data and therefore carries no unreadable list.',
       inputSchema: GetExerciseCatalogSchema,
       annotations: { readOnlyHint: true },
     },

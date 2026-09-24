@@ -129,7 +129,8 @@ export function registerToolGetTemplate(
       title:       'Get Workout Template',
       description:
         'Return one workout template with its blocks and template-exercises joined. ' +
-        'Pass the UUID from `list_templates`. Returns an error if the template is not found.',
+        'Pass the UUID from `list_templates`. Returns an error if the template is not found. ' +
+        'This tool reads no encrypted training data and therefore carries no unreadable list.',
       inputSchema: GetTemplateSchema,
       annotations: { readOnlyHint: true },
     },

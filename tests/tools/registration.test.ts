@@ -108,8 +108,36 @@ const EXPECTED_TOOL_NAMES = [
 
 type RegisteredToolMap = Record<
   string,
-  { annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean } }
+  {
+    description?: string;
+    annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean };
+  }
 >;
+
+/**
+ * Phase 150, D-33 — the six tools that read decrypted snapshot rows (session, set-log,
+ * hr-sample, planned-workout, setting) and therefore carry an `unreadable` field.
+ */
+const UNREADABLE_CARRYING_TOOL_NAMES = [
+  'get_history',
+  'get_stats',
+  'get_progress',
+  'get_training_state',
+  'get_adherence',
+  'get_planned_workouts',
+] as const;
+
+/**
+ * Phase 150, D-33 — the four tools that never read encrypted training data (templates,
+ * catalog, profile are plaintext/unauthenticated-catalog reads) and therefore say so
+ * explicitly instead of carrying an `unreadable` field.
+ */
+const UNREADABLE_EXEMPT_TOOL_NAMES = [
+  'list_templates',
+  'get_exercise_catalog',
+  'get_profile',
+  'get_template',
+] as const;
 
 // ---------------------------------------------------------------------------
 // Registration tests
@@ -192,5 +220,29 @@ describe('tool registration — all 19 tools (13 READ + 6 WRITE)', () => {
     const uniqueNames = new Set(names);
     expect(names).toHaveLength(19);
     expect(uniqueNames.size).toBe(19);
+  });
+
+  it('P150 D-33 the six snapshot-reading tools describe their unreadable list', () => {
+    const tools = buildRegisteredServer();
+    for (const name of UNREADABLE_CARRYING_TOOL_NAMES) {
+      expect(tools[name], `${name} should be registered`).toBeDefined();
+      expect(tools[name].description, `${name} description should exist`).toBeDefined();
+      expect(
+        tools[name].description,
+        `${name} description should mention it carries unreadable`,
+      ).toContain('Every result carries unreadable');
+    }
+  });
+
+  it('P150 D-33 the four exempt tools say they carry no unreadable list', () => {
+    const tools = buildRegisteredServer();
+    for (const name of UNREADABLE_EXEMPT_TOOL_NAMES) {
+      expect(tools[name], `${name} should be registered`).toBeDefined();
+      expect(tools[name].description, `${name} description should exist`).toBeDefined();
+      expect(
+        tools[name].description,
+        `${name} description should say it carries no unreadable list`,
+      ).toContain('carries no unreadable list');
+    }
   });
 });
