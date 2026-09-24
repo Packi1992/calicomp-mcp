@@ -35,6 +35,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { registerToolGetHistory }         from '../../src/tools/get_history.js';
@@ -110,6 +111,8 @@ type RegisteredToolMap = Record<
   string,
   {
     description?: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    inputSchema?: any;
     annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean };
   }
 >;
@@ -284,5 +287,52 @@ describe('tool registration — all 19 tools (13 READ + 6 WRITE)', () => {
         `${name} description should mention exerciseName`,
       ).toContain('exerciseName');
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Phase 150-08 (COACH-05, D-18/D-19/D-20/D-21/D-36/D-38): block-form meaning in
+  // tool descriptions and the schema's own .describe() text.
+  // ---------------------------------------------------------------------------
+
+  it('P150 D-18 propose_new_plan and propose_plan_update describe block forms without a rule', () => {
+    const tools = buildRegisteredServer();
+    for (const name of ['propose_new_plan', 'propose_plan_update'] as const) {
+      expect(tools[name].description).toContain('rounds: 1 makes no sense');
+      expect(tools[name].description).toContain('up to you');
+    }
+  });
+
+  it('P150 D-19 D-38 both descriptions describe unilateral pairs and the L, L, L, R, R, R order', () => {
+    const tools = buildRegisteredServer();
+    for (const name of ['propose_new_plan', 'propose_plan_update'] as const) {
+      expect(tools[name].description).toContain('side-switch rest');
+      expect(tools[name].description).toContain('L, L, L, R, R, R');
+    }
+  });
+
+  it('P150 D-36 propose_plan_update describes insert semantics and the unchecked reorder', () => {
+    const tools = buildRegisteredServer();
+    expect(tools.propose_plan_update.description).toContain(
+      'addExercise inserts at orderIndex within its level',
+    );
+    expect(tools.propose_plan_update.description).toContain(
+      'reorder renumbers the listed workoutExerciseIds 0..n-1 without checking which block they belong to',
+    );
+  });
+
+  it('P150 D-21 the inputSchema of propose_new_plan carries the block meaning in its descriptions', () => {
+    const tools = buildRegisteredServer();
+    const jsonSchema = z.toJSONSchema(tools.propose_new_plan.inputSchema) as {
+      properties: Record<string, { description?: string }>;
+    };
+    expect(jsonSchema.properties.standalone?.description).toBeDefined();
+    expect(jsonSchema.properties.standalone?.description).toContain('rounds: 1');
+    const blocksItemsProps = (
+      jsonSchema.properties.blocks as unknown as {
+        items?: { properties?: Record<string, { description?: string }> };
+      }
+    ).items?.properties;
+    expect(blocksItemsProps?.rounds?.description).toBeDefined();
+    expect(blocksItemsProps?.rounds?.description).toContain('rounds: 1 makes no sense');
   });
 });

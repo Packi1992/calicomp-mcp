@@ -281,7 +281,21 @@ export function registerToolProposePlanUpdate(
         'call) if the templateId is not found in the local snapshot, or if the proposal shape does ' +
         'not match the target template\'s own format. Inline `newExercises[]` entries that match an ' +
         'existing catalog exercise are automatically resolved to that catalog UUID instead of being ' +
-        'proposed as duplicates.',
+        'proposed as duplicates. A block is an exercise list that is run through rounds times; in ' +
+        'a circuit each exercise typically has sets: 1. An exercise with blockId: null is one ' +
+        'exercise with all its sets done back to back. A block with rounds: 1 makes no sense — use ' +
+        'an exercise with blockId: null instead. Which form you choose is up to you. A unilateral ' +
+        'exercise is two consecutive entries: the first gets only the side-switch rest (about ' +
+        '5-10s: 5s for a pure side switch such as side plank or typewriter, up to 10s when ' +
+        'regripping or changing equipment such as clean and press), the second gets the normal ' +
+        'rest. An exercise with several sets runs them back to back, so a side pair with 3 sets ' +
+        'each runs L, L, L, R, R, R; alternating sides across several sets only works as a block ' +
+        'with as many rounds as sets. addExercise inserts at orderIndex within its level — ' +
+        'block-local when blockId is set, the shared top-level space (blocks plus standalone ' +
+        'exercises) when blockId is null; existing siblings at or after that index move down by ' +
+        'one, and several addExercise ops apply one after another (app 4.4.0 and later). reorder ' +
+        'renumbers the listed workoutExerciseIds 0..n-1 without checking which block they belong ' +
+        'to — list only the exercises of one level.',
       inputSchema: ProposePlanUpdateSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },

@@ -382,4 +382,56 @@ describe('get_suggestion — payloadResolved/appliedPayloadResolved (Phase 150, 
       exerciseKey: 'pull_up',
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Phase 150-08 (COACH-05, D-31/D-35): standalone entries of a plan after-state
+  // (docs/COACH-PLANNING-PROTOCOL.md §2.6/§5) are resolved exactly like block
+  // exercises — annotateCatalogRefs walks by `{source, exerciseId}` shape, not by
+  // path, so no source change was needed for this to already work; this test
+  // proves it does.
+  // ---------------------------------------------------------------------------
+
+  it('P150 D-31 appliedPayloadResolved names standalone entries of a plan after-state', async () => {
+    const APPLIED_PLAN_STATE_WITH_STANDALONE = JSON.stringify({
+      templateId: 'template-1',
+      name: 'Push A',
+      blocks: [],
+      standalone: [
+        {
+          exercise: { source: 'catalog', exerciseId: CATALOG_EXERCISE_ID_PULLUP },
+          mode: 'REPS',
+          targetReps: 8,
+          restTimeSeconds: 10,
+          sets: 1,
+          orderIndex: 0,
+        },
+      ],
+    });
+    const rowWithStandalone: SuggestionDtoResponse = {
+      ...FULL_ROW,
+      payload: PLAN_UPDATE_PAYLOAD,
+      appliedPayload: APPLIED_PLAN_STATE_WITH_STANDALONE,
+    };
+
+    vi.mocked(httpModule.fetchSuggestion).mockResolvedValue(rowWithStandalone);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockSnapshotCache());
+    const server = new McpServer({ name: 'calicomp', version: '0.1.0' });
+    registerToolGetSuggestion(server, DUMMY_CFG);
+    const handler = getSuggestionHandler(server);
+
+    const result = await handler({ id: 'suggestion-1' });
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as ResolvedSuggestionBody;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resolvedStandalone = (body.appliedPayloadResolved as any).standalone as Array<{
+      exercise: Record<string, unknown>;
+    }>;
+    expect(resolvedStandalone).toBeDefined();
+    expect(resolvedStandalone[0].exercise).toMatchObject({
+      source: 'catalog',
+      exerciseId: CATALOG_EXERCISE_ID_PULLUP,
+      exerciseName: 'Pull-Up',
+      exerciseKey: 'pull_up',
+    });
+  });
 });
