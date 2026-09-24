@@ -139,6 +139,19 @@ const UNREADABLE_EXEMPT_TOOL_NAMES = [
   'get_template',
 ] as const;
 
+/** Phase 150, D-29 — the two calendar tools that point to `get_template` for exercises. */
+const CALENDAR_TOOL_NAMES = ['get_planned_workouts', 'get_adherence'] as const;
+
+/** Phase 150, D-15/D-35, SC 5 — every tool whose result echoes an `exerciseId`. */
+const EXERCISE_ID_NAMING_TOOL_NAMES = [
+  'get_template',
+  'get_history',
+  'get_progress',
+  'get_training_state',
+  'get_stats',
+  'get_suggestion',
+] as const;
+
 // ---------------------------------------------------------------------------
 // Registration tests
 // ---------------------------------------------------------------------------
@@ -243,6 +256,33 @@ describe('tool registration — all 19 tools (13 READ + 6 WRITE)', () => {
         tools[name].description,
         `${name} description should say it carries no unreadable list`,
       ).toContain('carries no unreadable list');
+    }
+  });
+
+  it('P150 D-29 get_planned_workouts and get_adherence point to get_template for exercises', () => {
+    const tools = buildRegisteredServer();
+    for (const name of CALENDAR_TOOL_NAMES) {
+      expect(tools[name], `${name} should be registered`).toBeDefined();
+      expect(tools[name].description, `${name} description should exist`).toBeDefined();
+      expect(
+        tools[name].description,
+        `${name} description should point to get_template for exercise names`,
+      ).toContain(
+        'This tool lists no exerciseId: every occurrence carries templateName; read the ' +
+          'exercises of a template, with names, through get_template.',
+      );
+    }
+  });
+
+  it('P150 SC5 every tool that outputs an exerciseId mentions exerciseName in its description', () => {
+    const tools = buildRegisteredServer();
+    for (const name of EXERCISE_ID_NAMING_TOOL_NAMES) {
+      expect(tools[name], `${name} should be registered`).toBeDefined();
+      expect(tools[name].description, `${name} description should exist`).toBeDefined();
+      expect(
+        tools[name].description,
+        `${name} description should mention exerciseName`,
+      ).toContain('exerciseName');
     }
   });
 });

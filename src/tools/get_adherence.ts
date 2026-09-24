@@ -149,7 +149,9 @@ export function registerToolGetAdherence(
         'id, reason and plaintext routing fields), independent of the date window; an empty ' +
         'list means every encrypted row was read. If any session/set-log/setting row of a kind ' +
         'this tool needs, any planned_workout row, or the athlete\'s time-zone setting cannot be ' +
-        'decoded, this tool fails instead of returning a partial or misleading answer.',
+        'decoded, this tool fails instead of returning a partial or misleading answer. This tool ' +
+        'lists no exerciseId: every occurrence carries templateName; read the exercises of a ' +
+        'template, with names, through get_template.',
       inputSchema: GetAdherenceSchema,
       annotations: { readOnlyHint: true },
     },

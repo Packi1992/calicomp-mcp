@@ -262,7 +262,9 @@ export function registerToolGetPlannedWorkouts(
         'Every result carries unreadable: rows that could not be decrypted or decoded (entity, ' +
         'id, reason and plaintext routing fields), independent of the date window; an empty ' +
         'list means every encrypted row was read. If any planned_workout row cannot be decoded, ' +
-        'this tool fails instead of returning a partial calendar.',
+        'this tool fails instead of returning a partial calendar. This tool lists no exerciseId: ' +
+        'every occurrence carries templateName; read the exercises of a template, with names, ' +
+        'through get_template.',
       inputSchema: GetPlannedWorkoutsSchema,
       annotations: { readOnlyHint: true },
     },

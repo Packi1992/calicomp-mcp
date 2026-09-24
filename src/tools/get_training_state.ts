@@ -348,8 +348,9 @@ export function registerToolGetTrainingState(
         'most recently trained exercises with their direction labels (recentExercises); all-time ' +
         'personal records (personalRecords); and a short, deterministic narrative sentence built ' +
         'from these already-computed numbers, never a second model call. Every entry in ' +
-        'recentExercises and personalRecords carries exerciseKey next to its exerciseId ' +
-        '(optional lang, default English) — the narrative itself is unaffected by lang. This tool stays ' +
+        'recentExercises and personalRecords carries exerciseName and exerciseKey next to its ' +
+        'exerciseId (optional lang, default English) — the narrative itself is unaffected by ' +
+        'lang. This tool stays ' +
         'narrow on purpose: it carries no point series and no pair lists. For per-exercise or ' +
         'per-format progress series, call get_progress. For the full adherence pair/missed lists, ' +
         'call get_adherence. For raw session history, call get_history. All calendar-day mapping ' +
