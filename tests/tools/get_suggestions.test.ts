@@ -29,7 +29,15 @@ vi.mock('../../src/http.js', async () => {
   };
 });
 
+// Phase 150, D-35: get_suggestion's registered handler additionally fetches the
+// decrypted snapshot to resolve catalog exercise names — only `getSnapshot` is replaced.
+vi.mock('../../src/cache.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/cache.js')>('../../src/cache.js');
+  return { ...actual, getSnapshot: vi.fn() };
+});
+
 import * as httpModule from '../../src/http.js';
+import * as cacheModule from '../../src/cache.js';
 import {
   getSuggestions,
   clampSuggestionsLimit,
@@ -37,8 +45,30 @@ import {
 } from '../../src/tools/get_suggestions.js';
 import { getSuggestion, registerToolGetSuggestion } from '../../src/tools/get_suggestion.js';
 import type { SuggestionDtoResponse, SuggestionSummaryDtoResponse } from '../../src/types.js';
+import {
+  mockSnapshot,
+  mockCatalog,
+  CATALOG_EXERCISE_ID_PULLUP,
+} from '../fixture.js';
 
 const DUMMY_CFG = { pat: 'calicomp_pat_test', keyB64: 'AAAA', serverUrl: 'https://example.test' };
+
+/** Minimal `SnapshotCache`-shaped mock for `getSnapshot` (Phase 150, D-35 tests). */
+function mockSnapshotCache(snapshot = mockSnapshot, catalog = mockCatalog) {
+  return {
+    snapshot,
+    catalog,
+    profile: {
+      userId: 'user-test-1',
+      email: 'test@example.com',
+      displayName: 'Test User',
+      avatarUrl: 'https://example.com/avatar.svg',
+      isPremium: false,
+      createdAt: 1_700_000_000_000,
+    },
+    fetchedAt: Date.now(),
+  };
+}
 
 const SUMMARY_ROW: SuggestionSummaryDtoResponse = {
   id: 'suggestion-1',
@@ -66,6 +96,7 @@ const FULL_ROW: SuggestionDtoResponse = {
 beforeEach(() => {
   vi.mocked(httpModule.fetchSuggestions).mockReset();
   vi.mocked(httpModule.fetchSuggestion).mockReset();
+  vi.mocked(cacheModule.getSnapshot).mockReset();
 });
 
 // ---------------------------------------------------------------------------
@@ -202,5 +233,153 @@ describe('registerToolGetSuggestions / registerToolGetSuggestion', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tools = (server as any)._registeredTools as Record<string, { handler: (args: unknown) => Promise<{ isError?: boolean; content: { type: string; text: string }[] }> }>;
     await expect(tools['get_suggestions'].handler({})).resolves.toMatchObject({ isError: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// get_suggestion — payloadResolved/appliedPayloadResolved (Phase 150, D-35)
+// ---------------------------------------------------------------------------
+
+type ResolvedSuggestionBody = SuggestionDtoResponse & {
+  payloadResolved?: unknown;
+  payloadResolvedSkipped?: string;
+  appliedPayloadResolved?: unknown;
+  appliedPayloadResolvedSkipped?: string;
+};
+
+function getSuggestionHandler(
+  server: McpServer,
+): (args: unknown) => Promise<{ isError?: boolean; content: { type: string; text: string }[] }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (server as any)._registeredTools['get_suggestion'].handler;
+}
+
+describe('get_suggestion — payloadResolved/appliedPayloadResolved (Phase 150, D-35)', () => {
+  const PLAN_UPDATE_PAYLOAD = JSON.stringify({
+    ops: [
+      {
+        op: 'addExercise',
+        blockId: null,
+        exercise: { source: 'catalog', exerciseId: CATALOG_EXERCISE_ID_PULLUP },
+        mode: 'REPS',
+        restTimeSeconds: 60,
+        sets: 3,
+        orderIndex: 0,
+      },
+    ],
+  });
+
+  const APPLIED_PLAN_STATE_PAYLOAD = JSON.stringify({
+    templateId: 'template-1',
+    name: 'Push A',
+    blocks: [
+      {
+        tempBlockId: 'block-1',
+        rounds: 1,
+        orderIndex: 0,
+        exercises: [
+          {
+            exercise: { source: 'catalog', exerciseId: CATALOG_EXERCISE_ID_PULLUP },
+            mode: 'REPS',
+            targetReps: 8,
+            targetTimeSeconds: null,
+            restTimeSeconds: 60,
+            sets: 3,
+            targetWeight: null,
+            orderIndex: 0,
+            roundTargets: null,
+          },
+        ],
+      },
+    ],
+  });
+
+  const ROW_WITH_APPLIED: SuggestionDtoResponse = {
+    ...FULL_ROW,
+    payload: PLAN_UPDATE_PAYLOAD,
+    appliedPayload: APPLIED_PLAN_STATE_PAYLOAD,
+  };
+
+  it('P150 D-35 get_suggestion adds payloadResolved with names next to every catalog exerciseId', async () => {
+    vi.mocked(httpModule.fetchSuggestion).mockResolvedValue(ROW_WITH_APPLIED);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockSnapshotCache());
+    const server = new McpServer({ name: 'calicomp', version: '0.1.0' });
+    registerToolGetSuggestion(server, DUMMY_CFG);
+    const handler = getSuggestionHandler(server);
+
+    const result = await handler({ id: 'suggestion-1' });
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as ResolvedSuggestionBody;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resolvedOps = (body.payloadResolved as any).ops as Array<{ exercise: Record<string, unknown> }>;
+    expect(resolvedOps[0].exercise).toMatchObject({
+      source: 'catalog',
+      exerciseId: CATALOG_EXERCISE_ID_PULLUP,
+      exerciseName: 'Pull-Up',
+      exerciseKey: 'pull_up',
+    });
+  });
+
+  it('P150 D-16 get_suggestion leaves payload and appliedPayload byte-identical', async () => {
+    vi.mocked(httpModule.fetchSuggestion).mockResolvedValue(ROW_WITH_APPLIED);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockSnapshotCache());
+    const server = new McpServer({ name: 'calicomp', version: '0.1.0' });
+    registerToolGetSuggestion(server, DUMMY_CFG);
+    const handler = getSuggestionHandler(server);
+
+    const result = await handler({ id: 'suggestion-1' });
+    const body = JSON.parse(result.content[0].text) as ResolvedSuggestionBody;
+    expect(body.payload).toBe(ROW_WITH_APPLIED.payload);
+    expect(body.appliedPayload).toBe(ROW_WITH_APPLIED.appliedPayload);
+  });
+
+  it('P150 D-35 an unparsable payload yields payloadResolvedSkipped unparsable_payload', async () => {
+    vi.mocked(httpModule.fetchSuggestion).mockResolvedValue({ ...FULL_ROW, payload: '{not json', appliedPayload: undefined });
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockSnapshotCache());
+    const server = new McpServer({ name: 'calicomp', version: '0.1.0' });
+    registerToolGetSuggestion(server, DUMMY_CFG);
+    const handler = getSuggestionHandler(server);
+
+    const result = await handler({ id: 'suggestion-1' });
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as ResolvedSuggestionBody;
+    expect(body.payloadResolvedSkipped).toBe('unparsable_payload');
+    expect(body.payloadResolved).toBeUndefined();
+  });
+
+  it('P150 D-35 a failing snapshot yields payloadResolvedSkipped catalog_unavailable and still returns the row', async () => {
+    vi.mocked(httpModule.fetchSuggestion).mockResolvedValue(ROW_WITH_APPLIED);
+    vi.mocked(cacheModule.getSnapshot).mockRejectedValue(new Error('snapshot fetch failed'));
+    const server = new McpServer({ name: 'calicomp', version: '0.1.0' });
+    registerToolGetSuggestion(server, DUMMY_CFG);
+    const handler = getSuggestionHandler(server);
+
+    const result = await handler({ id: 'suggestion-1' });
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as ResolvedSuggestionBody;
+    expect(body.payloadResolvedSkipped).toBe('catalog_unavailable');
+    expect(body.appliedPayloadResolvedSkipped).toBe('catalog_unavailable');
+    expect(body.id).toBe(ROW_WITH_APPLIED.id);
+  });
+
+  it('P150 D-35 appliedPayloadResolved resolves a plan after-state', async () => {
+    vi.mocked(httpModule.fetchSuggestion).mockResolvedValue(ROW_WITH_APPLIED);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockSnapshotCache());
+    const server = new McpServer({ name: 'calicomp', version: '0.1.0' });
+    registerToolGetSuggestion(server, DUMMY_CFG);
+    const handler = getSuggestionHandler(server);
+
+    const result = await handler({ id: 'suggestion-1' });
+    const body = JSON.parse(result.content[0].text) as ResolvedSuggestionBody;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resolvedBlocks = (body.appliedPayloadResolved as any).blocks as Array<{
+      exercises: Array<{ exercise: Record<string, unknown> }>;
+    }>;
+    expect(resolvedBlocks[0].exercises[0].exercise).toMatchObject({
+      source: 'catalog',
+      exerciseId: CATALOG_EXERCISE_ID_PULLUP,
+      exerciseName: 'Pull-Up',
+      exerciseKey: 'pull_up',
+    });
   });
 });
