@@ -29,14 +29,14 @@ import {
   renderSeriesFields,
 } from '../src/recurrence.js';
 import { decrypt } from '../src/crypto.js';
-import { decryptPlannedWorkout } from '../src/cache.js';
+import { decryptPlannedWorkout, decryptSession } from '../src/cache.js';
 import { calculateLongestStreak, calculateCurrentStreak } from '../src/training-state/consistency.js';
 import { toRadarValues, weightedCounts } from '../src/training-state/muscle-balance.js';
 import { weightedCounts as capabilityWeightedCounts } from '../src/training-state/capability-balance.js';
 import { amrapSummary, deathBySummary, emomIntervals } from '../src/training-state/format-progress.js';
 import { ProposeNewPlanSchema } from '../src/schemas.js';
 import { buildNewPlanPayload, type ProposeNewPlanArgs } from '../src/tools/propose_new_plan.js';
-import type { MiscSyncRow, DecryptedSetLog } from '../src/types.js';
+import type { MiscSyncRow, DecryptedSetLog, SyncSessionDto } from '../src/types.js';
 
 /**
  * Phase 137-07 (STATE-02, D-04): the named float-comparison tolerance the muscleBalance
@@ -305,6 +305,76 @@ describe('shared coach-planning vector corpus', () => {
       ctBuf[ctBuf.length - 1] ^= 0xff;
       const tampered = JSON.stringify({ iv: parsed.iv, ct: ctBuf.toString('base64') });
       expect(() => decrypt(tampered, vector.keyB64)).toThrow();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // sessionCipher section (Phase 151, FB-09/FB-11): the crypto-parity fixture proving
+  // the MCP decrypts an app-written session payload (protocol §1.3 "The session
+  // payload") correctly — byte-identical plaintext, and `decryptSession()` — the real
+  // decode boundary `cache.ts` uses — decoding every vector to the normative
+  // `expectedDecoded` form. `decryptSession(row, keyB64)` is fed a minimal
+  // `SyncSessionDto` row built from each vector; the result is picked down to
+  // {startTime, endTime, feedback, goalSnapshot} and round-tripped through
+  // JSON.parse(JSON.stringify(...)) before comparison: an undefined field becomes
+  // absent (matching a vector with no claim about it), except `endTime`, which is
+  // explicitly normalized to `null` when undefined (an ongoing session) because every
+  // vector's `expectedDecoded.endTime` is an explicit `null`, never an absent key.
+  // -----------------------------------------------------------------------
+
+  function sessionRowFromVector(vector: (typeof corpus.sessionCipher)[number]): SyncSessionDto {
+    return {
+      id: `sessioncipher-${vector.name}`,
+      startTime: 0,
+      endTime: undefined,
+      isManual: false,
+      isCorrected: false,
+      isQuickChallenge: false,
+      encryptedPayload: vector.ciphertextJson,
+      createdAt: 0,
+      updatedAt: 0,
+    };
+  }
+
+  describe('sessionCipher vectors', () => {
+    it('P151 FB-09 every sessionCipher vector decrypts to its exact plaintext string', () => {
+      for (const vector of corpus.sessionCipher) {
+        expect(decrypt(vector.ciphertextJson, vector.keyB64)).toBe(vector.expectedPlaintextString);
+      }
+    });
+
+    it('P151 FB-09 decryptSession decodes every sessionCipher vector to expectedDecoded', () => {
+      for (const vector of corpus.sessionCipher) {
+        const row = sessionRowFromVector(vector);
+        // Loosely typed on purpose — DecryptedSession does not carry feedback/goalSnapshot
+        // yet at the RED stage of this plan's tracer task; typecheck must stay green
+        // through both the RED and GREEN commits.
+        const decoded = decryptSession(row, vector.keyB64) as unknown as Record<string, unknown>;
+        const picked = JSON.parse(
+          JSON.stringify({
+            startTime: decoded.startTime,
+            endTime: (decoded.endTime as number | undefined) ?? null,
+            feedback: decoded.feedback,
+            goalSnapshot: decoded.goalSnapshot,
+          }),
+        );
+        expect(picked).toEqual(vector.expectedDecoded);
+      }
+    });
+
+    it('P151 FB-09 the hostile comment arrives byte-identical', () => {
+      for (const vector of corpus.sessionCipher) {
+        const row = sessionRowFromVector(vector);
+        const decoded = decryptSession(row, vector.keyB64) as unknown as {
+          feedback: { comment: { text: string } | null };
+        };
+        const expectedComment = (vector.expectedPlaintext as Record<string, unknown>).fc;
+        if (typeof expectedComment === 'string' && expectedComment.length > 0) {
+          expect(decoded.feedback.comment?.text).toBe(expectedComment);
+        } else {
+          expect(decoded.feedback.comment).toBeNull();
+        }
+      }
     });
   });
 

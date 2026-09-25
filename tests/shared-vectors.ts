@@ -209,6 +209,32 @@ const PlannedWorkoutCipherVectorSchema = z.object({
 });
 
 /**
+ * Phase 151 (FB-09, D-30): the `sessionCipher` corpus section — the crypto-parity fixture
+ * proving the MCP decrypts an app-written session payload (`docs/COACH-PLANNING-PROTOCOL.md`
+ * §1.3 "The session payload") correctly, including the eight new feedback/goal-snapshot keys
+ * alongside the pre-existing `st`/`et`. `keyB64` is the SAME fixed test key
+ * `plannedWorkoutCipher` uses (bytes 0x00..0x1F) — never a real key.
+ *
+ * `expectedPlaintext` is deliberately a loose record (mirrors `PlannedWorkoutCipherVectorSchema`
+ * above) — the plaintext is the app's own session-payload shape, checked against by the replay
+ * itself (`tests/shared-vectors.test.ts`), not re-declared as a second schema that could drift.
+ * `expectedDecoded` is the NORMATIVE MCP output form both parity tests are checked against
+ * (protocol §1.3 "MCP output form") — also loose here for the same reason; the replay owns the
+ * concrete shape assertion. `byteRoundTrip` records whether the vector's `expectedPlaintext`
+ * re-serializes byte-for-byte to `expectedPlaintextString` (some vectors deliberately do not,
+ * e.g. an unrecognized state word the writer included but no reader ever re-emits).
+ */
+const SessionCipherVectorSchema = z.object({
+  name: z.string().min(1),
+  keyB64: z.string().min(1),
+  ciphertextJson: z.string().min(1),
+  expectedPlaintextString: z.string().min(1),
+  expectedPlaintext: z.record(z.string(), z.unknown()),
+  expectedDecoded: z.record(z.string(), z.unknown()),
+  byteRoundTrip: z.boolean(),
+});
+
+/**
  * Phase 136-01 (TRACER SLICE): the `plannedUpdate` corpus section — proves the
  * MCP-side producer (`proposePlannedUpdate`/`buildMoveOccurrenceEnvelope`,
  * `src/tools/propose_planned_update.ts`) emits the pinned envelope AND the pinned
@@ -443,6 +469,7 @@ export const CoachPlanningVectorsSchema = z.object({
   rruleAllowlist: z.array(RruleAllowlistCaseSchema).min(1),
   formatProposal: z.array(FormatProposalVectorSchema).min(1),
   plannedWorkoutCipher: PlannedWorkoutCipherVectorSchema,
+  sessionCipher: z.array(SessionCipherVectorSchema).min(1),
   plannedUpdate: z.array(PlannedUpdateVectorSchema).min(1),
   streak: z.array(StreakVectorSchema).min(1),
   muscleBalance: z.array(MuscleBalanceVectorSchema).min(1),

@@ -143,7 +143,7 @@ let inflightPromise: Promise<SnapshotCache> | null = null;
  * Plaintext path (no encryptedPayload):
  *   Use plaintext startTime / endTime unchanged (pre-encryption row).
  */
-function decryptSession(s: SyncSessionDto, keyB64: string): DecryptedSession {
+export function decryptSession(s: SyncSessionDto, keyB64: string): DecryptedSession {
   const { encryptedPayload, startTime, endTime, ...rest } = s;
   if (encryptedPayload) {
     let plaintext: string;
