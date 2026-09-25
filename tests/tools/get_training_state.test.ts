@@ -30,6 +30,7 @@ import { COACH_PARAMETER_DEFAULTS } from '../../src/coach-parameters.js';
 import { getTrainingState, registerToolGetTrainingState } from '../../src/tools/get_training_state.js';
 import { computeConsistency } from '../../src/training-state/consistency.js';
 import { computeMuscleBalance } from '../../src/training-state/muscle-balance.js';
+import { computeTemplateFeedbackSeries } from '../../src/training-state/template-feedback-series.js';
 import { TRAINING_TIMEZONE_SETTING_KEY, TimeZoneUnavailableError } from '../../src/training-state/time-zone.js';
 import { mockSnapshot, mockCatalog } from '../fixture.js';
 import type { DecryptedSnapshot, DecodeReport } from '../../src/types.js';
@@ -56,10 +57,11 @@ const EXPECTED_KEYS = [
   'recentExercises',
   'personalRecords',
   'narrative',
+  'templateFeedbackSeries',
 ].sort();
 
 describe('getTrainingState', () => {
-  it('returns exactly the ten fields of the final result shape', () => {
+  it('returns exactly the eleven fields of the final result shape (Phase 151, FB-12 adds templateFeedbackSeries)', () => {
     const snapshot = snapshotWithZone(TZ);
     const result = getTrainingState(
       {},
@@ -209,6 +211,18 @@ describe('getTrainingState', () => {
     expect(withoutFlag).toEqual(withTrueFlag);
     expect(withoutFlag).not.toHaveProperty('adherenceUnavailableReason');
     expect(withoutFlag.adherence).not.toBeNull();
+  });
+
+  it('P151 FB-12 get_training_state carries templateFeedbackSeries after the narrative', () => {
+    const snapshot = snapshotWithZone(TZ);
+    const result = getTrainingState(
+      {},
+      { snapshot, catalog: mockCatalog, coachParameters: COACH_PARAMETER_DEFAULTS, parametersSource: 'server' },
+      NOW_MS,
+    );
+    expect(result.templateFeedbackSeries).toEqual(computeTemplateFeedbackSeries(snapshot, TZ));
+    const keys = Object.keys(result);
+    expect(keys.indexOf('templateFeedbackSeries')).toBeGreaterThan(keys.indexOf('narrative'));
   });
 });
 

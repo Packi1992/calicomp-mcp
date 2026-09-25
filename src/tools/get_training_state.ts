@@ -67,6 +67,7 @@ import {
   type DirectionOutcome,
 } from '../training-state/exercise-progress.js';
 import { buildNarrative } from '../training-state/narrative.js';
+import { computeTemplateFeedbackSeries, type TemplateFeedbackSeries } from '../training-state/template-feedback-series.js';
 import { decodeReportOf, assertEntitiesReadable, assertTimeZoneReadable } from '../read-guard.js';
 import { createExerciseNameResolver, type ExerciseNameFields, type ExerciseNameResolver } from '../exercise-names.js';
 import type { DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
@@ -151,6 +152,12 @@ export interface GetTrainingStateResult {
   recentExercises: GetTrainingStateRecentExercise[];
   personalRecords: GetTrainingStatePersonalRecords;
   narrative: string;
+  /**
+   * Per-template feedback and goal-attainment series (Phase 151, FB-12, D-27/D-28/D-29) —
+   * computed and appended strictly AFTER `narrative` is built (see below), so the narrative
+   * never sees it and every field above stays byte-identical to before this field existed.
+   */
+  templateFeedbackSeries: TemplateFeedbackSeries[];
 }
 
 // ---------------------------------------------------------------------------
@@ -303,6 +310,11 @@ export function getTrainingState(
       }
     : personalRecords;
 
+  // Phase 151 (FB-12, D-27/D-28/D-29): computed AFTER narrative, exactly like the Phase 150
+  // enrichment above — the narrative never sees it, and every field before it stays
+  // byte-identical to before this plan (T-151-50).
+  const templateFeedbackSeries = computeTemplateFeedbackSeries(snapshot, timeZoneId, nameResolver);
+
   return {
     timeZoneId,
     asOfDate,
@@ -315,6 +327,7 @@ export function getTrainingState(
     recentExercises: enrichedRecentExercises,
     personalRecords: enrichedPersonalRecords,
     narrative,
+    templateFeedbackSeries,
   };
 }
 
