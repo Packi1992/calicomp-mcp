@@ -498,3 +498,25 @@ describe('get_training_state — exercise names (D-03/D-16/D-17)', () => {
     expect(record!.exerciseDeleted).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// templateFeedbackSeries description (Phase 151, FB-12, D-27/D-29)
+// ---------------------------------------------------------------------------
+
+describe('get_training_state — templateFeedbackSeries description', () => {
+  it('P151 D-27 the description names the attainment rule, the approximation and hasComment', () => {
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const description = (server as any)._registeredTools['get_training_state'].description as string;
+
+    expect(description).toContain('templateFeedbackSeries');
+    expect(description).toContain('achievedSets');
+    expect(description).toContain('totalSets');
+    expect(description).toContain('MAX');
+    expect(description).toContain('weight is never checked');
+    expect(description).toContain('approximation_current_template');
+    expect(description).toContain('stored_goals');
+    expect(description).toContain('hasComment');
+  });
+});
