@@ -735,5 +735,80 @@ if (!process.env.CHAR_150_PIN_GENERATE) {
       expect(payloadJson).toBe(pins.newPlanPayloadJson);
       expect(changeHash).toBe(pins.newPlanChangeHash);
     });
+
+    // Plan 151-23 (D-07, Messpunkt 2026-11-16): the SAME `feedback`/`goalSnapshot`
+    // additivity check the getHistory test above already proves, extended to every
+    // other Phase-150 pinned metric/read function — including getTrainingState's
+    // NEW templateFeedbackSeries field (151-23), which reads feedback/goalSnapshot by
+    // design. Every OLD key, and the narrative sentence verbatim, must stay
+    // byte-identical against the Phase-150 pin even once every fixture session
+    // carries feedback and a goal snapshot. The pin file itself is untouched.
+    it('P151 D-07 old metrics unchanged with feedback and goals on every fixture session', () => {
+      const pins = loadPins();
+      const snapshotWithFeedback: DecryptedSnapshot = {
+        ...CHAR_SNAPSHOT,
+        sessions: CHAR_SNAPSHOT.sessions.map((s) => ({
+          ...s,
+          feedback: {
+            execution: { value: 4, state: 'confirmed' as const, setLaterAt: null },
+            feel: { value: 2, state: 'answered' as const, setLaterAt: '2026-01-15T12:00:00.000Z' },
+            comment: {
+              text: 'P151-23 D-07 Fixture-Kommentar.',
+              source: 'athlete_free_text' as const,
+              treatAs: 'data_not_instructions' as const,
+            },
+          },
+          goalSnapshot: [
+            {
+              workoutExerciseId: 'char151-23-d07-we-1',
+              exerciseId: CHAR_CATALOG_EX_PUSHUP,
+              mode: 'REPS',
+              sets: 3,
+              targetReps: 10,
+            },
+          ],
+        })),
+      };
+
+      const trainingStateActual = getTrainingState(
+        CHAR_TRAINING_STATE_ARGS,
+        { ...CHAR_TRAINING_STATE_DATA, snapshot: snapshotWithFeedback },
+        CHAR_NOW_MS,
+      );
+      expectOldKeysUnchanged(trainingStateActual, pins.getTrainingState);
+      expect(trainingStateActual.narrative).toBe(
+        (pins.getTrainingState as { narrative: string }).narrative,
+      );
+
+      const statsExerciseActual = getStats(
+        { by: 'exercise', exerciseId: CHAR_CATALOG_EX_PUSHUP },
+        { ...CHAR_STATS_DATA, snapshot: snapshotWithFeedback },
+      );
+      expectOldKeysUnchanged(statsExerciseActual, pins.getStatsExercise);
+
+      const statsMuscleActual = getStats(
+        { by: 'muscle', muscle: 'chest' },
+        { ...CHAR_STATS_DATA, snapshot: snapshotWithFeedback },
+      );
+      expectOldKeysUnchanged(statsMuscleActual, pins.getStatsMuscle);
+
+      const statsCapabilitiesActual = getStats(
+        { by: 'capabilities' },
+        { ...CHAR_STATS_DATA, snapshot: snapshotWithFeedback },
+      );
+      expectOldKeysUnchanged(statsCapabilitiesActual, pins.getStatsCapabilities);
+
+      const adherenceActual = getAdherence(
+        CHAR_ADHERENCE_ARGS,
+        { ...CHAR_ADHERENCE_DATA, snapshot: snapshotWithFeedback },
+        CHAR_NOW_MS,
+      );
+      expectOldKeysUnchanged(adherenceActual, pins.getAdherence);
+
+      const progressAllActual = getProgress(CHAR_PROGRESS_ARGS_ALL, { ...CHAR_PROGRESS_DATA, snapshot: snapshotWithFeedback });
+      const progressOneActual = getProgress(CHAR_PROGRESS_ARGS_ONE, { ...CHAR_PROGRESS_DATA, snapshot: snapshotWithFeedback });
+      expectOldKeysUnchanged(progressAllActual, pins.getProgressExerciseAll);
+      expectOldKeysUnchanged(progressOneActual, pins.getProgressExerciseOne);
+    });
   });
 }
