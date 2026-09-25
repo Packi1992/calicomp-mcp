@@ -68,8 +68,14 @@ export interface GetHistoryArgs {
   lang?:         string;
 }
 
-/** A history session, additively classified (Phase 150, D-01/D-02). */
-export interface GetHistorySessionItem extends DecryptedSession {
+/**
+ * A history session, additively classified (Phase 150, D-01/D-02). `goalSnapshot` is
+ * deliberately OMITTED from the output type (Phase 151, D-26/D-27) — the coach reads
+ * goal attainment through a dedicated adherence tool, never the raw snapshot; giving
+ * this type no field to carry it enforces the omission at compile time, the same
+ * pattern `DecryptedPlannedWorkout` already uses for `calendarEventId`/`createdAt`.
+ */
+export interface GetHistorySessionItem extends Omit<DecryptedSession, 'goalSnapshot'> {
   sessionKind: SessionKind;
   templateStatus?: TemplateStatus;
 }
@@ -168,12 +174,17 @@ export function getHistory(
     .map(sl => (resolver ? { ...sl, ...resolver.forSetLog(sl) } : sl));
 
   // Classify each retained session (D-01/D-02) — templateStatus needs the full template
-  // index (including tombstones) to tell "deleted" apart from "unknown".
+  // index (including tombstones) to tell "deleted" apart from "unknown". `goalSnapshot`
+  // is destructured out here (Phase 151, D-26) — the coach never sees it via this tool.
   const templatesById = buildTemplateIndex(snapshot.templates);
-  const classifiedSessions: GetHistorySessionItem[] = sessions.map(s => ({
-    ...s,
-    ...classifySession(s, templatesById),
-  }));
+  const classifiedSessions: GetHistorySessionItem[] = sessions.map(s => {
+    const { goalSnapshot: _goalSnapshot, ...sessionWithoutGoalSnapshot } = s;
+    void _goalSnapshot; // deliberately discarded (D-26) — destructure-to-omit, not a bug
+    return {
+      ...sessionWithoutGoalSnapshot,
+      ...classifySession(s, templatesById),
+    };
+  });
 
   return { sessions: classifiedSessions, setLogs, matchingSessions, truncated };
 }

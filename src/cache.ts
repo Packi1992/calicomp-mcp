@@ -70,6 +70,12 @@ import type {
   UserProfileResponse,
   DecodeReport,
   UnreadableReason,
+  SessionFeedback,
+  SessionFeedbackStateWire,
+  SessionScaleFeedback,
+  SessionComment,
+  SessionGoal,
+  SessionGoalRoundTarget,
 } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -133,15 +139,148 @@ let inflightPromise: Promise<SnapshotCache> | null = null;
 // Decrypt-merge helpers (both paths per BackupSyncService.kt invariant)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Session feedback and goal-snapshot decoding (Phase 151, FB-03/FB-09/FB-11/D-28)
+//
+// Source: docs/COACH-PLANNING-PROTOCOL.md §1.3 "The session payload" / "Read rules".
+// Every helper below is fully tolerant — a malformed or unrecognized field is
+// dropped on its own, and `st`/`et` remain the ONLY payload keys that can make a
+// session row `malformed_payload` (T-151-45). No `console.*` call ever appears here
+// (T-151-46) — nothing in this section logs, and none of these functions surface raw
+// plaintext in an error message.
+// ---------------------------------------------------------------------------
+
+const SESSION_FEEDBACK_STATE_WORDS: readonly string[] = [
+  'not_offered', 'disabled', 'skipped', 'timeout', 'answered', 'confirmed', 'changed',
+];
+const SESSION_FEEDBACK_ANSWER_STATES: readonly SessionFeedbackStateWire[] = [
+  'answered', 'confirmed', 'changed',
+];
+
+/** The empty feedback both scales read when nothing was ever asked (FB-03) — a
+ *  legacy row, a plaintext pre-encryption row, or any row missing all eight keys. */
+function emptySessionFeedback(): SessionFeedback {
+  return {
+    execution: { value: null, state: 'never_asked', setLaterAt: null },
+    feel: { value: null, state: 'never_asked', setLaterAt: null },
+    comment: null,
+  };
+}
+
+/**
+ * Decode one feedback scale (execution or feel) from its three wire fields.
+ * Read rules (protocol §1.3, FB-03):
+ *   - Missing or unrecognized `state` → `never_asked`/null/null, full stop — the
+ *     accompanying `value`/`laterAt` are never read in that case.
+ *   - `value` is kept only when `state` is `answered`/`confirmed`/`changed` AND the
+ *     wire value is an integer `1..5`; every other combination discards it alone.
+ *   - `setLaterAt` is read whenever `state` is recognized (regardless of whether it
+ *     is an answer state — `skipped` legitimately carries one, protocol §1.3).
+ */
+function decodeScale(value: unknown, state: unknown, laterAt: unknown): SessionScaleFeedback {
+  if (typeof state !== 'string' || !SESSION_FEEDBACK_STATE_WORDS.includes(state)) {
+    return { value: null, state: 'never_asked', setLaterAt: null };
+  }
+  const stateWire = state as SessionFeedbackStateWire;
+  const isAnswer = SESSION_FEEDBACK_ANSWER_STATES.includes(stateWire);
+  const resolvedValue =
+    isAnswer && typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 5
+      ? value
+      : null;
+  const setLaterAt = typeof laterAt === 'number' ? new Date(laterAt).toISOString() : null;
+  return { value: resolvedValue, state: stateWire, setLaterAt };
+}
+
+/** Decode the athlete's comment (`fc`). Never written empty/whitespace-only per the
+ *  app's own write rule, but a defensive empty-string check costs nothing here. */
+function decodeComment(fc: unknown): SessionComment | null {
+  if (typeof fc !== 'string' || fc.length === 0) return null;
+  return { text: fc, source: 'athlete_free_text', treatAs: 'data_not_instructions' };
+}
+
+/** Decode both feedback scales and the comment from the parsed payload object. */
+function decodeFeedback(d: Record<string, unknown>): SessionFeedback {
+  return {
+    execution: decodeScale(d.fe, d.fes, d.fel),
+    feel: decodeScale(d.ff, d.ffs, d.ffl),
+    comment: decodeComment(d.fc),
+  };
+}
+
+/** Decode one `tg[].roundTargets[]` entry. `round` is the only required field. */
+function decodeGoalRoundTarget(entry: unknown): SessionGoalRoundTarget | null {
+  if (typeof entry !== 'object' || entry === null) return null;
+  const e = entry as Record<string, unknown>;
+  if (typeof e.round !== 'number') return null;
+  const rt: SessionGoalRoundTarget = { round: e.round };
+  if (typeof e.targetReps === 'number') rt.targetReps = e.targetReps;
+  if (typeof e.targetTimeSeconds === 'number') rt.targetTimeSeconds = e.targetTimeSeconds;
+  if (typeof e.targetWeight === 'number') rt.targetWeight = e.targetWeight;
+  return rt;
+}
+
+/**
+ * Decode one `tg[]` entry (D-28). `workoutExerciseId`/`exerciseId`/`mode`/`sets` are
+ * required — an entry missing or mistyping any of them is dropped entirely (never
+ * makes the row unreadable); every other field is additive.
+ */
+function decodeGoalEntry(entry: unknown): SessionGoal | null {
+  if (typeof entry !== 'object' || entry === null) return null;
+  const e = entry as Record<string, unknown>;
+  if (
+    typeof e.workoutExerciseId !== 'string' ||
+    typeof e.exerciseId !== 'string' ||
+    typeof e.mode !== 'string' ||
+    typeof e.sets !== 'number'
+  ) {
+    return null;
+  }
+  const goal: SessionGoal = {
+    workoutExerciseId: e.workoutExerciseId,
+    exerciseId: e.exerciseId,
+    mode: e.mode,
+    sets: e.sets,
+  };
+  if (typeof e.targetReps === 'number') goal.targetReps = e.targetReps;
+  if (typeof e.targetTimeSeconds === 'number') goal.targetTimeSeconds = e.targetTimeSeconds;
+  if (typeof e.targetWeight === 'number') goal.targetWeight = e.targetWeight;
+  if (Array.isArray(e.roundTargets)) {
+    const rounds = e.roundTargets
+      .map(decodeGoalRoundTarget)
+      .filter((r): r is SessionGoalRoundTarget => r !== null);
+    if (rounds.length > 0) goal.roundTargets = rounds;
+  }
+  return goal;
+}
+
+/**
+ * Decode the goal snapshot (`tg`, D-28). `null` when `tg` is absent or not an array
+ * (legacy row, or a free/group/QuickChallenge session that never had a template to
+ * snapshot) — an array (possibly empty after dropping malformed entries) otherwise.
+ */
+function decodeGoals(tg: unknown): SessionGoal[] | null {
+  if (!Array.isArray(tg)) return null;
+  const result: SessionGoal[] = [];
+  for (const entry of tg) {
+    const goal = decodeGoalEntry(entry);
+    if (goal !== null) result.push(goal);
+  }
+  return result;
+}
+
 /**
  * Decrypt-merge a single session.
  *
  * Encrypted path (encryptedPayload present, plaintext startTime=0):
- *   Decrypt payload → parse {"st":<epoch>,"et":<epoch>} → use resolved values.
+ *   Decrypt payload → parse {"st":<epoch>,"et":<epoch>,...} → use resolved values.
  *   et <= 0 means the session is still ongoing → endTime = undefined.
+ *   Phase 151 (FB-03/FB-09/D-28): additionally decode `feedback` (tolerant, field by
+ *   field) and `goalSnapshot` — `st`/`et` remain the ONLY hard check (T-151-45).
  *
  * Plaintext path (no encryptedPayload):
- *   Use plaintext startTime / endTime unchanged (pre-encryption row).
+ *   Use plaintext startTime / endTime unchanged (pre-encryption row). A plaintext row
+ *   predates this payload's feedback keys entirely — both scales read `never_asked`,
+ *   comment and goalSnapshot are `null`.
  */
 export function decryptSession(s: SyncSessionDto, keyB64: string): DecryptedSession {
   const { encryptedPayload, startTime, endTime, ...rest } = s;
@@ -152,9 +291,9 @@ export function decryptSession(s: SyncSessionDto, keyB64: string): DecryptedSess
     } catch {
       throw new RowDecodeError(`session row ${s.id} could not be decrypted`, 'decrypt_failed');
     }
-    let d: { st: unknown; et: unknown };
+    let d: Record<string, unknown>;
     try {
-      d = JSON.parse(plaintext) as { st: unknown; et: unknown };
+      d = JSON.parse(plaintext) as Record<string, unknown>;
     } catch {
       throw new RowDecodeError(`session row ${s.id} has a malformed payload`, 'malformed_payload');
     }
@@ -165,9 +304,11 @@ export function decryptSession(s: SyncSessionDto, keyB64: string): DecryptedSess
       ...rest,
       startTime: d.st,
       endTime: d.et > 0 ? d.et : undefined,
+      feedback: decodeFeedback(d),
+      goalSnapshot: decodeGoals(d.tg),
     };
   }
-  return { ...rest, startTime, endTime };
+  return { ...rest, startTime, endTime, feedback: emptySessionFeedback(), goalSnapshot: null };
 }
 
 /**
