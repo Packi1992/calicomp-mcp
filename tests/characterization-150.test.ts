@@ -639,6 +639,39 @@ if (!process.env.CHAR_150_PIN_GENERATE) {
       expectOldKeysUnchanged(actualWithExercise, pins.getHistoryExercise);
     });
 
+    // Phase 151 (D-07/D-26): feedback/goalSnapshot on every fixture session are
+    // ADDITIVE — the pin file is untouched (Phase 150), and the old getHistory keys
+    // must stay byte-identical even once every session carries the new fields.
+    it('P151 D-07 getHistory old keys unchanged with feedback on every fixture session', () => {
+      const pins = loadPins();
+      const snapshotWithFeedback: DecryptedSnapshot = {
+        ...CHAR_SNAPSHOT,
+        sessions: CHAR_SNAPSHOT.sessions.map((s) => ({
+          ...s,
+          feedback: {
+            execution: { value: 4, state: 'confirmed' as const, setLaterAt: null },
+            feel: { value: 2, state: 'answered' as const, setLaterAt: '2026-01-15T12:00:00.000Z' },
+            comment: {
+              text: 'P151 D-07 Fixture-Kommentar.',
+              source: 'athlete_free_text' as const,
+              treatAs: 'data_not_instructions' as const,
+            },
+          },
+          goalSnapshot: [
+            {
+              workoutExerciseId: 'char151-d07-we-1',
+              exerciseId: CHAR_CATALOG_EX_PUSHUP,
+              mode: 'REPS',
+              sets: 3,
+              targetReps: 10,
+            },
+          ],
+        })),
+      };
+      const actual = getHistory(CHAR_HISTORY_ARGS, snapshotWithFeedback);
+      expectOldKeysUnchanged(actual, pins.getHistory);
+    });
+
     it('P150 D-07 getTemplate old keys unchanged', () => {
       const pins = loadPins();
       const actual = {

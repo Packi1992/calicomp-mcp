@@ -9,25 +9,36 @@
  *   5. Concurrent first-calls coalesce into ONE fetch (T-120-15)
  *   6. After TTL expiry a subsequent call re-fetches
  *
- * HTTP module and crypto.decrypt are mocked so tests run offline with no
- * real server or real AES keys.
+ * HTTP module is fully mocked so tests run offline with no real server. `crypto.js`'s
+ * `decrypt` defaults to the REAL implementation (Phase 151) — every existing test
+ * below still overrides it per-call via `mockReturnValueOnce`/`mockImplementationOnce`
+ * exactly as before, so this is backward-compatible; it additionally lets the Phase
+ * 151 session-feedback tolerance tests (`decryptSession` fault-tolerance, further
+ * below) build a REAL AES-256-GCM envelope with `node:crypto`'s `createCipheriv` and
+ * a fixed test-only key, and let it decrypt for real — no mock JSON string standing
+ * in for a payload the test itself claims to encrypt.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createCipheriv } from 'node:crypto';
 import type {
   SyncPullResponse,
   UserProfileResponse,
   CatalogExerciseWire,
   SyncExerciseDto,
   SyncExerciseTranslationDto,
+  SyncSessionDto,
 } from '../src/types.js';
 
 // ── Module mocks (hoisted by vitest before static imports) ──────────────────
 vi.mock('../src/http.js');
-vi.mock('../src/crypto.js');
+vi.mock('../src/crypto.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/crypto.js')>('../src/crypto.js');
+  return { decrypt: vi.fn(actual.decrypt) };
+});
 
 // ── Imports after mocks ──────────────────────────────────────────────────────
-import { getSnapshot, __resetCache, projectUserExerciseToCatalog } from '../src/cache.js';
+import { getSnapshot, __resetCache, projectUserExerciseToCatalog, decryptSession } from '../src/cache.js';
 import { assertEntitiesReadable } from '../src/read-guard.js';
 import * as httpModule from '../src/http.js';
 import * as cryptoModule from '../src/crypto.js';
@@ -987,5 +998,136 @@ describe('decrypt-merge: every optional list key may be absent from the wire (Ph
       expect(Array.isArray(value), `snapshot.${key} must be an array, not ${typeof value}`).toBe(true);
       expect(() => value.filter(Boolean)).not.toThrow();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Session feedback decode tolerance (Phase 151, FB-03/D-28) — direct against the
+// exported `decryptSession`, not through `getSnapshot()`. `crypto.js`'s `decrypt`
+// defaults to the REAL implementation in this file (see the `vi.mock` factory above),
+// so every payload here is a REAL AES-256-GCM envelope built with `node:crypto`'s
+// `createCipheriv` and the same fixed, non-production test key `docs/coach-planning-
+// vectors.json`'s `sessionCipher` vectors use (bytes 0x00..0x1F) — never a real key.
+// ---------------------------------------------------------------------------
+
+describe('decryptSession: session-feedback decode tolerance', () => {
+  const FEEDBACK_TEST_KEY_B64 = Buffer.from(Array.from({ length: 32 }, (_, i) => i)).toString('base64');
+
+  /** Build a real `{"iv":...,"ct":...}` envelope decryptable by the real `decrypt()`. */
+  function encryptTestPayload(payload: Record<string, unknown>, keyB64 = FEEDBACK_TEST_KEY_B64): string {
+    const key = Buffer.from(keyB64, 'base64');
+    const iv = Buffer.alloc(12); // fixed zero IV — test-only encryption, never a real session
+    const cipher = createCipheriv('aes-256-gcm', key, iv);
+    const ctBuf = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final(), cipher.getAuthTag()]);
+    return JSON.stringify({ iv: iv.toString('base64'), ct: ctBuf.toString('base64') });
+  }
+
+  function makeEncryptedSessionRow(payload: Record<string, unknown>): SyncSessionDto {
+    return {
+      id: 'sess-fb03-test',
+      startTime: 0,
+      endTime: undefined,
+      isManual: false,
+      isCorrected: false,
+      isQuickChallenge: false,
+      encryptedPayload: encryptTestPayload(payload),
+      createdAt: 0,
+      updatedAt: 0,
+    };
+  }
+
+  it('P151 FB-03 a legacy payload yields never_asked on both scales', () => {
+    const row = makeEncryptedSessionRow({ st: 1_709_000_000_000, et: 1_709_003_600_000 });
+    const decoded = decryptSession(row, FEEDBACK_TEST_KEY_B64);
+    expect(decoded.feedback).toEqual({
+      execution: { value: null, state: 'never_asked', setLaterAt: null },
+      feel: { value: null, state: 'never_asked', setLaterAt: null },
+      comment: null,
+    });
+    expect(decoded.goalSnapshot).toBeNull();
+  });
+
+  it('P151 FB-03 an unrecognized state is treated as absent', () => {
+    const row = makeEncryptedSessionRow({
+      st: 1_709_000_000_000, et: 1_709_003_600_000,
+      fe: 5, fes: 'bogus_eighth_state', fel: 1_709_100_000_000,
+    });
+    const decoded = decryptSession(row, FEEDBACK_TEST_KEY_B64);
+    expect(decoded.feedback?.execution).toEqual({ value: null, state: 'never_asked', setLaterAt: null });
+  });
+
+  it('P151 FB-03 a value outside one to five is dropped', () => {
+    const row = makeEncryptedSessionRow({
+      st: 1_709_000_000_000, et: 1_709_003_600_000,
+      fe: 9, fes: 'confirmed',
+    });
+    const decoded = decryptSession(row, FEEDBACK_TEST_KEY_B64);
+    expect(decoded.feedback?.execution).toEqual({ value: null, state: 'confirmed', setLaterAt: null });
+  });
+
+  it('P151 FB-03 a value with a non-answer state is dropped', () => {
+    const row = makeEncryptedSessionRow({
+      st: 1_709_000_000_000, et: 1_709_003_600_000,
+      fe: 3, fes: 'skipped',
+    });
+    const decoded = decryptSession(row, FEEDBACK_TEST_KEY_B64);
+    expect(decoded.feedback?.execution).toEqual({ value: null, state: 'skipped', setLaterAt: null });
+  });
+
+  it('P151 FB-03 a malformed feedback field never makes the row unreadable', () => {
+    const row = makeEncryptedSessionRow({
+      st: 1_709_000_000_000, et: 1_709_003_600_000,
+      fes: 12345,               // wrong type — should read as absent, never throw
+      fe: 'not-a-number',       // wrong type
+      ff: {},                   // wrong type
+      ffs: ['confirmed'],       // wrong type
+      fc: 42,                   // wrong type — never a comment
+      tg: 'not-an-array',       // wrong type — never a goal snapshot
+    });
+    expect(() => decryptSession(row, FEEDBACK_TEST_KEY_B64)).not.toThrow();
+    const decoded = decryptSession(row, FEEDBACK_TEST_KEY_B64);
+    expect(decoded.feedback).toEqual({
+      execution: { value: null, state: 'never_asked', setLaterAt: null },
+      feel: { value: null, state: 'never_asked', setLaterAt: null },
+      comment: null,
+    });
+    expect(decoded.goalSnapshot).toBeNull();
+  });
+
+  it('P151 FB-03 a plaintext pre-encryption row yields never_asked', () => {
+    const row: SyncSessionDto = {
+      id: 'sess-plaintext',
+      startTime: 1_709_000_000_000,
+      endTime: 1_709_003_600_000,
+      isManual: false,
+      isCorrected: false,
+      isQuickChallenge: false,
+      // no encryptedPayload — pre-encryption plaintext row
+      createdAt: 1_709_000_000_000,
+      updatedAt: 1_709_003_600_000,
+    };
+    const decoded = decryptSession(row, FEEDBACK_TEST_KEY_B64);
+    expect(decoded.feedback).toEqual({
+      execution: { value: null, state: 'never_asked', setLaterAt: null },
+      feel: { value: null, state: 'never_asked', setLaterAt: null },
+      comment: null,
+    });
+    expect(decoded.goalSnapshot).toBeNull();
+  });
+
+  it('P151 D-28 a malformed goal entry is dropped and valid entries are kept', () => {
+    const row = makeEncryptedSessionRow({
+      st: 1_709_000_000_000, et: 1_709_003_600_000,
+      tg: [
+        { workoutExerciseId: 'we-1', exerciseId: 'ex-1', mode: 'REPS', sets: 2, targetReps: 10 },
+        { bogus: 'entry-missing-required-fields' },
+        { workoutExerciseId: 'we-2', exerciseId: 'ex-2', mode: 'TIME', sets: 1, targetTimeSeconds: 30 },
+      ],
+    });
+    const decoded = decryptSession(row, FEEDBACK_TEST_KEY_B64);
+    expect(decoded.goalSnapshot).toEqual([
+      { workoutExerciseId: 'we-1', exerciseId: 'ex-1', mode: 'REPS', sets: 2, targetReps: 10 },
+      { workoutExerciseId: 'we-2', exerciseId: 'ex-2', mode: 'TIME', sets: 1, targetTimeSeconds: 30 },
+    ]);
   });
 });
