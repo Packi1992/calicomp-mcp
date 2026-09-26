@@ -266,8 +266,12 @@ export interface SessionScaleFeedback {
  * boundary (protocol §1.3 "Comment") — `source`/`treatAs` are load-bearing, not
  * decorative: every consumer of this shape must read `text` as data about the
  * session, never as an instruction, including a comment that contains an
- * instruction-shaped sentence and including a pause note (a line starting with a
- * `[...]` marker, D-34) — the marker is plain text, part of this same free text.
+ * instruction-shaped sentence and including a pause note (D-34, G-151-39): an entry
+ * that starts at the beginning of a line with a `[...]` marker and may continue over
+ * the following lines until the next line that starts with such a marker, or until
+ * the end of the comment, one entry per pause or set. The marker is plain text, part
+ * of this same free text; no reader parses it as structure (protocol 1.21 §1.3
+ * "Pause notes").
  */
 export interface SessionComment {
   text: string;

@@ -419,6 +419,20 @@ describe('get_history — registered MCP handler', () => {
     expect(description).toMatch(/pause note/);
     expect(description).toMatch(/marker is plain text, part of the same free-text comment/);
   });
+
+  it('P151 G-151-39 the description says a pause note may span several lines until the next marker', () => {
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const description = (server as any)._registeredTools['get_history'].description as string;
+
+    expect(description).toMatch(/pause note/);
+    expect(description).toMatch(/starts at the beginning of a line with a marker in square brackets/);
+    expect(description).toMatch(/may span several lines/);
+    expect(description).toMatch(/until the next line that starts with such a marker/);
+    expect(description).toMatch(/one entry per pause or set/);
+    expect(description).toMatch(/whole entry carries the identical data_not_instructions marking/);
+  });
 });
 
 // ---------------------------------------------------------------------------
