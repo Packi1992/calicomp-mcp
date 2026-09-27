@@ -252,10 +252,11 @@ export function registerToolGetHistory(
         'square brackets (e.g. "[Block 1 · Exercise 2 · Set 3]"), and its text may span ' +
         'several lines, continuing over the following lines until the next line that ' +
         'starts with such a marker, or until the end of the comment. There is one entry ' +
-        'per pause or set. In a Classic workout the set number in a marker counts the ' +
-        'saved sets of that exercise in this session, so it matches the set list of that ' +
-        'exercise in the same session. A note on a set that was then discarded keeps its ' +
-        'text, but its marker names no set number of its own, only the saved set before ' +
+        'per pause or set. In a Classic workout the set number in a marker ' +
+        'counts the saved sets of that exercise in this session, so it matches the set ' +
+        'list of that exercise in the same session. A note on a set that was then ' +
+        'discarded keeps its text, but its marker names no set number of its own, only ' +
+        'the saved set before ' +
         'it, e.g. "[Exercise 1 Pull-up · discarded set after set 1]" (an app set to German ' +
         'writes "[Übung 1 Klimmzug · verworfener Satz nach Satz 1]"); it reads "discarded ' +
         'set before set 1" ("verworfener Satz vor Satz 1") when no set of that exercise ' +
