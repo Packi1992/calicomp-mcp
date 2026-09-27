@@ -20,6 +20,7 @@ import * as setCoachParametersTool from './tools/set_coach_parameters.js';
 import * as getAdherenceTool from './tools/get_adherence.js';
 import * as getProgressTool from './tools/get_progress.js';
 import { pruneExports } from './file-channel.js';
+import { SERVER_NAME, SERVER_VERSION } from './version.js';
 
 const pat      = process.env.CALICOMP_PAT;
 const keyB64   = process.env.CALICOMP_KEY;
@@ -30,7 +31,7 @@ if (!pat || !keyB64) {
   process.exit(1);
 }
 
-const server = new McpServer({ name: 'calicomp', version: '0.1.0' });
+const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 const config = { pat, keyB64, serverUrl };
 
 getHistoryTool.registerToolGetHistory(server, config);
