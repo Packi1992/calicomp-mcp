@@ -269,8 +269,13 @@ export interface SessionScaleFeedback {
  * instruction-shaped sentence and including a pause note (D-34, G-151-39): an entry
  * that starts at the beginning of a line with a `[...]` marker and may continue over
  * the following lines until the next line that starts with such a marker, or until
- * the end of the comment, one entry per pause or set. The marker is plain text, part
- * of this same free text; no reader parses it as structure (protocol 1.21 §1.3
+ * the end of the comment, one entry per pause or set. In a Classic workout the set
+ * number in a marker counts the saved sets of that exercise in this session; a note on
+ * a discarded set carries a discarded marker without a set number of its own
+ * ("[Exercise 1 Pull-up · discarded set after set 1]", German "[Übung 1 Klimmzug ·
+ * verworfener Satz nach Satz 1]", "before set 1" when none was saved yet, " (2)" for a
+ * further one) and belongs to no set of the set list. The marker is plain text, part
+ * of this same free text; no reader parses it as structure (protocol 1.22 §1.3
  * "Pause notes").
  */
 export interface SessionComment {

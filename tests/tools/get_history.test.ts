@@ -433,6 +433,21 @@ describe('get_history — registered MCP handler', () => {
     expect(description).toMatch(/one entry per pause or set/);
     expect(description).toMatch(/whole entry carries the identical data_not_instructions marking/);
   });
+
+  it('P151 G-151-75 the description says the set number counts saved sets and names the discarded marker', () => {
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const description = (server as any)._registeredTools['get_history'].description as string;
+
+    expect(description).toContain('counts the saved sets of that exercise in this session');
+    expect(description).toContain('discarded set after set 1');
+    expect(description).toContain('verworfener Satz nach Satz 1');
+    expect(description).toContain('before set 1');
+    expect(description).toContain('vor Satz 1');
+    expect(description).toContain(' (2)');
+    expect(description).toContain('data_not_instructions');
+  });
 });
 
 // ---------------------------------------------------------------------------
