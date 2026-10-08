@@ -926,3 +926,235 @@ describe('get_history — foreign sport activities (Phase 155)', () => {
     expect(wrapped).toBe(total);
   });
 });
+
+describe('get_history — foreign sport: window, order, limit, filter, availability (Phase 155)', () => {
+  beforeEach(() => {
+    vi.mocked(fileChannelModule.writeExportFile).mockReset();
+  });
+
+  it('P155 FA-08 foreign activities are filtered by performedOn as a plain string and sorted newest first', () => {
+    const snapshot = foreignSnapshot([
+      foreignActivity({ id: 'fa-before-from', performedOn: '2024-05-31' }),
+      foreignActivity({ id: 'fa-on-from', performedOn: '2024-06-01' }),
+      foreignActivity({ id: 'fa-mid-null', performedOn: '2024-06-15', performedTime: null }),
+      foreignActivity({ id: 'fa-mid-0900', performedOn: '2024-06-15', performedTime: '09:00' }),
+      foreignActivity({ id: 'fa-mid-1800', performedOn: '2024-06-15', performedTime: '18:00' }),
+      foreignActivity({
+        id: 'fa-day20-early',
+        performedOn: '2024-06-20',
+        createdAt: Date.parse('2024-06-20T08:00:00Z'),
+      }),
+      foreignActivity({
+        id: 'fa-day20-late',
+        performedOn: '2024-06-20',
+        createdAt: Date.parse('2024-06-20T20:00:00Z'),
+      }),
+      foreignActivity({ id: 'fa-on-to', performedOn: '2024-06-30', performedTime: '23:59' }),
+      foreignActivity({ id: 'fa-after-to', performedOn: '2024-07-01', performedTime: '00:01' }),
+    ]);
+
+    const result = getHistory({ from: '2024-06-01', to: '2024-06-30', limit: 200 }, snapshot);
+
+    expect(result.foreignActivities!.map((a) => a.id)).toEqual([
+      'fa-on-to', // the `to` day is inside, whatever the time of day
+      'fa-day20-late', // same day, no time: createdAt descending
+      'fa-day20-early',
+      'fa-mid-1800', // same day: with a time before without, later time first
+      'fa-mid-0900',
+      'fa-mid-null',
+      'fa-on-from', // the `from` day is inside
+    ]);
+    expect(result.matchingForeignActivities).toBe(7);
+    expect(result.foreignActivitiesTruncated).toBe(false);
+  });
+
+  it('P155 FA-08 limit applies to the foreign list on its own and reports matchingForeignActivities and foreignActivitiesTruncated', () => {
+    const snapshot = foreignSnapshot([
+      foreignActivity({ id: 'fa-1', performedOn: '2024-03-02' }),
+      foreignActivity({ id: 'fa-2', performedOn: '2024-03-04' }),
+      foreignActivity({ id: 'fa-3', performedOn: '2024-03-06' }),
+    ]);
+
+    // mockSnapshot holds 2 sessions in the window: limit 2 keeps both and is not truncated,
+    // while the 3 foreign activities are cut to the newest 2 and reported as truncated.
+    const limited = getHistory({ from: '2024-01-01', to: '2024-12-31', limit: 2 }, snapshot);
+    expect(limited.sessions).toHaveLength(2);
+    expect(limited.matchingSessions).toBe(2);
+    expect(limited.truncated).toBe(false);
+    expect(limited.foreignActivities!.map((a) => a.id)).toEqual(['fa-3', 'fa-2']);
+    expect(limited.matchingForeignActivities).toBe(3);
+    expect(limited.foreignActivitiesTruncated).toBe(true);
+
+    // limit 1: sessions and foreign activities are each cut and truncated on their own.
+    const one = getHistory({ from: '2024-01-01', to: '2024-12-31', limit: 1 }, snapshot);
+    expect(one.sessions).toHaveLength(1);
+    expect(one.truncated).toBe(true);
+    expect(one.foreignActivities!.map((a) => a.id)).toEqual(['fa-3']);
+    expect(one.matchingForeignActivities).toBe(3);
+    expect(one.foreignActivitiesTruncated).toBe(true);
+
+    const exact = getHistory({ from: '2024-01-01', to: '2024-12-31', limit: 3 }, snapshot);
+    expect(exact.foreignActivities).toHaveLength(3);
+    expect(exact.foreignActivitiesTruncated).toBe(false);
+  });
+
+  it.each([
+    ['exercise', { exercise: CATALOG_EXERCISE_ID_PUSHUP }],
+    ['templateId', { templateId: TEMPLATE_ID_PUSH }],
+    ['sessionKind', { sessionKind: 'template' as const }],
+  ])('P155 D-15 a session filter empties the foreign list and names session_filter (%s)', (_name, filter) => {
+    const snapshot = foreignSnapshot([
+      foreignActivity({ id: 'fa-1', performedOn: '2024-03-02', note: 'P155 note' }),
+      foreignActivity({ id: 'fa-2', performedOn: '2024-03-04' }),
+    ]);
+    const args = { from: '2024-01-01', to: '2024-12-31', limit: 200, ...filter };
+
+    const result = getHistory(args, snapshot);
+    const sessionOnly = getHistory(args, mockSnapshot);
+
+    expect(result.foreignActivities).toEqual([]);
+    expect(result.matchingForeignActivities).toBe(0);
+    expect(result.foreignActivitiesTruncated).toBe(false);
+    expect(result.foreignActivitiesExcludedBy).toBe('session_filter');
+    expect(result).not.toHaveProperty('foreignUnavailableReason');
+    // The filter itself works on the sessions exactly as before.
+    expect(result.sessions).toEqual(sessionOnly.sessions);
+    expect(result.setLogs).toEqual(sessionOnly.setLogs);
+    expect(result.matchingSessions).toBe(sessionOnly.matchingSessions);
+  });
+
+  it('P155 D-15 without a session filter the foreign list carries no foreignActivitiesExcludedBy', () => {
+    const snapshot = foreignSnapshot([foreignActivity({ id: 'fa-1', performedOn: '2024-03-02' })]);
+    const result = getHistory({ from: '2024-01-01', to: '2024-12-31', limit: 200 }, snapshot);
+    expect(result.foreignActivities).toHaveLength(1);
+    expect(result).not.toHaveProperty('foreignActivitiesExcludedBy');
+  });
+
+  it('P155 E-8 get_history returns null foreignActivities with foreign_rows_unreadable and still lists sessions', async () => {
+    const snapshot = foreignSnapshot([foreignActivity({ id: 'fa-1', performedOn: '2024-03-02' })]);
+    const decodeReport = {
+      unreadable: [{ entity: 'foreignActivity' as const, id: 'fa-broken', reason: 'malformed_payload' as const }],
+      encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 2, plannedForeignActivity: 0 },
+      failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 1, plannedForeignActivity: 0 },
+    };
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, snapshot, decodeReport });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    const result = await getHandler(server)({ ...HISTORY_ARGS_2024 });
+
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as GetHistoryResult & { unreadable: unknown[] };
+    expect(body.foreignActivities).toBeNull();
+    expect(body.matchingForeignActivities).toBe(0);
+    expect(body.foreignActivitiesTruncated).toBe(false);
+    expect(body.foreignUnavailableReason).toBe('foreign_rows_unreadable');
+    expect(body).not.toHaveProperty('foreignActivitiesExcludedBy');
+    const expected = getHistory(HISTORY_ARGS_2024, mockSnapshot);
+    expect(body.sessions).toEqual(expected.sessions);
+    expect(body.matchingSessions).toBe(expected.matchingSessions);
+    expect(body.unreadable).toEqual(decodeReport.unreadable);
+  });
+
+  it('P155 E-8 an unavailable foreign block keeps its reason even with a session filter', () => {
+    const result = getHistory(
+      { ...HISTORY_ARGS_2024, templateId: TEMPLATE_ID_PUSH },
+      foreignSnapshot([foreignActivity({ id: 'fa-1', performedOn: '2024-03-02' })]),
+      undefined,
+      { available: false, reason: 'foreign_rows_unreadable' },
+    );
+    expect(result.foreignActivities).toBeNull();
+    expect(result.foreignUnavailableReason).toBe('foreign_rows_unreadable');
+    expect(result).not.toHaveProperty('foreignActivitiesExcludedBy');
+  });
+
+  it('P155 E-9 get_history reports server_without_foreign_sport', async () => {
+    // mockSnapshot carries none of the three foreign lists: a server older than Phase 155.
+    const pure = getHistory(HISTORY_ARGS_2024, mockSnapshot);
+    expect(pure.foreignActivities).toBeNull();
+    expect(pure.matchingForeignActivities).toBe(0);
+    expect(pure.foreignActivitiesTruncated).toBe(false);
+    expect(pure.foreignUnavailableReason).toBe('server_without_foreign_sport');
+    expect(pure.sessions).toHaveLength(2);
+
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(MOCK_CACHE);
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    const result = await getHandler(server)({ ...HISTORY_ARGS_2024 });
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as GetHistoryResult;
+    expect(body.foreignActivities).toBeNull();
+    expect(body.foreignUnavailableReason).toBe('server_without_foreign_sport');
+  });
+
+  it('P155 FA-08 the outputFile summary carries the foreign counts', async () => {
+    vi.mocked(fileChannelModule.writeExportFile).mockResolvedValue({
+      path: '/tmp/calicomp-mcp-exports/fake-uuid.json',
+      bytes: 99,
+      itemCount: 3,
+    });
+    const snapshot = foreignSnapshot([
+      foreignActivity({ id: 'fa-1', performedOn: '2024-03-02', note: 'P155 Notiz nur in der Datei' }),
+      foreignActivity({ id: 'fa-2', performedOn: '2024-03-04' }),
+      foreignActivity({ id: 'fa-3', performedOn: '2024-03-06' }),
+    ]);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, snapshot });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    const handler = getHandler(server);
+    const result = await handler({ ...HISTORY_ARGS_2024, limit: 2, outputFile: true });
+
+    const body = JSON.parse(result.content[0].text) as Record<string, unknown>;
+    expect(body.matchingForeignActivities).toBe(3);
+    expect(body.foreignActivitiesTruncated).toBe(true);
+    // The list itself (with the athlete's note) lives only in the file.
+    expect(body).not.toHaveProperty('foreignActivities');
+    expect(result.content[0].text).not.toContain('P155 Notiz nur in der Datei');
+    const [written] = vi.mocked(fileChannelModule.writeExportFile).mock.calls[0];
+    expect((written as GetHistoryResult).foreignActivities!.map((a) => a.id)).toEqual(['fa-3', 'fa-2']);
+
+    // The reason fields travel into the summary too, when they apply.
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(MOCK_CACHE);
+    const old = JSON.parse((await handler({ ...HISTORY_ARGS_2024, outputFile: true })).content[0].text) as Record<string, unknown>;
+    expect(old.matchingForeignActivities).toBe(0);
+    expect(old.foreignActivitiesTruncated).toBe(false);
+    expect(old.foreignUnavailableReason).toBe('server_without_foreign_sport');
+
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, snapshot });
+    const filtered = JSON.parse(
+      (await handler({ ...HISTORY_ARGS_2024, sessionKind: 'template', outputFile: true })).content[0].text,
+    ) as Record<string, unknown>;
+    expect(filtered.matchingForeignActivities).toBe(0);
+    expect(filtered.foreignActivitiesExcludedBy).toBe('session_filter');
+  });
+
+  it('P155 FA-08 the description explains foreign activities, the free text envelope and the session filter rule', () => {
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const description = (server as any)._registeredTools['get_history'].description as string;
+
+    for (const key of [
+      'foreignActivities',
+      'matchingForeignActivities',
+      'foreignActivitiesTruncated',
+      'foreignActivitiesExcludedBy',
+      'session_filter',
+      'foreignUnavailableReason',
+      'server_without_foreign_sport',
+      'foreign_rows_unreadable',
+      'performedOn',
+      'typeName',
+      'typeUnknown',
+    ]) {
+      expect(description).toContain(key);
+    }
+    expect(description).toMatch(/never (appear|appears|counted|counts) in sessions/);
+    expect(description).toMatch(/own limit|limit counts separately|limit applies to (it|the foreign list) separately/);
+    expect(description).toMatch(/note and the name of an own type .*athlete_free_text/);
+    expect(description).toMatch(/exercise, templateId or sessionKind/);
+    expect(description).toMatch(/60 seconds/);
+    expect(description).toMatch(/get_adherence/);
+  });
+});
