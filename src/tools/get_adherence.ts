@@ -219,6 +219,12 @@ export function registerToolGetAdherence(
         'decoded, this tool fails instead of returning a partial or misleading answer. This tool ' +
         'lists no exerciseId: every occurrence carries templateName; read the exercises of a ' +
         'template, with names, through get_template. ' +
+        'removedWithCompletedSessionCount (with removedWithCompletedSessionDates and ' +
+        'removedWithCompletedSessionExplanation) counts the removed dates of a recurring ' +
+        'template appointment on which a finished session of the same template lies: older app ' +
+        'versions wrote a completed series date as removed, so read these dates as completed ' +
+        'rather than cancelled; removedOccurrenceCount itself is unchanged and still includes ' +
+        'them. ' +
         'Foreign sport (running, bouldering, cycling and the athlete\'s own types): ' +
         'plannedCount, matchedCount, uncertainCount, missedCount and removedOccurrenceCount count ' +
         'template trainings only; planned foreign sport appointments are reported separately ' +
@@ -269,6 +275,8 @@ export function registerToolGetAdherence(
             removedOccurrenceCount: result.removedOccurrenceCount,
             adherenceRatio: result.adherenceRatio,
             explanation: result.explanation,
+            // Phase 155 (D-07): the count only — the dates go into the file.
+            removedWithCompletedSessionCount: result.removedWithCompletedSessionCount,
             // Phase 155 (FA-06): the foreign counts without the lists — those go into the file.
             foreignSport: foreignSummaryOf(result.foreignSport),
             parametersSource: source,

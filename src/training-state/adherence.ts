@@ -41,10 +41,20 @@
  * (`coach-parameters.ts`) were re-derived against the SAME combined vector in the same
  * plan — never left calibrated against a vector this file no longer uses.
  *
+ * Phase 155 (D-05 … D-08 of that phase, protocol §1.6 "Completed series appointments on the
+ * template side"): until the app fix of plan 155-10, `linkSessionToPlannedWorkout` wrote the
+ * date of a completed SERIES occurrence into the root's `deletedOccurrences`, so this module
+ * counted a completed date as removed. Since 155-10 the app no longer writes such dates
+ * (immediately effective, D-08); the old entries stay in the data (D-06). The correction is
+ * ONLY a new field, `removedWithCompletedSessionCount` (plus its dates and its explanation),
+ * appended after the existing keys — `removedOccurrenceCount` is never redefined (D-07).
+ * Foreign sport (`foreign-adherence.ts`) is a separate pass and never enters this module.
+ *
  * Exports:
  *   AdherenceMatch      — one assigned (occurrence, session) pair
  *   AdherenceResult     — the full computation result
  *   ADHERENCE_EXPLANATION — the D-05/D-07 honesty statement, verbatim in every result
+ *   REMOVED_WITH_COMPLETED_SESSION_EXPLANATION — the Phase 155 D-07 statement, verbatim
  *   computeAdherence    — the pure calculator
  *
  * Security (threat model):
@@ -85,8 +95,13 @@ export const ADHERENCE_EXPLANATION =
   'date) leaves no trace inside this window at all, and this calculation treats it exactly as if ' +
   'nothing had ever been planned on that day.';
 
-/** RED stub (155-07 Aufgabe 3) — replaced in the GREEN commit. */
-export const REMOVED_WITH_COMPLETED_SESSION_EXPLANATION = '';
+// ---------------------------------------------------------------------------
+// D-07 explanation (Phase 155, D-07/D-08) — verbatim from protocol §1.6
+// "Verbatim explanations", never derived per call.
+// ---------------------------------------------------------------------------
+
+export const REMOVED_WITH_COMPLETED_SESSION_EXPLANATION =
+  'removedWithCompletedSessionCount counts the dates in this window that stand in the removed dates of a recurring template appointment although a finished session of the same template lies on that calendar day. Until the app fix of phase 155 the app wrote such a date when the athlete completed a series appointment, so these dates are included in removedOccurrenceCount although they were done, not cancelled. removedOccurrenceCount itself is unchanged; read these dates as completed rather than cancelled.';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -118,6 +133,8 @@ export interface AdherenceResult {
   missed: PlannedOccurrenceOut[];
   unplannedSessionIds: string[];
   explanation: string;
+  /** Phase 155 (D-07): removed dates of a recurring root with a finished session of the same
+   *  template on that calendar day — a subset of `removedOccurrenceCount`, never subtracted. */
   removedWithCompletedSessionCount: number;
   removedWithCompletedSessionDates: { date: string; rootId: string; templateId: string }[];
   removedWithCompletedSessionExplanation: string;
@@ -224,6 +241,35 @@ export function computeAdherence(
       if (deletedDate >= from && deletedDate <= to) removedOccurrenceCount++;
     }
   }
+
+  // Step 2b (Phase 155, D-07/D-06): BESIDE the count above, never inside it — the removed
+  // dates of a recurring root on which a finished, not deleted session of the same template
+  // lies (the athlete's calendar day, Rule 3). Until the app fix of plan 155-10,
+  // `linkSessionToPlannedWorkout` wrote a completed series date into `deletedOccurrences`;
+  // since 155-10 the app writes no such date any more (D-05, D-08), the old entries stay in
+  // the data (D-06). `removedOccurrenceCount` keeps its definition byte for byte.
+  const finishedSessionDays = new Set<string>();
+  for (const session of snapshot.sessions) {
+    if (session.deletedAt !== undefined) continue;
+    if (session.endTime === undefined) continue;
+    if (session.templateId === undefined) continue;
+    finishedSessionDays.add(`${session.templateId}::${toCalendarDay(session.startTime, timeZoneId)}`);
+  }
+  const removedWithCompletedSessionDates: { date: string; rootId: string; templateId: string }[] = [];
+  for (const root of denom.roots) {
+    if (root.recurrenceRule === null || root.recurrenceRule.trim() === '') continue;
+    for (const deletedDate of root.deletedOccurrences) {
+      if (deletedDate < from || deletedDate > to) continue;
+      if (finishedSessionDays.has(`${root.templateId}::${deletedDate}`)) {
+        removedWithCompletedSessionDates.push({ date: deletedDate, rootId: root.id, templateId: root.templateId });
+      }
+    }
+  }
+  removedWithCompletedSessionDates.sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    if (a.rootId !== b.rootId) return a.rootId < b.rootId ? -1 : 1;
+    return 0;
+  });
 
   // Step 3: candidate sessions, mapped onto the athlete's calendar day (Rule 3),
   // over a search window extended by toleranceDays beyond both edges of [from, to].
@@ -416,8 +462,8 @@ export function computeAdherence(
     missed,
     unplannedSessionIds,
     explanation: ADHERENCE_EXPLANATION,
-    removedWithCompletedSessionCount: 0, // RED stub (155-07 Aufgabe 3)
-    removedWithCompletedSessionDates: [], // RED stub (155-07 Aufgabe 3)
+    removedWithCompletedSessionCount: removedWithCompletedSessionDates.length,
+    removedWithCompletedSessionDates,
     removedWithCompletedSessionExplanation: REMOVED_WITH_COMPLETED_SESSION_EXPLANATION,
   };
 }
