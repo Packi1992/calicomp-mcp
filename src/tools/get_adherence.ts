@@ -10,8 +10,16 @@
  * this file only resolves the window/tolerance defaults, loads the coach's own
  * parameters, and shapes the tool result.
  *
+ * Phase 155 (FA-06, protocol §1.6): a foreign sport pass (`computeForeignAdherence`) runs
+ * BEFORE `computeAdherence`, over the same window, and its result is the NEW key
+ * `foreignSport` appended after every existing key. It shares no input with the template
+ * passes and writes nothing back; no template field moves. An unavailable foreign block
+ * (E-8 unreadable foreign row, E-9 server without foreign sport) is `available: false` plus
+ * `reason` — never an `isError`.
+ *
  * Exports:
  *   getAdherence(args, data, nowMs)   — pure function
+ *   foreignSummaryOf(foreign)          — the foreign part of the outputFile summary
  *   registerToolGetAdherence(server, cfg) — registers the tool with the MCP server
  *
  * Time zone (Protocol §1.4 Rule 3):
@@ -42,7 +50,11 @@ import { loadCoachParameters } from '../coach-parameters.js';
 import { resolveTimeZoneId, toCalendarDay } from '../training-state/time-zone.js';
 import { parseIsoDate, formatIsoDate, plusDays } from '../recurrence.js';
 import { computeAdherence, ADHERENCE_EXPLANATION, type AdherenceResult } from '../training-state/adherence.js';
-import { computeForeignAdherence, type ForeignAdherenceResult } from '../training-state/foreign-adherence.js';
+import {
+  computeForeignAdherence,
+  FOREIGN_ADHERENCE_EXPLANATION,
+  type ForeignAdherenceResult,
+} from '../training-state/foreign-adherence.js';
 import {
   decodeReportOf,
   assertEntitiesReadable,
@@ -151,6 +163,24 @@ export function getAdherence(
   return { ...result, foreignSport };
 }
 
+/**
+ * The `outputFile` summary of the foreign block (Phase 155, FA-06): `available` plus `reason`,
+ * or `available` plus the six counters and `fulfilmentRatio` — never the lists, which go into
+ * the export file together with `byType`, `rule` and `explanation`.
+ */
+export function foreignSummaryOf(foreign: ForeignAdherenceResult): Record<string, unknown> {
+  if (!foreign.available) return { available: false, reason: foreign.reason };
+  return {
+    available: true,
+    plannedCount: foreign.plannedCount,
+    fulfilledCount: foreign.fulfilledCount,
+    missedCount: foreign.missedCount,
+    upcomingCount: foreign.upcomingCount,
+    removedOccurrenceCount: foreign.removedOccurrenceCount,
+    fulfilmentRatio: foreign.fulfilmentRatio,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tool registration — used by src/index.ts
 // ---------------------------------------------------------------------------
@@ -188,7 +218,20 @@ export function registerToolGetAdherence(
         'this tool needs, any planned_workout row, or the athlete\'s time-zone setting cannot be ' +
         'decoded, this tool fails instead of returning a partial or misleading answer. This tool ' +
         'lists no exerciseId: every occurrence carries templateName; read the exercises of a ' +
-        'template, with names, through get_template.',
+        'template, with names, through get_template. ' +
+        'Foreign sport (running, bouldering, cycling and the athlete\'s own types): ' +
+        'plannedCount, matchedCount, uncertainCount, missedCount and removedOccurrenceCount count ' +
+        'template trainings only; planned foreign sport appointments are reported separately ' +
+        'under foreignSport, after all other keys: window, asOfDate (the athlete\'s today), ' +
+        'plannedCount, fulfilledCount, missedCount, upcomingCount, removedOccurrenceCount, ' +
+        'fulfilmentRatio, byType (with typeName: a plain string for a predefined type, the marked ' +
+        'athlete free-text envelope for an own type, null for an unknown type id), fulfilled, ' +
+        'missed, upcoming, unplannedActivityIds, rule and explanation (verbatim: "' +
+        FOREIGN_ADHERENCE_EXPLANATION + '"). toleranceDays applies to template trainings only. ' +
+        'If the server sends no foreign sport or a foreign row cannot be decoded, foreignSport is ' +
+        '{ available: false, reason, explanation } and every template number is still returned. ' +
+        'Freshly recorded data can be missing for up to 60 seconds (cache). This tool only reads ' +
+        'foreign sport.',
       inputSchema: GetAdherenceSchema,
       annotations: { readOnlyHint: true },
     },
@@ -226,6 +269,8 @@ export function registerToolGetAdherence(
             removedOccurrenceCount: result.removedOccurrenceCount,
             adherenceRatio: result.adherenceRatio,
             explanation: result.explanation,
+            // Phase 155 (FA-06): the foreign counts without the lists — those go into the file.
+            foreignSport: foreignSummaryOf(result.foreignSport),
             parametersSource: source,
             unreadable: report.unreadable,
           };

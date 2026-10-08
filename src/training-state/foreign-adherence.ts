@@ -43,7 +43,7 @@ import {
   parseIsoDate,
   RecurrenceRuleError,
 } from '../recurrence.js';
-import type { ForeignTypeFields } from '../foreign-types.js';
+import { resolveForeignType, type ForeignTypeFields } from '../foreign-types.js';
 import type { ForeignSportAvailability, ForeignUnavailableReason } from '../read-guard.js';
 import type { DecryptedPlannedForeignActivity, DecryptedSnapshot } from '../types.js';
 
@@ -300,6 +300,49 @@ export function expandForeignRoots(
 }
 
 // ---------------------------------------------------------------------------
+// byType — one entry per planned type, resolved type fields (§1.6 "Tool outputs")
+// ---------------------------------------------------------------------------
+
+/**
+ * One entry per `typeId` that has at least one occurrence in the window, sorted by `typeId`
+ * (plain string order). The type fields come from `resolveForeignType`: a predefined type as a
+ * plain string in `lang` (English without `lang`), an own type in the free-text envelope (also
+ * when archived), an unknown id with `typeName: null`, `typeUnknown: true` (E-15).
+ */
+function buildByType(
+  occurrences: readonly ForeignOccurrenceInput[],
+  assignment: ForeignAssignment,
+  lang: string | undefined,
+  snapshot: DecryptedSnapshot,
+): ForeignAdherenceByType[] {
+  const counters = new Map<string, { planned: number; fulfilled: number; missed: number; upcoming: number }>();
+  const counterFor = (typeId: string) => {
+    let c = counters.get(typeId);
+    if (!c) {
+      c = { planned: 0, fulfilled: 0, missed: 0, upcoming: 0 };
+      counters.set(typeId, c);
+    }
+    return c;
+  };
+  for (const occ of occurrences) counterFor(occ.typeId).planned++;
+  for (const f of assignment.fulfilled) counterFor(f.typeId).fulfilled++;
+  for (const m of assignment.missed) counterFor(m.typeId).missed++;
+  for (const u of assignment.upcoming) counterFor(u.typeId).upcoming++;
+
+  return [...counters.keys()].sort(compareStrings).map((typeId) => {
+    const c = counters.get(typeId)!;
+    return {
+      typeId,
+      ...resolveForeignType(typeId, lang, snapshot.foreignActivityTypes),
+      plannedCount: c.planned,
+      fulfilledCount: c.fulfilled,
+      missedCount: c.missed,
+      upcomingCount: c.upcoming,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // computeForeignAdherence — the get_adherence.foreignSport block
 // ---------------------------------------------------------------------------
 
@@ -367,7 +410,7 @@ export function computeForeignAdherence(
     upcomingCount,
     removedOccurrenceCount: expanded.removed.length,
     fulfilmentRatio: foreignFulfilmentRatio(fulfilledCount, missedCount),
-    byType: [], // RED stub (155-07 Aufgabe 2) — replaced in the GREEN commit
+    byType: buildByType(expanded.occurrences, assignment, args.lang, snapshot),
     fulfilled: assignment.fulfilled,
     missed: assignment.missed,
     upcoming: assignment.upcoming,
