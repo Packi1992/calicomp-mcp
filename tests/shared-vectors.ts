@@ -253,6 +253,27 @@ const ForeignActivityCipherVectorSchema = z.object({
 });
 
 /**
+ * Phase 155 (FA-08): `foreignActivityTypeCipher` (own types, an archived one included) and
+ * `plannedForeignActivityCipher` (appointment roots, `deletedOccurrences` as the raw stored
+ * string) — same form and same fixed test key as `ForeignActivityCipherVectorSchema` above.
+ */
+const ForeignActivityTypeCipherVectorSchema = ForeignActivityCipherVectorSchema;
+const PlannedForeignActivityCipherVectorSchema = ForeignActivityCipherVectorSchema;
+
+/**
+ * Phase 155 (E-15): the three predefined foreign types — key, deterministic id and the
+ * English and German name. `src/foreign-types.ts`'s `FOREIGN_BUILTIN_TYPES` must equal this
+ * section exactly (`tests/shared-vectors.test.ts`), the app's own table is checked against
+ * the same section on the Kotlin side.
+ */
+const ForeignActivityTypesEntrySchema = z.object({
+  key: z.string().min(1),
+  id: z.string().min(1),
+  nameEn: z.string().min(1),
+  nameDe: z.string().min(1),
+});
+
+/**
  * Phase 136-01 (TRACER SLICE): the `plannedUpdate` corpus section — proves the
  * MCP-side producer (`proposePlannedUpdate`/`buildMoveOccurrenceEnvelope`,
  * `src/tools/propose_planned_update.ts`) emits the pinned envelope AND the pinned
@@ -490,7 +511,10 @@ export const CoachPlanningVectorsSchema = z.object({
   sessionCipher: z.array(SessionCipherVectorSchema).min(1),
   // Phase 155: listed here or Zod's default object parse would silently DROP the section
   // (Pitfall 3) and every replay over it would pass vacuously.
+  foreignActivityTypes: z.array(ForeignActivityTypesEntrySchema).min(1),
+  foreignActivityTypeCipher: z.array(ForeignActivityTypeCipherVectorSchema).min(1),
   foreignActivityCipher: z.array(ForeignActivityCipherVectorSchema).min(1),
+  plannedForeignActivityCipher: z.array(PlannedForeignActivityCipherVectorSchema).min(1),
   plannedUpdate: z.array(PlannedUpdateVectorSchema).min(1),
   streak: z.array(StreakVectorSchema).min(1),
   muscleBalance: z.array(MuscleBalanceVectorSchema).min(1),

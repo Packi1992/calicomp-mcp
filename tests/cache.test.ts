@@ -1267,4 +1267,168 @@ describe('decrypt-merge: foreign sport (Phase 155)', () => {
     expect(reportJson).not.toContain(FOREIGN_KEY_B64);
     expect(reportJson).not.toContain(PAT);
   });
+
+  it('P155 D-16 an activity with an unreadable intensity decodes with intensity null', async () => {
+    const odd: Array<[string, Record<string, unknown>]> = [
+      ['fa-i0', { intensity: 0 }],
+      ['fa-i6', { intensity: 6 }],
+      ['fa-ifrac', { intensity: 2.5 }],
+      ['fa-istr', { intensity: '3' }],
+      ['fa-inull', { intensity: null }],
+      ['fa-dayform', { intensity: 4, dayForm: 9, distanceMeters: 0 }],
+      ['fa-distneg', { intensity: 5, dayForm: 0, distanceMeters: -5 }],
+      ['fa-distfrac', { intensity: 1, dayForm: 5, distanceMeters: 10.5 }],
+    ];
+    const missing = activityPayload({ id: 'fa-imissing' });
+    delete missing.intensity;
+    const rows = [
+      ...odd.map(([id, o]) => foreignRow(`row-${id}`, 'foreign_activity', encryptForeign(activityPayload({ id, ...o })))),
+      foreignRow('row-fa-imissing', 'foreign_activity', encryptForeign(missing)),
+    ];
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({ foreignActivityTypes: [], foreignActivities: rows, plannedForeignActivities: [] }),
+    );
+
+    const cache = await getSnapshot(PAT, FOREIGN_KEY_B64, URL);
+    const byId = new Map((cache.snapshot.foreignActivities ?? []).map((a) => [a.id, a]));
+
+    // Every row stays readable — an unreadable optional value never costs the row.
+    expect(cache.decodeReport!.failedCount.foreignActivity).toBe(0);
+    expect(byId.size).toBe(9);
+    for (const id of ['fa-i0', 'fa-i6', 'fa-ifrac', 'fa-istr', 'fa-inull', 'fa-imissing']) {
+      expect(byId.get(id)?.intensity, id).toBeNull();
+      expect(byId.get(id)?.durationMinutes, id).toBe(35);
+    }
+    expect(byId.get('fa-dayform')).toMatchObject({ intensity: 4, dayForm: null, distanceMeters: null });
+    expect(byId.get('fa-distneg')).toMatchObject({ intensity: 5, dayForm: null, distanceMeters: null });
+    expect(byId.get('fa-distfrac')).toMatchObject({ intensity: 1, dayForm: 5, distanceMeters: null });
+    expect(foreignSportAvailability(cache.snapshot, cache.decodeReport!)).toEqual({ available: true });
+  });
+
+  it('P155 E-8 a foreign activity without a readable required field is unreadable', async () => {
+    const bad: Array<[string, Record<string, unknown>]> = [
+      ['fa-v2', { v: 2 }],
+      ['fa-nodate', { performedOn: '7.10.2026' }],
+      ['fa-zero', { durationMinutes: 0 }],
+      ['fa-fracdur', { durationMinutes: 12.5 }],
+      ['fa-notype', { typeId: '' }],
+    ];
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        foreignActivityTypes: [],
+        foreignActivities: [
+          ...bad.map(([id, o]) => foreignRow(`row-${id}`, 'foreign_activity', encryptForeign(activityPayload({ id, ...o })))),
+          foreignRow('row-fa-empty', 'foreign_activity', ''),
+        ],
+        plannedForeignActivities: [],
+      }),
+    );
+
+    const cache = await getSnapshot(PAT, FOREIGN_KEY_B64, URL);
+    const report = cache.decodeReport!;
+
+    expect(cache.snapshot.foreignActivities).toEqual([]);
+    expect(report.unreadable.map((r) => [r.id, r.reason])).toEqual([
+      ['row-fa-v2', 'unknown_version'],
+      ['row-fa-nodate', 'malformed_payload'],
+      ['row-fa-zero', 'malformed_payload'],
+      ['row-fa-fracdur', 'malformed_payload'],
+      ['row-fa-notype', 'malformed_payload'],
+      ['row-fa-empty', 'malformed_payload'],
+    ]);
+    expect(report.encryptedCount.foreignActivity).toBe(5);
+    expect(report.failedCount.foreignActivity).toBe(6);
+    expect(JSON.stringify(report)).not.toContain(SECRET_NOTE);
+  });
+
+  it('P155 E-8 an unreadable foreign type or planned row makes foreign sport unavailable', async () => {
+    const goodType = encryptForeign({
+      v: 1, id: 'ft-1', name: 'Klettersteig', createdAt: 1, updatedAt: 2, deletedAt: null,
+    });
+    const goodPlanned = encryptForeign({
+      v: 1, id: 'pfa-1', typeId: 'ft-1', scheduledDate: 1_791_244_800_000, scheduledTime: null,
+      note: SECRET_NOTE, recurrenceRule: null, deletedOccurrences: null, createdAt: 3, updatedAt: 4,
+    });
+
+    // (a) An own type with a future schema version.
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        sessions: [PLAINTEXT_SESSION],
+        templates: [TEMPLATE],
+        foreignActivityTypes: [
+          foreignRow('row-ft-1', 'foreign_activity_type', goodType),
+          foreignRow('row-ft-2', 'foreign_activity_type', encryptForeign({ v: 2, id: 'ft-2', name: SECRET_NOTE })),
+        ],
+        foreignActivities: [foreignRow('row-fa-1', 'foreign_activity', encryptForeign(activityPayload()))],
+        plannedForeignActivities: [foreignRow('row-pfa-1', 'planned_foreign_activity', goodPlanned)],
+      }),
+    );
+    const typeCache = await getSnapshot(PAT, FOREIGN_KEY_B64, URL);
+    expect(typeCache.snapshot.foreignActivityTypes?.map((t) => t.id)).toEqual(['ft-1']);
+    expect(typeCache.snapshot.foreignActivities?.map((a) => a.id)).toEqual(['fa-1']);
+    expect(typeCache.snapshot.plannedForeignActivities?.map((p) => p.id)).toEqual(['pfa-1']);
+    expect(typeCache.decodeReport!.unreadable).toEqual([
+      { entity: 'foreignActivityType', id: 'row-ft-2', reason: 'unknown_version', createdAt: 1_791_000_000_000, updatedAt: 1_791_000_000_000 },
+    ]);
+    expect(foreignSportAvailability(typeCache.snapshot, typeCache.decodeReport!)).toEqual({
+      available: false,
+      reason: 'foreign_rows_unreadable',
+    });
+    expect(typeCache.snapshot.sessions).toHaveLength(1);
+    expect(typeCache.snapshot.templates).toHaveLength(1);
+
+    // (b) An appointment without a scheduledDate.
+    __resetCache();
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        sessions: [PLAINTEXT_SESSION],
+        templates: [TEMPLATE],
+        foreignActivityTypes: [foreignRow('row-ft-1', 'foreign_activity_type', goodType)],
+        foreignActivities: [],
+        plannedForeignActivities: [
+          foreignRow('row-pfa-1', 'planned_foreign_activity', goodPlanned),
+          foreignRow(
+            'row-pfa-2',
+            'planned_foreign_activity',
+            encryptForeign({ v: 1, id: 'pfa-2', typeId: 'ft-1', note: SECRET_NOTE }),
+          ),
+        ],
+      }),
+    );
+    const plannedCache = await getSnapshot(PAT, FOREIGN_KEY_B64, URL);
+    expect(plannedCache.snapshot.plannedForeignActivities?.map((p) => p.id)).toEqual(['pfa-1']);
+    expect(plannedCache.decodeReport!.unreadable).toEqual([
+      { entity: 'plannedForeignActivity', id: 'row-pfa-2', reason: 'malformed_payload', createdAt: 1_791_000_000_000, updatedAt: 1_791_000_000_000 },
+    ]);
+    expect(foreignSportAvailability(plannedCache.snapshot, plannedCache.decodeReport!)).toEqual({
+      available: false,
+      reason: 'foreign_rows_unreadable',
+    });
+    expect(plannedCache.snapshot.sessions).toHaveLength(1);
+    expect(plannedCache.snapshot.templates).toHaveLength(1);
+    expect(JSON.stringify(plannedCache.decodeReport)).not.toContain(SECRET_NOTE);
+    expect(JSON.stringify(typeCache.decodeReport)).not.toContain(SECRET_NOTE);
+  });
+
+  it('P155 E-9 a server that sends only some foreign fields counts as a server without foreign sport', async () => {
+    mockFetchSnapshot.mockResolvedValueOnce(makePull({ foreignActivities: [], plannedForeignActivities: [] }));
+    const cache = await getSnapshot(PAT, FOREIGN_KEY_B64, URL);
+    expect(cache.snapshot).not.toHaveProperty('foreignActivityTypes');
+    expect(cache.snapshot.foreignActivities).toEqual([]);
+    expect(foreignSportAvailability(cache.snapshot, cache.decodeReport!)).toEqual({
+      available: false,
+      reason: 'server_without_foreign_sport',
+    });
+  });
+
+  it('P155 E-9 an empty but present foreign block is available', async () => {
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({ foreignActivityTypes: [], foreignActivities: [], plannedForeignActivities: [] }),
+    );
+    const cache = await getSnapshot(PAT, FOREIGN_KEY_B64, URL);
+    expect(cache.snapshot.foreignActivityTypes).toEqual([]);
+    expect(cache.snapshot.foreignActivities).toEqual([]);
+    expect(cache.snapshot.plannedForeignActivities).toEqual([]);
+    expect(foreignSportAvailability(cache.snapshot, cache.decodeReport!)).toEqual({ available: true });
+  });
 });

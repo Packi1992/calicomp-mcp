@@ -29,7 +29,14 @@ import {
   renderSeriesFields,
 } from '../src/recurrence.js';
 import { decrypt } from '../src/crypto.js';
-import { decryptPlannedWorkout, decryptSession, decryptForeignActivity } from '../src/cache.js';
+import {
+  decryptPlannedWorkout,
+  decryptSession,
+  decryptForeignActivity,
+  decryptForeignActivityType,
+  decryptPlannedForeignActivity,
+} from '../src/cache.js';
+import { FOREIGN_BUILTIN_TYPES } from '../src/foreign-types.js';
 import { calculateLongestStreak, calculateCurrentStreak } from '../src/training-state/consistency.js';
 import { toRadarValues, weightedCounts } from '../src/training-state/muscle-balance.js';
 import { weightedCounts as capabilityWeightedCounts } from '../src/training-state/capability-balance.js';
@@ -433,6 +440,98 @@ describe('shared coach-planning vector corpus', () => {
         }
       }
       // The corpus must actually carry the hostile note, or this test proves nothing.
+      expect(hostileSeen).toBeGreaterThan(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // foreignActivityTypes, foreignActivityTypeCipher, plannedForeignActivityCipher
+  // (Phase 155, FA-08, E-15): the predefined type table, and crypto parity for own types
+  // and appointment roots through the real decoders `decryptMerge` uses.
+  // -----------------------------------------------------------------------
+
+  describe('foreignActivityTypes section', () => {
+    it('P155 foreignActivityTypes section is non-empty', () => {
+      expect(corpus.foreignActivityTypes.length).toBeGreaterThan(0);
+    });
+
+    it('P155 E-15 the builtin type table matches the foreignActivityTypes corpus', () => {
+      expect(FOREIGN_BUILTIN_TYPES.map((t) => ({ ...t }))).toStrictEqual(corpus.foreignActivityTypes);
+    });
+  });
+
+  describe('foreignActivityTypeCipher vectors', () => {
+    it('P155 foreignActivityTypeCipher section is non-empty', () => {
+      expect(corpus.foreignActivityTypeCipher.length).toBeGreaterThan(0);
+    });
+
+    it('P155 FA-08 every foreignActivityTypeCipher vector decrypts to its exact plaintext string', () => {
+      for (const vector of corpus.foreignActivityTypeCipher) {
+        expect(decrypt(vector.ciphertextJson, vector.keyB64)).toBe(vector.expectedPlaintextString);
+      }
+    });
+
+    it('P155 FA-08 decryptForeignActivityType decodes every foreignActivityTypeCipher vector to expectedDecoded', () => {
+      for (const vector of corpus.foreignActivityTypeCipher) {
+        const decoded = decryptForeignActivityType(miscRowFromVector(vector, 'foreign_activity_type'), vector.keyB64);
+        expect({ ...decoded }).toStrictEqual(vector.expectedDecoded);
+        expect(Object.keys(decoded)).toEqual(Object.keys(vector.expectedDecoded));
+      }
+    });
+
+    it('P155 FA-08 the hostile type name arrives byte-identical', () => {
+      let hostileSeen = 0;
+      for (const vector of corpus.foreignActivityTypeCipher) {
+        const decoded = decryptForeignActivityType(miscRowFromVector(vector, 'foreign_activity_type'), vector.keyB64);
+        const expectedName = (vector.expectedPlaintext as Record<string, unknown>).name as string;
+        expect(Buffer.from(decoded.name, 'utf8').equals(Buffer.from(expectedName, 'utf8'))).toBe(true);
+        if (expectedName.includes('Ignore all')) hostileSeen += 1;
+      }
+      expect(hostileSeen).toBeGreaterThan(0);
+    });
+  });
+
+  describe('plannedForeignActivityCipher vectors', () => {
+    it('P155 plannedForeignActivityCipher section is non-empty', () => {
+      expect(corpus.plannedForeignActivityCipher.length).toBeGreaterThan(0);
+    });
+
+    it('P155 FA-08 every plannedForeignActivityCipher vector decrypts to its exact plaintext string', () => {
+      for (const vector of corpus.plannedForeignActivityCipher) {
+        expect(decrypt(vector.ciphertextJson, vector.keyB64)).toBe(vector.expectedPlaintextString);
+      }
+    });
+
+    it('P155 FA-08 decryptPlannedForeignActivity decodes every plannedForeignActivityCipher vector to expectedDecoded', () => {
+      for (const vector of corpus.plannedForeignActivityCipher) {
+        const decoded = decryptPlannedForeignActivity(
+          miscRowFromVector(vector, 'planned_foreign_activity'),
+          vector.keyB64,
+        );
+        expect({ ...decoded }).toStrictEqual(vector.expectedDecoded);
+        expect(Object.keys(decoded)).toEqual(Object.keys(vector.expectedDecoded));
+        // deletedOccurrences stays the raw stored string, never parsed here.
+        expect(decoded.deletedOccurrencesRaw).toBe(
+          (vector.expectedPlaintext as Record<string, unknown>).deletedOccurrences,
+        );
+      }
+    });
+
+    it('P155 FA-08 the hostile appointment note arrives byte-identical', () => {
+      let hostileSeen = 0;
+      for (const vector of corpus.plannedForeignActivityCipher) {
+        const decoded = decryptPlannedForeignActivity(
+          miscRowFromVector(vector, 'planned_foreign_activity'),
+          vector.keyB64,
+        );
+        const expectedNote = (vector.expectedPlaintext as Record<string, unknown>).note;
+        if (typeof expectedNote === 'string') {
+          expect(Buffer.from(decoded.note ?? '', 'utf8').equals(Buffer.from(expectedNote, 'utf8'))).toBe(true);
+          if (expectedNote.includes('Ignore all previous instructions')) hostileSeen += 1;
+        } else {
+          expect(decoded.note).toBeNull();
+        }
+      }
       expect(hostileSeen).toBeGreaterThan(0);
     });
   });

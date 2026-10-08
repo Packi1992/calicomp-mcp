@@ -71,6 +71,8 @@ import type {
   DecryptedPlannedWorkout,
   DecryptedSetting,
   DecryptedForeignActivity,
+  DecryptedForeignActivityType,
+  DecryptedPlannedForeignActivity,
   NormalizedBlock,
   NormalizedTemplateExercise,
   CatalogExercise,
@@ -695,6 +697,18 @@ export function decryptForeignActivity(row: MiscSyncRow, keyB64: string): Decryp
     createdAt: timestampOr(p.createdAt, row.createdAt),
     updatedAt: timestampOr(p.updatedAt, row.updatedAt),
   };
+}
+
+/** RED stub (Plan 155-06 Aufgabe 2) — replaced in the GREEN commit. */
+export function decryptForeignActivityType(row: MiscSyncRow, keyB64: string): DecryptedForeignActivityType {
+  void keyB64;
+  throw new RowDecodeError(`foreign_activity_type row ${row.id}: decoder not implemented yet`, 'malformed_payload');
+}
+
+/** RED stub (Plan 155-06 Aufgabe 2) — replaced in the GREEN commit. */
+export function decryptPlannedForeignActivity(row: MiscSyncRow, keyB64: string): DecryptedPlannedForeignActivity {
+  void keyB64;
+  throw new RowDecodeError(`planned_foreign_activity row ${row.id}: decoder not implemented yet`, 'malformed_payload');
 }
 
 /**
