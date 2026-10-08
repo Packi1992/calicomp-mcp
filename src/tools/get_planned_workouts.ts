@@ -42,7 +42,9 @@ import {
   renderSeriesFields,
 } from '../recurrence.js';
 import { decodeReportOf, assertCalendarReadable } from '../read-guard.js';
-import type { DecryptedSnapshot, UnreadableRow } from '../types.js';
+import type { ForeignUnavailableReason } from '../read-guard.js';
+import type { ForeignTypeFields } from '../foreign-types.js';
+import type { AthleteFreeText, DecryptedSnapshot, UnreadableRow } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -107,6 +109,36 @@ export interface PlannedRootOut {
 export interface GetPlannedWorkoutsResult {
   occurrences: PlannedOccurrenceOut[];
   roots: PlannedRootOut[];
+  /** Phase 155 (FA-08) — RED stub, filled in the GREEN commit. */
+  foreignOccurrences: ForeignOccurrenceOut[] | null;
+  /** Phase 155 (FA-08) — RED stub, filled in the GREEN commit. */
+  foreignRoots: ForeignRootOut[] | null;
+  foreignUnavailableReason?: ForeignUnavailableReason;
+}
+
+/** Phase 155 (FA-08) — RED stub type, completed in the GREEN commit. */
+export interface ForeignOccurrenceOut extends ForeignTypeFields {
+  date: string;
+  rootId: string;
+  typeId: string;
+  scheduledTime: string | null;
+  note: AthleteFreeText | null;
+  isRecurring: boolean;
+}
+
+/** Phase 155 (FA-08) — RED stub type, completed in the GREEN commit. */
+export interface ForeignRootOut extends ForeignTypeFields {
+  id: string;
+  typeId: string;
+  scheduledDate: string;
+  scheduledTime: string | null;
+  note: AthleteFreeText | null;
+  recurrenceRule: string | null;
+  freq: string;
+  interval: number;
+  byDay: string[];
+  until: string | null;
+  deletedOccurrences: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -228,7 +260,8 @@ export function getPlannedWorkouts(
       };
     });
 
-  return { occurrences, roots };
+  // RED stub (Phase 155): replaced in the GREEN commit.
+  return { occurrences, roots, foreignOccurrences: null, foreignRoots: null };
 }
 
 // ---------------------------------------------------------------------------
