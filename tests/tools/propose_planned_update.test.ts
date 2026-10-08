@@ -1273,3 +1273,67 @@ describe('assertRuleEmittableOnRoot — driven through buildChangeSeriesRuleEnve
     expect(() => buildChangeSeriesRuleEnvelope(args, [earlierMember, laterMember])).not.toThrow();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 155 (FA-F2 deferred, T-155-34): the coach reads foreign sport and never writes it.
+// `findRoot` resolves roots only among the template roots, so a foreign root id is not
+// found — this pins it, so a later widening of the root lookup cannot reach a foreign
+// root unnoticed (protocol §1.6 "Read only").
+// ---------------------------------------------------------------------------
+
+describe('propose_planned_update — foreign sport roots (Phase 155)', () => {
+  beforeEach(() => {
+    vi.mocked(httpModule.postSuggest).mockReset();
+    vi.mocked(httpModule.fetchSuggestion).mockReset();
+  });
+
+  const FOREIGN_ROOT_ID = 'dddddddd-4444-4444-8444-444444444444';
+
+  function cacheWithForeignRoot() {
+    const base = mockCache([RECURRING_ROOT]);
+    return {
+      ...base,
+      snapshot: {
+        ...base.snapshot,
+        foreignActivityTypes: [],
+        foreignActivities: [],
+        plannedForeignActivities: [
+          {
+            id: FOREIGN_ROOT_ID,
+            typeId: 'b85b2339-ddf1-385d-acb2-b0d3d498eeca', // running
+            scheduledDate: epochMs(2026, 6, 2), // Tuesday
+            scheduledTime: '07:00',
+            note: null,
+            recurrenceRule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+            deletedOccurrencesRaw: null,
+            createdAt: epochMs(2026, 5, 1),
+            updatedAt: epochMs(2026, 5, 1),
+          },
+        ],
+      },
+    };
+  }
+
+  it.each([
+    ['cancel_occurrence', { intent: 'cancel_occurrence', occurrenceDate: '2026-06-09' }],
+    ['move_occurrence', { intent: 'move_occurrence', occurrenceDate: '2026-06-09', newDate: '2026-06-10' }],
+    [
+      'change_series_rule',
+      { intent: 'change_series_rule', scope: 'whole_series', newRecurrenceRule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=WE' },
+    ],
+  ])('P155 FA-F2 propose_planned_update rejects a foreign sport root as not found (%s)', async (_name, intentArgs) => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(cacheWithForeignRoot());
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolProposePlannedUpdate(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ ...intentArgs, rootId: FOREIGN_ROOT_ID, rationale: 'P155 foreign root' });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('ROOT_NOT_FOUND');
+    expect(result.content[0].text).toContain(FOREIGN_ROOT_ID);
+    expect(httpModule.postSuggest).not.toHaveBeenCalled();
+    expect(httpModule.fetchSuggestion).not.toHaveBeenCalled();
+  });
+});
