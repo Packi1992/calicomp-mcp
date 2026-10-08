@@ -33,7 +33,15 @@ import { computeMuscleBalance } from '../../src/training-state/muscle-balance.js
 import { computeTemplateFeedbackSeries } from '../../src/training-state/template-feedback-series.js';
 import { TRAINING_TIMEZONE_SETTING_KEY, TimeZoneUnavailableError } from '../../src/training-state/time-zone.js';
 import { mockSnapshot, mockCatalog } from '../fixture.js';
-import type { DecryptedSnapshot, DecodeReport, DecryptedForeignActivity } from '../../src/types.js';
+import { computeForeignAdherence } from '../../src/training-state/foreign-adherence.js';
+import { FOREIGN_LOAD_EXPLANATION } from '../../src/training-state/foreign-load.js';
+import type {
+  DecryptedSnapshot,
+  DecodeReport,
+  DecryptedForeignActivity,
+  DecryptedPlannedForeignActivity,
+  DecryptedSession,
+} from '../../src/types.js';
 
 const TZ = 'Europe/Berlin';
 const NOW_MS = Date.UTC(2026, 2, 16, 12, 0); // 2026-03-16, a Monday
@@ -262,6 +270,22 @@ const FOREIGN_ACTIVITIES: DecryptedForeignActivity[] = [
   ),
 ];
 
+function foreignRoot(
+  overrides: Partial<DecryptedPlannedForeignActivity> & { id: string },
+): DecryptedPlannedForeignActivity {
+  return {
+    typeId: FT_RUNNING,
+    scheduledDate: Date.UTC(2026, 2, 10),
+    scheduledTime: null,
+    note: null,
+    recurrenceRule: null,
+    deletedOccurrencesRaw: null,
+    createdAt: Date.UTC(2026, 1, 1),
+    updatedAt: Date.UTC(2026, 1, 1),
+    ...overrides,
+  };
+}
+
 function withForeign(snapshot: DecryptedSnapshot, activities = FOREIGN_ACTIVITIES): DecryptedSnapshot {
   return { ...snapshot, foreignActivityTypes: [], foreignActivities: activities, plannedForeignActivities: [] };
 }
@@ -311,6 +335,166 @@ describe('getTrainingState — Phase 155 foreign sport (D-16)', () => {
     expect(last28Days.intensityMinutes).toBe(4 * 45 + 2 * 60 + 5 * 90);
     expect(last28Days.activitiesWithoutIntensity).toBe(1);
     expect(sport.loadApproximation).toMatchObject({ metric: 'intensity_x_minutes', isApproximation: true });
+  });
+
+  it('P155 D-12 the training state carries the foreign adherence short form in the template adherence window', () => {
+    // Template short form window with adherenceWindowWeeks 2: 2026-03-02 … 2026-03-16.
+    const params = { ...COACH_PARAMETER_DEFAULTS, adherenceWindowWeeks: 2 };
+    const roots: DecryptedPlannedForeignActivity[] = [
+      foreignRoot({ id: 'pfa-done', scheduledDate: Date.UTC(2026, 2, 10) }), // fulfilled by fa-day-6
+      foreignRoot({ id: 'pfa-missed', typeId: FT_BOULDERING, scheduledDate: Date.UTC(2026, 2, 12) }), // missed
+      foreignRoot({ id: 'pfa-today', scheduledDate: Date.UTC(2026, 2, 16), scheduledTime: '19:00' }), // fulfilled by fa-today
+      foreignRoot({ id: 'pfa-tonight', typeId: FT_BOULDERING, scheduledDate: Date.UTC(2026, 2, 16) }), // upcoming (today)
+      foreignRoot({ id: 'pfa-before', scheduledDate: Date.UTC(2026, 2, 1) }), // outside the window
+      // Weekly on Wednesday from 2026-03-04; 2026-03-11 cancelled → 03-04 missed, 03-11 removed.
+      foreignRoot({
+        id: 'pfa-series',
+        typeId: FT_BOULDERING,
+        scheduledDate: Date.UTC(2026, 2, 4),
+        recurrenceRule: 'FREQ=WEEKLY;BYDAY=WE',
+        deletedOccurrencesRaw: '["2026-03-11"]',
+      }),
+    ];
+    const snapshot: DecryptedSnapshot = {
+      ...withForeign(snapshotWithZone(TZ), FOREIGN_ACTIVITIES.slice(0, 5)),
+      plannedForeignActivities: roots,
+    };
+    const result = getTrainingState({}, { ...baseData, coachParameters: params, snapshot }, NOW_MS);
+    const sport = result.foreignSport;
+    if (!sport.available) throw new Error('expected an available foreign block');
+    expect(Object.keys(sport.adherence)).toEqual([
+      'window',
+      'plannedCount',
+      'fulfilledCount',
+      'missedCount',
+      'upcomingCount',
+      'removedOccurrenceCount',
+      'fulfilmentRatio',
+    ]);
+    expect(sport.adherence).toEqual({
+      window: { from: '2026-03-02', to: '2026-03-16' },
+      plannedCount: 5,
+      fulfilledCount: 2,
+      missedCount: 2,
+      upcomingCount: 1,
+      removedOccurrenceCount: 1,
+      fulfilmentRatio: 0.5,
+    });
+    if (result.adherence === null) throw new Error('expected a readable-calendar adherence object');
+    expect(sport.adherence.window).toEqual(result.adherence.window);
+    // Same numbers as the get_adherence pass over the same window.
+    const full = computeForeignAdherence(
+      { from: '2026-03-02', to: '2026-03-16', asOfDate: '2026-03-16' },
+      { snapshot, availability: { available: true } },
+    );
+    if (!full.available) throw new Error('expected an available foreign adherence');
+    expect(sport.adherence.plannedCount).toBe(full.plannedCount);
+    expect(sport.adherence.fulfilmentRatio).toBe(full.fulfilmentRatio);
+  });
+
+  it('P155 D-16 loadApproximation is marked as an approximation in every result, also when foreign sport is unavailable', () => {
+    const expected = { metric: 'intensity_x_minutes', isApproximation: true, explanation: FOREIGN_LOAD_EXPLANATION };
+    const available = getTrainingState({}, { ...baseData, snapshot: withForeign(snapshotWithZone(TZ)) }, NOW_MS);
+    const noServerFields = getTrainingState({}, { ...baseData, snapshot: snapshotWithZone(TZ) }, NOW_MS);
+    const unreadable = getTrainingState(
+      {},
+      {
+        ...baseData,
+        snapshot: withForeign(snapshotWithZone(TZ)),
+        foreignAvailability: { available: false, reason: 'foreign_rows_unreadable' },
+      },
+      NOW_MS,
+    );
+    for (const result of [available, noServerFields, unreadable]) {
+      expect(result.foreignSport.loadApproximation).toEqual(expected);
+    }
+    expect(Object.keys(noServerFields.foreignSport)).toEqual(['available', 'reason', 'asOfDate', 'loadApproximation']);
+    expect(Object.keys(unreadable.foreignSport)).toEqual(['available', 'reason', 'asOfDate', 'loadApproximation']);
+    expect(Object.keys(available.foreignSport)).toEqual(['available', 'asOfDate', 'windows', 'adherence', 'loadApproximation']);
+  });
+
+  it('P155 E-9 get_training_state reports server_without_foreign_sport', () => {
+    const plain = snapshotWithZone(TZ);
+    const result = getTrainingState({}, { ...baseData, snapshot: plain }, NOW_MS);
+    expect(result.foreignSport).toEqual({
+      available: false,
+      reason: 'server_without_foreign_sport',
+      asOfDate: '2026-03-16',
+      loadApproximation: { metric: 'intensity_x_minutes', isApproximation: true, explanation: FOREIGN_LOAD_EXPLANATION },
+    });
+  });
+
+  it('P155 E-8 a foreign root whose rule the expander refuses degrades only the foreign block', () => {
+    const plain = snapshotWithZone(TZ);
+    const broken: DecryptedSnapshot = {
+      ...withForeign(plain),
+      plannedForeignActivities: [
+        foreignRoot({ id: 'pfa-broken', scheduledDate: Date.UTC(2026, 2, 3), recurrenceRule: 'FREQ=WEEKLY;INTERVAL=0;BYDAY=TU' }),
+      ],
+    };
+    const result = getTrainingState({}, { ...baseData, snapshot: broken }, NOW_MS);
+    expect(result.foreignSport).toMatchObject({ available: false, reason: 'foreign_rows_unreadable' });
+    const without = getTrainingState({}, { ...baseData, snapshot: plain }, NOW_MS);
+    const { foreignSport: _a, ...oldBroken } = result;
+    const { foreignSport: _b, ...oldPlain } = without;
+    expect(JSON.stringify(oldBroken)).toBe(JSON.stringify(oldPlain));
+  });
+
+  it('P155 SC3 consistency counts no foreign activity', () => {
+    // Sessions on the Mondays of the last three weeks; foreign activities only on
+    // training-free days, including a whole week without a session (2026-02-23 … 03-01)
+    // that would lengthen the streak, and this week's Sunday.
+    const session = (id: string, y: number, m: number, d: number): DecryptedSession => ({
+      id,
+      templateId: mockSnapshot.templates[0].id,
+      startTime: Date.UTC(y, m - 1, d, 8),
+      endTime: Date.UTC(y, m - 1, d, 9),
+      isManual: false,
+      isCorrected: false,
+      isQuickChallenge: false,
+      createdAt: Date.UTC(y, m - 1, d, 8),
+      updatedAt: Date.UTC(y, m - 1, d, 9),
+    });
+    const trained = snapshotWithZone(TZ, {
+      sessions: [session('s-1', 2026, 3, 2), session('s-2', 2026, 3, 9), session('s-3', 2026, 3, 16)],
+    });
+    const freeDayActivities = ['2026-02-24', '2026-02-26', '2026-03-04', '2026-03-12', '2026-03-15'].map((day, i) =>
+      foreignActivity({ id: `fa-free-${i}`, performedOn: day }),
+    );
+    const without = getTrainingState({}, { ...baseData, snapshot: trained }, NOW_MS);
+    const withData = getTrainingState({}, { ...baseData, snapshot: withForeign(trained, freeDayActivities) }, NOW_MS);
+    expect(without.consistency.currentStreakWeeks).toBeGreaterThan(0);
+    expect(withData.consistency).toEqual(without.consistency);
+    expect(withData.consistency.currentStreakWeeks).toBe(without.consistency.currentStreakWeeks);
+    expect(withData.consistency.sessionsLast4Weeks).toBe(without.consistency.sessionsLast4Weeks);
+    expect(withData.consistency.totalCompletedSessions).toBe(3);
+    expect(withData.narrative).toBe(without.narrative);
+    // ...while the foreign block does see them.
+    if (!withData.foreignSport.available) throw new Error('expected an available foreign block');
+    expect(withData.foreignSport.windows.last28Days.activityCount).toBe(5);
+  });
+
+  it('P155 D-16 the description explains the foreign sport block', () => {
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const description: string = (server as any)._registeredTools['get_training_state'].description;
+    for (const fragment of [
+      'foreignSport',
+      'last7Days',
+      'last28Days',
+      'intensityMinutes',
+      'activitiesWithoutIntensity',
+      'loadApproximation',
+      'isApproximation',
+      'fulfilmentRatio',
+      'server_without_foreign_sport',
+      'foreign_rows_unreadable',
+      '60 seconds',
+    ]) {
+      expect(description).toContain(fragment);
+    }
+    expect(description).toMatch(/consistency and narrative (?:contain|count) no foreign sport/);
   });
 });
 
@@ -531,6 +715,45 @@ describe('get_training_state — registered MCP handler', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).not.toContain('Missing synchronized settings key');
     expect(result.content[0].text).toContain(TRAINING_TIMEZONE_SETTING_KEY);
+  });
+
+  it('P155 E-8 get_training_state reports foreign_rows_unreadable and keeps every other field', async () => {
+    const snapshot = withForeign(snapshotWithZone(TZ));
+    const report: DecodeReport = {
+      unreadable: [{ entity: 'foreignActivity', id: 'fa-broken', reason: 'decrypt_failed' }],
+      encryptedCount: { ...EMPTY_COUNTS, foreignActivity: 3 },
+      failedCount: { ...EMPTY_COUNTS, foreignActivity: 1 },
+    };
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...mockCacheFor(snapshot), decodeReport: report });
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({});
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as Record<string, unknown>;
+    expect(body.foreignSport).toEqual({
+      available: false,
+      reason: 'foreign_rows_unreadable',
+      asOfDate: body.asOfDate,
+      loadApproximation: { metric: 'intensity_x_minutes', isApproximation: true, explanation: FOREIGN_LOAD_EXPLANATION },
+    });
+    expect(body.unreadable).toEqual(report.unreadable);
+    // Every other field is the one the same snapshot yields with readable foreign rows.
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+    const readableResult = await handler({});
+    const readable = JSON.parse(readableResult.content[0].text) as Record<string, unknown>;
+    expect((readable.foreignSport as { available: boolean }).available).toBe(true);
+    const { foreignSport: _f, unreadable: _u, ...bodyRest } = body;
+    const { foreignSport: _g, unreadable: _v, ...readableRest } = readable;
+    expect(JSON.stringify(bodyRest)).toBe(JSON.stringify(readableRest));
+    expect(body.adherence).not.toBeNull();
+    expect(typeof body.narrative).toBe('string');
   });
 });
 

@@ -75,6 +75,7 @@ import {
   assertTimeZoneReadable,
   foreignSportAvailability,
   type ForeignSportAvailability,
+  type ForeignUnavailableReason,
 } from '../read-guard.js';
 import { createExerciseNameResolver, type ExerciseNameFields, type ExerciseNameResolver } from '../exercise-names.js';
 import type { DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
@@ -148,7 +149,7 @@ export interface ForeignLoadApproximation {
  * outputs", `get_training_state.foreignSport`). Appended as the LAST key, after `narrative`
  * and `templateFeedbackSeries`; nothing in it feeds `consistency` or `narrative`.
  */
-export interface TrainingStateForeignSport {
+export interface TrainingStateForeignSportAvailable {
   available: true;
   asOfDate: string;
   /** `last7Days` = `asOfDate-6`…`asOfDate`, `last28Days` = `asOfDate-27`…`asOfDate` (D-16). */
@@ -156,8 +157,33 @@ export interface TrainingStateForeignSport {
     last7Days: ForeignLoadWindow;
     last28Days: ForeignLoadWindow;
   };
+  adherence: TrainingStateForeignAdherence;
   loadApproximation: ForeignLoadApproximation;
 }
+
+/**
+ * The foreign adherence SHORT FORM (D-12, D-16) — the seven counters of
+ * `get_adherence.foreignSport` over the template short form's window, without lists.
+ */
+export interface TrainingStateForeignAdherence {
+  window: { from: string; to: string };
+  plannedCount: number;
+  fulfilledCount: number;
+  missedCount: number;
+  upcomingCount: number;
+  removedOccurrenceCount: number;
+  fulfilmentRatio: number | null;
+}
+
+/** Foreign sport cannot be read (E-8, E-9): no windows, no short form, still the marking. */
+export interface TrainingStateForeignSportUnavailable {
+  available: false;
+  reason: ForeignUnavailableReason;
+  asOfDate: string;
+  loadApproximation: ForeignLoadApproximation;
+}
+
+export type TrainingStateForeignSport = TrainingStateForeignSportAvailable | TrainingStateForeignSportUnavailable;
 
 /** The tool's final, additive-only result shape (D-14/D-22). */
 export interface GetTrainingStateResult {
@@ -406,6 +432,16 @@ function buildForeignSport(
     windows: {
       last7Days: computeForeignLoadWindow(activities, formatIsoDate(plusDays(today, -6)), asOfDate, types, lang),
       last28Days: computeForeignLoadWindow(activities, formatIsoDate(plusDays(today, -27)), asOfDate, types, lang),
+    },
+    // RED stub (155-09 Aufgabe 2): replaced by the short form in the GREEN commit.
+    adherence: {
+      window: { from: '', to: '' },
+      plannedCount: 0,
+      fulfilledCount: 0,
+      missedCount: 0,
+      upcomingCount: 0,
+      removedOccurrenceCount: 0,
+      fulfilmentRatio: null,
     },
     loadApproximation: foreignLoadApproximation(),
   };

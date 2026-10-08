@@ -8,7 +8,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeForeignLoadWindow } from '../../src/training-state/foreign-load.js';
+import { computeForeignLoadWindow, FOREIGN_LOAD_EXPLANATION } from '../../src/training-state/foreign-load.js';
+import { protocolExplanation } from '../protocol-text.js';
 import type { DecryptedForeignActivity, DecryptedForeignActivityType } from '../../src/types.js';
 
 const FT_RUNNING = 'b85b2339-ddf1-385d-acb2-b0d3d498eeca';
@@ -133,5 +134,9 @@ describe('computeForeignLoadWindow (D-16)', () => {
       activitiesWithoutIntensity: 0,
       byType: [],
     });
+  });
+
+  it('P155 D-16 the load explanation is verbatim in the protocol', () => {
+    expect(FOREIGN_LOAD_EXPLANATION).toBe(protocolExplanation('FOREIGN_LOAD_EXPLANATION'));
   });
 });
