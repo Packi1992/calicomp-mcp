@@ -36,6 +36,7 @@ import { COACH_PARAMETER_DEFAULTS } from '../../src/coach-parameters.js';
 import { GetAdherenceSchema } from '../../src/schemas.js';
 import { getAdherence, registerToolGetAdherence } from '../../src/tools/get_adherence.js';
 import { FOREIGN_ADHERENCE_EXPLANATION } from '../../src/training-state/foreign-adherence.js';
+import { REMOVED_WITH_COMPLETED_SESSION_EXPLANATION } from '../../src/training-state/adherence.js';
 import { TRAINING_TIMEZONE_SETTING_KEY, TimeZoneUnavailableError } from '../../src/training-state/time-zone.js';
 import { mockSnapshot, mockCatalog, TEMPLATE_ID_PUSH } from '../fixture.js';
 import type {
@@ -606,5 +607,61 @@ describe('get_adherence — registered MCP handler', () => {
     expect(description).toContain(FOREIGN_ADHERENCE_EXPLANATION);
     expect(description).toContain('60 seconds');
     expect(description).not.toMatch(/propose[^.]*foreign/i);
+  });
+
+  it('P155 D-07 the outputFile summary and the description carry removedWithCompletedSessionCount', async () => {
+    const snapshot = snapshotWithZone(TZ, {
+      plannedWorkouts: [
+        root({
+          id: 'r-series',
+          scheduledDate: epochMs(2026, 6, 2),
+          recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU',
+          deletedOccurrencesRaw: '["2026-06-09"]',
+        }),
+      ],
+      sessions: [
+        {
+          id: 's-done',
+          templateId: TEMPLATE_ID_PUSH,
+          startTime: epochMs(2026, 6, 9) + 12 * 3_600_000,
+          endTime: epochMs(2026, 6, 9) + 13 * 3_600_000,
+          isManual: false,
+          isCorrected: false,
+          isQuickChallenge: false,
+          createdAt: epochMs(2026, 6, 9),
+          updatedAt: epochMs(2026, 6, 9),
+        },
+      ],
+    });
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+    vi.mocked(fileChannelModule.writeExportFile).mockResolvedValue({
+      path: '/tmp/calicomp-mcp-exports/fake-uuid.json',
+      bytes: 10,
+      itemCount: 1,
+    });
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetAdherence(server, DUMMY_CFG);
+
+    const inline = JSON.parse((await getHandler(server)({ from: '2026-06-01', to: '2026-06-14' })).content[0].text);
+    expect(inline.removedOccurrenceCount).toBe(1);
+    expect(inline.removedWithCompletedSessionCount).toBe(1);
+    expect(inline.removedWithCompletedSessionDates).toEqual([
+      { date: '2026-06-09', rootId: 'r-series', templateId: TEMPLATE_ID_PUSH },
+    ]);
+    expect(inline.removedWithCompletedSessionExplanation).toBe(REMOVED_WITH_COMPLETED_SESSION_EXPLANATION);
+
+    const summary = JSON.parse(
+      (await getHandler(server)({ from: '2026-06-01', to: '2026-06-14', outputFile: true })).content[0].text,
+    );
+    expect(summary.removedWithCompletedSessionCount).toBe(1);
+    expect(summary).not.toHaveProperty('removedWithCompletedSessionDates');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const description = (server as any)._registeredTools['get_adherence'].description as string;
+    expect(description).toContain('removedWithCompletedSessionCount');
   });
 });

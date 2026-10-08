@@ -254,6 +254,60 @@ function getHandler(server: McpServer): (args: unknown) => Promise<{ isError?: b
   return (server as any)._registeredTools['get_training_state'].handler;
 }
 
+describe('getTrainingState — Phase 155 D-07', () => {
+  it('P155 D-07 the get_training_state adherence short form does not carry the new fields', () => {
+    const snapshot = snapshotWithZone(TZ, {
+      plannedWorkouts: [
+        {
+          id: 'r-series',
+          templateId: mockSnapshot.templates[0].id,
+          scheduledDate: Date.UTC(2026, 2, 3),
+          scheduledTime: null,
+          note: null,
+          recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU',
+          recurrenceGroupId: null,
+          deletedOccurrencesRaw: '["2026-03-10"]',
+          completedSessionId: null,
+        },
+      ],
+      sessions: [
+        {
+          id: 's-done',
+          templateId: mockSnapshot.templates[0].id,
+          startTime: Date.UTC(2026, 2, 10, 12),
+          endTime: Date.UTC(2026, 2, 10, 13),
+          isManual: false,
+          isCorrected: false,
+          isQuickChallenge: false,
+          createdAt: Date.UTC(2026, 2, 10, 12),
+          updatedAt: Date.UTC(2026, 2, 10, 13),
+        },
+      ],
+    });
+    const result = getTrainingState(
+      {},
+      { snapshot, catalog: mockCatalog, coachParameters: COACH_PARAMETER_DEFAULTS, parametersSource: 'server' },
+      NOW_MS,
+    );
+    if (result.adherence === null) throw new Error('expected a readable-calendar adherence object');
+    expect(result.adherence.removedOccurrenceCount).toBe(1);
+    expect(result.adherence).not.toHaveProperty('removedWithCompletedSessionCount');
+    expect(result.adherence).not.toHaveProperty('removedWithCompletedSessionDates');
+    expect(result.adherence).not.toHaveProperty('removedWithCompletedSessionExplanation');
+    expect(Object.keys(result.adherence)).toEqual([
+      'window',
+      'toleranceDays',
+      'plannedCount',
+      'matchedCount',
+      'uncertainCount',
+      'missedCount',
+      'removedOccurrenceCount',
+      'adherenceRatio',
+      'explanation',
+    ]);
+  });
+});
+
 describe('get_training_state — registered MCP handler', () => {
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockReset();

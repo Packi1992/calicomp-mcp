@@ -15,7 +15,13 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { computeAdherence, ADHERENCE_EXPLANATION } from '../../src/training-state/adherence.js';
+import {
+  computeAdherence,
+  ADHERENCE_EXPLANATION,
+  REMOVED_WITH_COMPLETED_SESSION_EXPLANATION,
+} from '../../src/training-state/adherence.js';
+import { getPlannedWorkouts } from '../../src/tools/get_planned_workouts.js';
+import { protocolExplanation } from '../protocol-text.js';
 import * as similarityModule from '../../src/training-state/muscle-similarity.js';
 import {
   mockSnapshot,
@@ -581,5 +587,85 @@ describe('computeAdherence — foreign sport is its own pass (Phase 155)', () =>
     expect(JSON.stringify(withData)).toBe(JSON.stringify(without));
     expect(without.plannedCount).toBe(2);
     expect(without.removedOccurrenceCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 155 (D-07, D-06): completed series dates the app wrote as removed
+// ---------------------------------------------------------------------------
+
+describe('computeAdherence — removedWithCompletedSessionCount (Phase 155, D-07)', () => {
+  const OTHER_TEMPLATE = 'cccccccc-0002-4000-c000-0000000000aa';
+  // Weekly on Tuesdays from 2026-06-02 (06-02, 06-09, 06-16); 06-09 and 06-16 stand in
+  // deletedOccurrences, 06-09 because the app wrote the completed date there before 155-10.
+  const seriesRoot = root({
+    id: 'r-series',
+    scheduledDate: epochMs(2026, 6, 2, 0, 0),
+    recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU',
+    deletedOccurrencesRaw: '["2026-06-09","2026-06-16"]',
+  });
+  const args = { from: '2026-06-01', to: '2026-06-21', ...ARGS };
+
+  it('P155 D-07 a removed series date with a finished session of the same template on that calendar day is counted', () => {
+    const snapshot = snapshotWith({
+      plannedWorkouts: [seriesRoot],
+      // 2026-06-08 22:30 UTC is 2026-06-09 00:30 in Europe/Berlin — the athlete's calendar day.
+      sessions: [session({ id: 's-done', startTime: epochMs(2026, 6, 8, 22, 30), endTime: epochMs(2026, 6, 8, 23, 30) })],
+    });
+    const result = computeAdherence(args, { snapshot, catalog: mockCatalog, timeZoneId: TZ });
+    expect(result.removedWithCompletedSessionCount).toBe(1);
+    expect(result.removedWithCompletedSessionDates).toEqual([
+      { date: '2026-06-09', rootId: 'r-series', templateId: TEMPLATE_ID_PUSH },
+    ]);
+    expect(result.removedWithCompletedSessionExplanation).toBe(REMOVED_WITH_COMPLETED_SESSION_EXPLANATION);
+    // Appended after the existing keys, the existing order untouched.
+    const keys = Object.keys(result);
+    expect(keys.slice(-3)).toEqual([
+      'removedWithCompletedSessionCount',
+      'removedWithCompletedSessionDates',
+      'removedWithCompletedSessionExplanation',
+    ]);
+    expect(keys.indexOf('explanation')).toBe(keys.length - 4);
+  });
+
+  it('P155 D-07 a session of another template, an unfinished session or a deleted session does not count', () => {
+    const snapshot = snapshotWith({
+      plannedWorkouts: [seriesRoot],
+      sessions: [
+        session({ id: 's-other', templateId: OTHER_TEMPLATE, startTime: epochMs(2026, 6, 9), endTime: epochMs(2026, 6, 9, 13) }),
+        session({ id: 's-running', startTime: epochMs(2026, 6, 9), endTime: undefined }),
+        session({ id: 's-deleted', startTime: epochMs(2026, 6, 16), endTime: epochMs(2026, 6, 16, 13), deletedAt: epochMs(2026, 6, 17) }),
+        // Same template, but on a day that is NOT a removed date — counts nowhere here.
+        session({ id: 's-other-day', startTime: epochMs(2026, 6, 10), endTime: epochMs(2026, 6, 10, 13) }),
+      ],
+    });
+    const result = computeAdherence(args, { snapshot, catalog: mockCatalog, timeZoneId: TZ });
+    expect(result.removedWithCompletedSessionCount).toBe(0);
+    expect(result.removedWithCompletedSessionDates).toEqual([]);
+  });
+
+  it('P155 D-07 removedOccurrenceCount is unchanged', () => {
+    const snapshot = snapshotWith({
+      plannedWorkouts: [seriesRoot],
+      sessions: [session({ id: 's-done', startTime: epochMs(2026, 6, 9), endTime: epochMs(2026, 6, 9, 13) })],
+    });
+    const result = computeAdherence(args, { snapshot, catalog: mockCatalog, timeZoneId: TZ });
+    // The pre-155 definition, counted independently: every removed date of an emitted root
+    // inside the window — the completed 06-09 included (D-07: never redefined).
+    const denom = getPlannedWorkouts({ from: args.from, to: args.to }, snapshot);
+    const independent = denom.roots
+      .flatMap((r) => r.deletedOccurrences)
+      .filter((d) => d >= args.from && d <= args.to).length;
+    expect(independent).toBe(2);
+    expect(result.removedOccurrenceCount).toBe(independent);
+    expect(result.removedWithCompletedSessionCount).toBe(1);
+    expect(result.plannedCount).toBe(1);
+    expect(result.explanation).toBe(ADHERENCE_EXPLANATION);
+  });
+
+  it('P155 D-07 the explanation is verbatim in the protocol', () => {
+    expect(REMOVED_WITH_COMPLETED_SESSION_EXPLANATION).toBe(
+      protocolExplanation('REMOVED_WITH_COMPLETED_SESSION_EXPLANATION'),
+    );
   });
 });

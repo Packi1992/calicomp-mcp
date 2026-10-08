@@ -85,6 +85,9 @@ export const ADHERENCE_EXPLANATION =
   'date) leaves no trace inside this window at all, and this calculation treats it exactly as if ' +
   'nothing had ever been planned on that day.';
 
+/** RED stub (155-07 Aufgabe 3) — replaced in the GREEN commit. */
+export const REMOVED_WITH_COMPLETED_SESSION_EXPLANATION = '';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -115,6 +118,9 @@ export interface AdherenceResult {
   missed: PlannedOccurrenceOut[];
   unplannedSessionIds: string[];
   explanation: string;
+  removedWithCompletedSessionCount: number;
+  removedWithCompletedSessionDates: { date: string; rootId: string; templateId: string }[];
+  removedWithCompletedSessionExplanation: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -410,5 +416,8 @@ export function computeAdherence(
     missed,
     unplannedSessionIds,
     explanation: ADHERENCE_EXPLANATION,
+    removedWithCompletedSessionCount: 0, // RED stub (155-07 Aufgabe 3)
+    removedWithCompletedSessionDates: [], // RED stub (155-07 Aufgabe 3)
+    removedWithCompletedSessionExplanation: REMOVED_WITH_COMPLETED_SESSION_EXPLANATION,
   };
 }
