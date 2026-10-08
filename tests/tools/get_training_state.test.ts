@@ -35,6 +35,7 @@ import { TRAINING_TIMEZONE_SETTING_KEY, TimeZoneUnavailableError } from '../../s
 import { mockSnapshot, mockCatalog } from '../fixture.js';
 import { computeForeignAdherence } from '../../src/training-state/foreign-adherence.js';
 import { FOREIGN_LOAD_EXPLANATION } from '../../src/training-state/foreign-load.js';
+import { protocolExplanation } from '../protocol-text.js';
 import type {
   DecryptedSnapshot,
   DecodeReport,
@@ -472,6 +473,13 @@ describe('getTrainingState — Phase 155 foreign sport (D-16)', () => {
     // ...while the foreign block does see them.
     if (!withData.foreignSport.available) throw new Error('expected an available foreign block');
     expect(withData.foreignSport.windows.last28Days.activityCount).toBe(5);
+  });
+
+  it('P155 D-16 the load explanation is verbatim in the protocol', () => {
+    const protocolText = protocolExplanation('FOREIGN_LOAD_EXPLANATION');
+    expect(FOREIGN_LOAD_EXPLANATION).toBe(protocolText);
+    const result = getTrainingState({}, { ...baseData, snapshot: snapshotWithZone(TZ) }, NOW_MS);
+    expect(result.foreignSport.loadApproximation.explanation).toBe(protocolText);
   });
 
   it('P155 D-16 the description explains the foreign sport block', () => {

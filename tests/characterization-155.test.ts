@@ -21,6 +21,15 @@
  *
  * Der Import aus `characterization-150.test.ts` führt dessen Tests in diesem Lauf ein
  * zweites Mal aus — harmlos, dieselben Pins.
+ *
+ * Stufe 2 (Plan 155-09): die NEUEN Fremdsport-Ausgaben der vier Werkzeuge
+ * (`get_adherence.foreignSport` samt D-07-Feldern, `get_planned_workouts.foreignOccurrences`/
+ * `foreignRoots`, `get_history.foreignActivities` samt Zählern, `get_training_state.foreignSport`)
+ * für dieses Fixture sind in `tests/vectors/characterization-155.json` gepinnt. Die Datei wurde
+ * nicht von Hand geschrieben, sondern von einem vorübergehenden, nicht committeten Erzeugertest
+ * aus dem fertigen Code von 155-09 erzeugt; er ruft `collectForeignOutputs()` (unten) auf und
+ * läuft hinter dem Env-Gate `CHAR_155_PIN_GENERATE`, das den Vergleich in dieser Datei
+ * abschaltet. Die 150-Pins bleiben unverändert.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -167,6 +176,53 @@ export const CHAR_155_SNAPSHOT: DecryptedSnapshot = {
 };
 
 // ---------------------------------------------------------------------------
+// Stufe 2 (155-09): die neuen Fremdsport-Ausgaben, dieselben Aufrufe wie oben.
+// ---------------------------------------------------------------------------
+
+function pick<T extends object>(source: T, keys: readonly (keyof T)[]): Partial<T> {
+  const out: Partial<T> = {};
+  for (const key of keys) {
+    if (!(key in source)) throw new Error(`key ${String(key)} missing in tool output`);
+    out[key] = source[key];
+  }
+  return out;
+}
+
+/**
+ * Die neuen Fremdsport-Schlüssel der vier Werkzeuge für `CHAR_155_SNAPSHOT`, mit denselben
+ * Argumenten wie die Stufe-1-Aufrufe. Der Erzeugertest schreibt genau dieses Objekt als
+ * `tests/vectors/characterization-155.json`; der Vergleich unten liest es zurück.
+ */
+export function collectForeignOutputs(): Record<string, unknown> {
+  const adherence = getAdherence(CHAR_ADHERENCE_ARGS, { ...CHAR_ADHERENCE_DATA, snapshot: CHAR_155_SNAPSHOT }, CHAR_NOW_MS);
+  const planned = getPlannedWorkouts(CHAR_PLANNED_WORKOUTS_ARGS, CHAR_155_SNAPSHOT);
+  const history = getHistory(CHAR_HISTORY_ARGS, CHAR_155_SNAPSHOT);
+  const historyExercise = getHistory(CHAR_HISTORY_ARGS_EXERCISE, CHAR_155_SNAPSHOT);
+  const trainingState = getTrainingState(
+    CHAR_TRAINING_STATE_ARGS,
+    { ...CHAR_TRAINING_STATE_DATA, snapshot: CHAR_155_SNAPSHOT },
+    CHAR_NOW_MS,
+  );
+  return {
+    getAdherence: pick(adherence, [
+      'foreignSport',
+      'removedWithCompletedSessionCount',
+      'removedWithCompletedSessionDates',
+      'removedWithCompletedSessionExplanation',
+    ]),
+    getPlannedWorkouts: pick(planned, ['foreignOccurrences', 'foreignRoots']),
+    getHistory: pick(history, ['foreignActivities', 'matchingForeignActivities', 'foreignActivitiesTruncated']),
+    getHistoryExercise: pick(historyExercise, [
+      'foreignActivities',
+      'matchingForeignActivities',
+      'foreignActivitiesTruncated',
+      'foreignActivitiesExcludedBy',
+    ]),
+    getTrainingState: pick(trainingState, ['foreignSport']),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Tests: jeder gepinnte Aufruf aus characterization-150.test.ts, gleiche Argumente,
 // Daten mit CHAR_155_SNAPSHOT, Vergleich gegen die unveränderte 150-Pin-Datei.
 // ---------------------------------------------------------------------------
@@ -275,3 +331,19 @@ describe('P155 SC2 characterization — foreign data moves no old number', () =>
     expect(computeChangeHash('new_plan', payload)).toBe(pins.newPlanChangeHash);
   });
 });
+
+if (!process.env.CHAR_155_PIN_GENERATE) {
+  const PIN_155_PATH = join(__dirname, 'vectors', 'characterization-155.json');
+
+  describe('P155 SC2 characterization — new foreign outputs (155-09)', () => {
+    it('P155 SC2 new foreign outputs match their pins', () => {
+      const pins = JSON.parse(readFileSync(PIN_155_PATH, 'utf-8')) as Record<string, unknown>;
+      // Round-trip through JSON: the pins are what the tools put on the wire.
+      const actual = JSON.parse(JSON.stringify(collectForeignOutputs())) as Record<string, unknown>;
+      expect(Object.keys(actual)).toEqual(Object.keys(pins));
+      for (const tool of Object.keys(pins)) {
+        expect(actual[tool], tool).toEqual(pins[tool]);
+      }
+    });
+  });
+}
