@@ -699,16 +699,57 @@ export function decryptForeignActivity(row: MiscSyncRow, keyB64: string): Decryp
   };
 }
 
-/** RED stub (Plan 155-06 Aufgabe 2) — replaced in the GREEN commit. */
+/**
+ * Decrypt one `foreign_activity_type` row (an own type, Phase 155, FA-08) into its §1.6
+ * normal form `{ id, name, createdAt, updatedAt, deletedAt }`. Unreadable (throws
+ * `RowDecodeError`): the front-half guards of `decryptForeignPayload`, and a missing or
+ * empty `id`/`name` (`malformed_payload`). `deletedAt` is a number for an archived own
+ * type (154 D-10) and `null` otherwise. `name` is athlete free text — never logged, and
+ * wrapped before it reaches any tool output (`foreign-types.ts`).
+ */
 export function decryptForeignActivityType(row: MiscSyncRow, keyB64: string): DecryptedForeignActivityType {
-  void keyB64;
-  throw new RowDecodeError(`foreign_activity_type row ${row.id}: decoder not implemented yet`, 'malformed_payload');
+  const p = decryptForeignPayload(row, keyB64, 'foreign_activity_type');
+  const id = requiredString(p.id);
+  const name = requiredString(p.name);
+  if (id === undefined || name === undefined) {
+    throw new RowDecodeError(`foreign_activity_type row ${row.id} has a malformed payload`, 'malformed_payload');
+  }
+  return {
+    id,
+    name,
+    createdAt: timestampOr(p.createdAt, row.createdAt),
+    updatedAt: timestampOr(p.updatedAt, row.updatedAt),
+    deletedAt: typeof p.deletedAt === 'number' && Number.isFinite(p.deletedAt) ? p.deletedAt : null,
+  };
 }
 
-/** RED stub (Plan 155-06 Aufgabe 2) — replaced in the GREEN commit. */
+/**
+ * Decrypt one `planned_foreign_activity` row (an appointment root, Phase 155, FA-08) into
+ * its §1.6 normal form. Unreadable (throws `RowDecodeError`): the front-half guards of
+ * `decryptForeignPayload`, and a missing `id`/`typeId` or a non-numeric `scheduledDate`
+ * (`malformed_payload`). `deletedOccurrences` is carried as the raw stored string in
+ * `deletedOccurrencesRaw`, never parsed here — exactly like `decryptPlannedWorkout`.
+ */
 export function decryptPlannedForeignActivity(row: MiscSyncRow, keyB64: string): DecryptedPlannedForeignActivity {
-  void keyB64;
-  throw new RowDecodeError(`planned_foreign_activity row ${row.id}: decoder not implemented yet`, 'malformed_payload');
+  const p = decryptForeignPayload(row, keyB64, 'planned_foreign_activity');
+  const id = requiredString(p.id);
+  const typeId = requiredString(p.typeId);
+  const scheduledDate =
+    typeof p.scheduledDate === 'number' && Number.isFinite(p.scheduledDate) ? p.scheduledDate : undefined;
+  if (id === undefined || typeId === undefined || scheduledDate === undefined) {
+    throw new RowDecodeError(`planned_foreign_activity row ${row.id} has a malformed payload`, 'malformed_payload');
+  }
+  return {
+    id,
+    typeId,
+    scheduledDate,
+    scheduledTime: optionalString(p.scheduledTime),
+    note: optionalString(p.note),
+    recurrenceRule: optionalString(p.recurrenceRule),
+    deletedOccurrencesRaw: optionalString(p.deletedOccurrences),
+    createdAt: timestampOr(p.createdAt, row.createdAt),
+    updatedAt: timestampOr(p.updatedAt, row.updatedAt),
+  };
 }
 
 /**
@@ -816,24 +857,31 @@ function decodeSettings(rows: MiscSyncRow[], keyB64: string, report: DecodeRepor
 }
 
 /**
- * Decode every `foreign_activity` row, tolerating a per-row failure (Phase 155, E-8) —
- * same shape as `decodePlannedWorkouts`. An unreadable row is reported by id, reason and
- * routing timestamps only, never with content; it makes the foreign block unavailable
- * (`read-guard.ts`'s `foreignSportAvailability`) and touches nothing else.
+ * Decode every row of one foreign sport kind, tolerating a per-row failure (Phase 155,
+ * E-8) — same shape as `decodePlannedWorkouts`, generic over the three exported decoders.
+ * An unreadable row is reported by entity, id, reason and routing timestamps only, never
+ * with content; it makes the foreign block unavailable (`read-guard.ts`'s
+ * `foreignSportAvailability`) and touches nothing else.
  */
-function decodeForeignActivities(rows: MiscSyncRow[], keyB64: string, report: DecodeReport): DecryptedForeignActivity[] {
-  const decoded: DecryptedForeignActivity[] = [];
+function decodeForeignRows<T>(
+  rows: MiscSyncRow[],
+  keyB64: string,
+  report: DecodeReport,
+  entity: 'foreignActivityType' | 'foreignActivity' | 'plannedForeignActivity',
+  decryptRow: (row: MiscSyncRow, keyB64: string) => T,
+): T[] {
+  const decoded: T[] = [];
   for (const row of rows) {
     if (row.encryptedPayload) {
-      report.encryptedCount.foreignActivity += 1;
+      report.encryptedCount[entity] += 1;
     }
     try {
-      decoded.push(decryptForeignActivity(row, keyB64));
+      decoded.push(decryptRow(row, keyB64));
     } catch (err) {
       const reason: UnreadableReason = err instanceof RowDecodeError ? err.reason : 'decrypt_failed';
-      report.failedCount.foreignActivity += 1;
+      report.failedCount[entity] += 1;
       report.unreadable.push({
-        entity: 'foreignActivity',
+        entity,
         id: row.id,
         reason,
         createdAt: row.createdAt,
@@ -950,8 +998,26 @@ function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: Decryp
     // can say so instead of reporting "no foreign sport".
     // `!= null` rather than `!== undefined`: an explicit JSON `null` (never sent by the
     // Kotlin DTO, but cheap to survive) reads as "field absent" instead of crashing the loop.
+    ...(raw.foreignActivityTypes != null
+      ? {
+          foreignActivityTypes: decodeForeignRows(
+            raw.foreignActivityTypes, keyB64, decodeReport, 'foreignActivityType', decryptForeignActivityType,
+          ),
+        }
+      : {}),
     ...(raw.foreignActivities != null
-      ? { foreignActivities: decodeForeignActivities(raw.foreignActivities, keyB64, decodeReport) }
+      ? {
+          foreignActivities: decodeForeignRows(
+            raw.foreignActivities, keyB64, decodeReport, 'foreignActivity', decryptForeignActivity,
+          ),
+        }
+      : {}),
+    ...(raw.plannedForeignActivities != null
+      ? {
+          plannedForeignActivities: decodeForeignRows(
+            raw.plannedForeignActivities, keyB64, decodeReport, 'plannedForeignActivity', decryptPlannedForeignActivity,
+          ),
+        }
       : {}),
   };
 

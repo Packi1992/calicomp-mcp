@@ -134,10 +134,18 @@ export type ForeignSportAvailability = { available: true } | { available: false;
  * reported as complete.
  */
 export function foreignSportAvailability(snapshot: DecryptedSnapshot, report: DecodeReport): ForeignSportAvailability {
-  if (snapshot.foreignActivities === undefined) {
+  if (
+    snapshot.foreignActivityTypes === undefined ||
+    snapshot.foreignActivities === undefined ||
+    snapshot.plannedForeignActivities === undefined
+  ) {
     return { available: false, reason: 'server_without_foreign_sport' };
   }
-  if (report.failedCount.foreignActivity > 0) {
+  if (
+    report.failedCount.foreignActivityType > 0 ||
+    report.failedCount.foreignActivity > 0 ||
+    report.failedCount.plannedForeignActivity > 0
+  ) {
     return { available: false, reason: 'foreign_rows_unreadable' };
   }
   return { available: true };
