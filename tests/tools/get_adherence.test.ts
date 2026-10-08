@@ -307,8 +307,8 @@ describe('get_adherence — registered MCP handler', () => {
       ...mockCacheFor(snapshot),
       decodeReport: {
         unreadable: [{ entity: 'plannedWorkout', id: 'row-1', reason: 'unknown_version' }],
-        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0 },
-        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0 },
+        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
+        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
       },
     });
     vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
@@ -333,8 +333,8 @@ describe('get_adherence — registered MCP handler', () => {
       ...mockCacheFor(snapshot),
       decodeReport: {
         unreadable: [{ entity: 'session', id: 'sess-1', reason: 'decrypt_failed' }],
-        encryptedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
-        failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+        encryptedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
+        failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
       },
     });
     vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
@@ -362,8 +362,8 @@ describe('get_adherence — registered MCP handler', () => {
         // setting.encryptedCount > failedCount so assertEntitiesReadable (D-11) does not
         // fire first — this test isolates assertTimeZoneReadable's own message.
         unreadable: [{ entity: 'setting', id: 'row-tz', reason: 'malformed_payload', key: TRAINING_TIMEZONE_SETTING_KEY }],
-        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 2 },
-        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 1 },
+        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 2, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
+        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 1, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
       },
     });
     vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({

@@ -28,6 +28,7 @@ import type {
   SyncExerciseDto,
   SyncExerciseTranslationDto,
   SyncSessionDto,
+  MiscSyncRow,
 } from '../src/types.js';
 
 // ── Module mocks (hoisted by vitest before static imports) ──────────────────
@@ -39,7 +40,7 @@ vi.mock('../src/crypto.js', async () => {
 
 // ── Imports after mocks ──────────────────────────────────────────────────────
 import { getSnapshot, __resetCache, projectUserExerciseToCatalog, decryptSession } from '../src/cache.js';
-import { assertEntitiesReadable } from '../src/read-guard.js';
+import { assertEntitiesReadable, foreignSportAvailability } from '../src/read-guard.js';
 import * as httpModule from '../src/http.js';
 import * as cryptoModule from '../src/crypto.js';
 
@@ -1129,5 +1130,141 @@ describe('decryptSession: session-feedback decode tolerance', () => {
       { workoutExerciseId: 'we-1', exerciseId: 'ex-1', mode: 'REPS', sets: 2, targetReps: 10 },
       { workoutExerciseId: 'we-2', exerciseId: 'ex-2', mode: 'TIME', sets: 1, targetTimeSeconds: 30 },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Foreign sport decode (Phase 155, FA-08, E-8/E-9) — through `getSnapshot()`, so the
+// real `decryptMerge` runs. Every payload is a REAL AES-256-GCM envelope under the same
+// fixed, non-production test key the corpus uses (bytes 0x00..0x1F); `crypto.js`'s
+// `decrypt` defaults to the real implementation in this file (see the `vi.mock` above).
+// ---------------------------------------------------------------------------
+
+describe('decrypt-merge: foreign sport (Phase 155)', () => {
+  const FOREIGN_KEY_B64 = Buffer.from(Array.from({ length: 32 }, (_, i) => i)).toString('base64');
+  let ivCounter = 0;
+
+  /** A real `{"iv":...,"ct":...}` envelope; a fresh IV per call (test-only key). */
+  function encryptForeign(payload: Record<string, unknown>): string {
+    ivCounter += 1;
+    const iv = Buffer.alloc(12);
+    iv.writeUInt32BE(ivCounter, 8);
+    const cipher = createCipheriv('aes-256-gcm', Buffer.from(FOREIGN_KEY_B64, 'base64'), iv);
+    const ctBuf = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final(), cipher.getAuthTag()]);
+    return JSON.stringify({ iv: iv.toString('base64'), ct: ctBuf.toString('base64') });
+  }
+
+  function foreignRow(id: string, kind: string, encryptedPayload: string): MiscSyncRow {
+    return { id, kind, clientLocalId: id, encryptedPayload, createdAt: 1_791_000_000_000, updatedAt: 1_791_000_000_000 };
+  }
+
+  const SECRET_NOTE = 'P155 private note text that must never reach a report';
+
+  function activityPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      v: 1,
+      id: 'fa-1',
+      typeId: 'b85b2339-ddf1-385d-acb2-b0d3d498eeca',
+      performedOn: '2026-10-06',
+      performedTime: null,
+      durationMinutes: 35,
+      intensity: 2,
+      dayForm: null,
+      distanceMeters: null,
+      note: SECRET_NOTE,
+      createdAt: 1_791_306_000_000,
+      updatedAt: 1_791_306_000_000,
+      ...overrides,
+    };
+  }
+
+  const PLAINTEXT_SESSION: SyncSessionDto = {
+    id: 'sess-p155',
+    startTime: 1_791_200_000_000,
+    endTime: 1_791_203_600_000,
+    isManual: false,
+    isCorrected: false,
+    isQuickChallenge: false,
+    createdAt: 1_791_200_000_000,
+    updatedAt: 1_791_200_000_000,
+  };
+
+  const TEMPLATE = {
+    id: 'tpl-p155',
+    name: 'Push',
+    createdAt: 1_791_000_000_000,
+    updatedAt: 1_791_000_000_000,
+    isFavoriteForWatch: false,
+  };
+
+  it('P155 E-9 decryptMerge leaves foreign fields absent when the server sends none', async () => {
+    mockFetchSnapshot.mockResolvedValueOnce(makePull({ sessions: [PLAINTEXT_SESSION], templates: [TEMPLATE] }));
+
+    const cache = await getSnapshot(PAT, FOREIGN_KEY_B64, URL);
+    const { snapshot } = cache;
+
+    expect(snapshot).not.toHaveProperty('foreignActivityTypes');
+    expect(snapshot).not.toHaveProperty('foreignActivities');
+    expect(snapshot).not.toHaveProperty('plannedForeignActivities');
+    expect(foreignSportAvailability(snapshot, cache.decodeReport!)).toEqual({
+      available: false,
+      reason: 'server_without_foreign_sport',
+    });
+    // Everything else is delivered as before.
+    expect(snapshot.sessions).toHaveLength(1);
+    expect(snapshot.templates).toHaveLength(1);
+    expect(cache.decodeReport!.unreadable).toEqual([]);
+  });
+
+  it('P155 E-8 one unreadable foreign activity makes foreign sport unavailable but leaves sessions readable', async () => {
+    const readable = encryptForeign(activityPayload());
+    // A real envelope with one flipped ciphertext byte: GCM authentication fails.
+    const broken = JSON.parse(encryptForeign(activityPayload({ id: 'fa-2' }))) as { iv: string; ct: string };
+    const ctBuf = Buffer.from(broken.ct, 'base64');
+    ctBuf[0] ^= 0xff;
+    const tampered = JSON.stringify({ iv: broken.iv, ct: ctBuf.toString('base64') });
+
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        sessions: [PLAINTEXT_SESSION],
+        templates: [TEMPLATE],
+        foreignActivityTypes: [],
+        foreignActivities: [
+          foreignRow('row-fa-1', 'foreign_activity', readable),
+          foreignRow('row-fa-2', 'foreign_activity', tampered),
+        ],
+        plannedForeignActivities: [],
+      }),
+    );
+
+    const cache = await getSnapshot(PAT, FOREIGN_KEY_B64, URL);
+    const { snapshot } = cache;
+    const report = cache.decodeReport!;
+
+    expect(snapshot.foreignActivities?.map((a) => a.id)).toEqual(['fa-1']);
+    expect(report.unreadable).toEqual([
+      {
+        entity: 'foreignActivity',
+        id: 'row-fa-2',
+        reason: 'decrypt_failed',
+        createdAt: 1_791_000_000_000,
+        updatedAt: 1_791_000_000_000,
+      },
+    ]);
+    expect(report.encryptedCount.foreignActivity).toBe(2);
+    expect(report.failedCount.foreignActivity).toBe(1);
+    expect(foreignSportAvailability(snapshot, report)).toEqual({ available: false, reason: 'foreign_rows_unreadable' });
+
+    // Sessions and templates stay readable; the session guard of every session tool passes.
+    expect(snapshot.sessions.map((s) => s.id)).toEqual(['sess-p155']);
+    expect(snapshot.templates.map((t) => t.id)).toEqual(['tpl-p155']);
+    expect(() => assertEntitiesReadable(report, ['session', 'setLog', 'hrSample'], 'History error')).not.toThrow();
+
+    // No content, ciphertext, key or PAT in the report (T-120-17, T-155-24).
+    const reportJson = JSON.stringify(report);
+    expect(reportJson).not.toContain(SECRET_NOTE);
+    expect(reportJson).not.toContain(broken.ct);
+    expect(reportJson).not.toContain(FOREIGN_KEY_B64);
+    expect(reportJson).not.toContain(PAT);
   });
 });

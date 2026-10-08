@@ -13,14 +13,20 @@
  */
 
 import { TimeZoneUnavailableError, TRAINING_TIMEZONE_SETTING_KEY } from './training-state/time-zone.js';
-import type { DecodeReport, UnreadableEntity } from './types.js';
+import type { DecodeReport, DecryptedSnapshot, UnreadableEntity } from './types.js';
 
 /** The report a `SnapshotCache` mock that predates this field (or a genuinely empty
  *  decode run) is treated as carrying — no unreadable rows, nothing encrypted. */
 export const EMPTY_DECODE_REPORT: DecodeReport = {
   unreadable: [],
-  encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
-  failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+  encryptedCount: {
+    session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
+    foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
+  },
+  failedCount: {
+    session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
+    foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
+  },
 };
 
 /**
@@ -102,4 +108,37 @@ export function assertTimeZoneReadable(report: DecodeReport, toolLabel: string):
         `decoded (reason: ${tzRow.reason}); this tool cannot fall back to a host zone.`,
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Foreign sport availability (Phase 155, E-8/E-9; protocol §1.6 "Tool outputs")
+// ---------------------------------------------------------------------------
+
+/** Why the foreign block of a tool is unavailable: the pull lacks the foreign fields (a
+ *  server older than Phase 155, E-9), or a foreign row could not be decoded (E-8). */
+export type ForeignUnavailableReason = 'server_without_foreign_sport' | 'foreign_rows_unreadable';
+
+/** The availability of the foreign sport block of one tool result. */
+export type ForeignSportAvailability = { available: true } | { available: false; reason: ForeignUnavailableReason };
+
+/**
+ * Decide whether the foreign sport block of a tool may be filled (Phase 155, E-8/E-9).
+ * Unlike the guards above this NEVER throws: an unavailable foreign block is reported in
+ * the tool result (`available: false` plus `reason`), and every template number, session
+ * and calendar entry is still delivered — no tool fails because of a foreign row.
+ *
+ * A missing snapshot list (the matching wire field was absent) wins over unreadable rows:
+ * an old server cannot have delivered rows that failed. All three foreign kinds count —
+ * an unreadable own type could hide the name behind a type id, an unreadable appointment
+ * would turn into a silently missing planned date, so a partial foreign picture is never
+ * reported as complete.
+ */
+export function foreignSportAvailability(snapshot: DecryptedSnapshot, report: DecodeReport): ForeignSportAvailability {
+  if (snapshot.foreignActivities === undefined) {
+    return { available: false, reason: 'server_without_foreign_sport' };
+  }
+  if (report.failedCount.foreignActivity > 0) {
+    return { available: false, reason: 'foreign_rows_unreadable' };
+  }
+  return { available: true };
 }

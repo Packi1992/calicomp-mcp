@@ -303,8 +303,8 @@ describe('get_planned_workouts — registered MCP handler', () => {
       ...mockCacheFor(snapshot),
       decodeReport: {
         unreadable: [{ entity: 'plannedWorkout', id: 'row-broken', reason: 'decrypt_failed' }],
-        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0 },
-        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0 },
+        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
+        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
       },
     });
 

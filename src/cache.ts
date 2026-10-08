@@ -29,6 +29,14 @@
  *   never reads the calendar (`get_history`, `get_stats`, …) is no longer taken down
  *   by a planned-workout row it never asked for.
  *
+ * Foreign sport (Phase 155, FA-08, E-8/E-9):
+ *   The three foreign sport kinds (`foreignActivityTypes`, `foreignActivities`,
+ *   `plannedForeignActivities`) are always encrypted and decode per row exactly like
+ *   planned workouts. Two differences: a wire field the server did not send leaves the
+ *   snapshot key OUT (a server older than Phase 155), never an empty list; and the
+ *   strictness lives in `read-guard.ts`'s `foreignSportAvailability`, which only ever
+ *   degrades the foreign block — no existing tool fails because of a foreign row.
+ *
  * Per-row decode fault tolerance (Phase 150, D-08/D-10/D-11/D-12):
  *   Sessions, set-logs, HR samples, planned workouts and settings ALL decode per row —
  *   a single bad row (`RowDecodeError` below) never aborts `decryptMerge`. Failures land
@@ -62,6 +70,7 @@ import type {
   DecryptedHrSample,
   DecryptedPlannedWorkout,
   DecryptedSetting,
+  DecryptedForeignActivity,
   NormalizedBlock,
   NormalizedTemplateExercise,
   CatalogExercise,
@@ -121,8 +130,14 @@ export class RowDecodeError extends Error {
 function newDecodeReport(): DecodeReport {
   return {
     unreadable: [],
-    encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
-    failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+    encryptedCount: {
+      session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
+      foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
+    },
+    failedCount: {
+      session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
+      foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
+    },
   };
 }
 
@@ -574,6 +589,114 @@ export function decryptPlannedWorkout(row: MiscSyncRow, keyB64: string): Decrypt
   };
 }
 
+// ---------------------------------------------------------------------------
+// Foreign sport decoders (Phase 155, FA-08; protocol §1.6 "Decoded rows")
+// ---------------------------------------------------------------------------
+
+/** `yyyy-MM-dd` — the shape of `performedOn` (the athlete's local calendar day). */
+const FOREIGN_LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The common front half of the three foreign sport decoders: tombstone-shaped empty
+ * payload, decrypt failure, plaintext that is not a JSON object, `v !== 1`. Every guard
+ * throws a `RowDecodeError` naming only the wire kind, the row id and the cause — never
+ * plaintext, ciphertext or key material (T-120-17, T-155-24); the `v` that does not
+ * match is not echoed either, because it comes from inside the decrypted payload.
+ */
+function decryptForeignPayload(row: MiscSyncRow, keyB64: string, wireKind: string): Record<string, unknown> {
+  if (!row.encryptedPayload) {
+    throw new RowDecodeError(
+      `${wireKind} row ${row.id} arrived with an empty encryptedPayload — this is the tombstone ` +
+        'shape the server should already filter out (Plan 155-03); the pull contract may have changed',
+      'malformed_payload',
+    );
+  }
+  let plaintextJson: string;
+  try {
+    plaintextJson = decrypt(row.encryptedPayload, keyB64);
+  } catch {
+    throw new RowDecodeError(`${wireKind} row ${row.id} could not be decrypted`, 'decrypt_failed');
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(plaintextJson);
+  } catch {
+    throw new RowDecodeError(`${wireKind} row ${row.id} has a malformed payload`, 'malformed_payload');
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new RowDecodeError(`${wireKind} row ${row.id} has a malformed payload`, 'malformed_payload');
+  }
+  const plaintext = parsed as Record<string, unknown>;
+  if (plaintext.v !== 1) {
+    throw new RowDecodeError(`${wireKind} row ${row.id} has an unknown schema version`, 'unknown_version');
+  }
+  return plaintext;
+}
+
+/** A non-empty string, else `undefined` — the test for a required id field. */
+function requiredString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/** A string optional: the string itself, anything else (missing, `null`, a number) `null`. */
+function optionalString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+/** An integer in `min..max`, anything else `null` (D-16: "not measured", never 0). */
+function optionalIntInRange(value: unknown, min: number, max: number): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : null;
+}
+
+/** The payload's own timestamp, else the routing timestamp of the wire row. */
+function timestampOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * Decrypt one `foreign_activity` row into its §1.6 normal form (Phase 155, FA-08).
+ *
+ * Unreadable (throws `RowDecodeError`): empty payload, decrypt failure, plaintext that is
+ * not a JSON object, `v !== 1` (`unknown_version`), and a missing or malformed required
+ * field — `id`, `typeId`, `performedOn` matching `yyyy-MM-dd`, `durationMinutes` an
+ * integer greater than 0 (`malformed_payload`).
+ *
+ * Readable with a value dropped (D-16): `intensity` and `dayForm` only as integers 1..5,
+ * `distanceMeters` only as an integer greater than 0 (protocol §1.6 and the app's own
+ * `ForeignActivityValidation`, 1..max) — anything else becomes `null` and the row stays
+ * readable. Missing optionals become `null`; `v` is dropped.
+ *
+ * Exported and throwing for the same reason as `decryptPlannedWorkout`: the corpus replay
+ * (`tests/shared-vectors.test.ts`) must run through this exact function. Never logs —
+ * `note` is athlete free text.
+ */
+export function decryptForeignActivity(row: MiscSyncRow, keyB64: string): DecryptedForeignActivity {
+  const p = decryptForeignPayload(row, keyB64, 'foreign_activity');
+  const id = requiredString(p.id);
+  const typeId = requiredString(p.typeId);
+  const performedOn = typeof p.performedOn === 'string' && FOREIGN_LOCAL_DATE.test(p.performedOn) ? p.performedOn : undefined;
+  const durationMinutes =
+    typeof p.durationMinutes === 'number' && Number.isInteger(p.durationMinutes) && p.durationMinutes > 0
+      ? p.durationMinutes
+      : undefined;
+  if (id === undefined || typeId === undefined || performedOn === undefined || durationMinutes === undefined) {
+    throw new RowDecodeError(`foreign_activity row ${row.id} has a malformed payload`, 'malformed_payload');
+  }
+  return {
+    id,
+    typeId,
+    performedOn,
+    performedTime: optionalString(p.performedTime),
+    durationMinutes,
+    intensity: optionalIntInRange(p.intensity, 1, 5),
+    dayForm: optionalIntInRange(p.dayForm, 1, 5),
+    distanceMeters: optionalIntInRange(p.distanceMeters, 1, Number.MAX_SAFE_INTEGER),
+    note: optionalString(p.note),
+    createdAt: timestampOr(p.createdAt, row.createdAt),
+    updatedAt: timestampOr(p.updatedAt, row.updatedAt),
+  };
+}
+
 /**
  * Decode every planned-workout row, tolerating a per-row failure (Phase 150,
  * D-08/D-09/D-10/D-12) — same shape as `decodeSessions` above, calling the exported
@@ -670,6 +793,35 @@ function decodeSettings(rows: MiscSyncRow[], keyB64: string, report: DecodeRepor
         id: row.id,
         reason,
         key: row.clientLocalId,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      });
+    }
+  }
+  return decoded;
+}
+
+/**
+ * Decode every `foreign_activity` row, tolerating a per-row failure (Phase 155, E-8) —
+ * same shape as `decodePlannedWorkouts`. An unreadable row is reported by id, reason and
+ * routing timestamps only, never with content; it makes the foreign block unavailable
+ * (`read-guard.ts`'s `foreignSportAvailability`) and touches nothing else.
+ */
+function decodeForeignActivities(rows: MiscSyncRow[], keyB64: string, report: DecodeReport): DecryptedForeignActivity[] {
+  const decoded: DecryptedForeignActivity[] = [];
+  for (const row of rows) {
+    if (row.encryptedPayload) {
+      report.encryptedCount.foreignActivity += 1;
+    }
+    try {
+      decoded.push(decryptForeignActivity(row, keyB64));
+    } catch (err) {
+      const reason: UnreadableReason = err instanceof RowDecodeError ? err.reason : 'decrypt_failed';
+      report.failedCount.foreignActivity += 1;
+      report.unreadable.push({
+        entity: 'foreignActivity',
+        id: row.id,
+        reason,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       });
@@ -778,6 +930,15 @@ function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: Decryp
     hrSamples,
     plannedWorkouts: decodePlannedWorkouts(raw.plannedWorkouts ?? [], keyB64, decodeReport),
     settings: decodeSettings(raw.settings ?? [], keyB64, decodeReport),
+    // Phase 155 (E-9): deliberately NO `?? []` here, unlike every list above. The server
+    // sends these fields always (Plan 155-03); a missing one means a server older than
+    // Phase 155, and the snapshot key is then left out so `foreignSportAvailability`
+    // can say so instead of reporting "no foreign sport".
+    // `!= null` rather than `!== undefined`: an explicit JSON `null` (never sent by the
+    // Kotlin DTO, but cheap to survive) reads as "field absent" instead of crashing the loop.
+    ...(raw.foreignActivities != null
+      ? { foreignActivities: decodeForeignActivities(raw.foreignActivities, keyB64, decodeReport) }
+      : {}),
   };
 
   return { snapshot, decodeReport };

@@ -29,7 +29,7 @@ import {
   renderSeriesFields,
 } from '../src/recurrence.js';
 import { decrypt } from '../src/crypto.js';
-import { decryptPlannedWorkout, decryptSession } from '../src/cache.js';
+import { decryptPlannedWorkout, decryptSession, decryptForeignActivity } from '../src/cache.js';
 import { calculateLongestStreak, calculateCurrentStreak } from '../src/training-state/consistency.js';
 import { toRadarValues, weightedCounts } from '../src/training-state/muscle-balance.js';
 import { weightedCounts as capabilityWeightedCounts } from '../src/training-state/capability-balance.js';
@@ -375,6 +375,65 @@ describe('shared coach-planning vector corpus', () => {
           expect(decoded.feedback.comment).toBeNull();
         }
       }
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // foreignActivityCipher section (Phase 155, FA-08): crypto parity for an app-written
+  // `foreign_activity` payload — byte-identical plaintext through `decrypt()`, and
+  // `decryptForeignActivity()` — the real decode boundary `decryptMerge` uses — returning
+  // exactly the §1.6 normal form `expectedDecoded`, the hostile note included.
+  // -----------------------------------------------------------------------
+
+  function miscRowFromVector(
+    vector: { name: string; ciphertextJson: string },
+    kind: string,
+  ): MiscSyncRow {
+    return {
+      id: `${kind}-${vector.name}`,
+      kind,
+      clientLocalId: `${kind}-${vector.name}`,
+      encryptedPayload: vector.ciphertextJson,
+      createdAt: 0,
+      updatedAt: 0,
+    };
+  }
+
+  describe('foreignActivityCipher vectors', () => {
+    it('P155 foreignActivityCipher section is non-empty', () => {
+      expect(corpus.foreignActivityCipher.length).toBeGreaterThan(0);
+    });
+
+    it('P155 FA-08 every foreignActivityCipher vector decrypts to its exact plaintext string', () => {
+      for (const vector of corpus.foreignActivityCipher) {
+        expect(decrypt(vector.ciphertextJson, vector.keyB64)).toBe(vector.expectedPlaintextString);
+      }
+    });
+
+    it('P155 FA-08 decryptForeignActivity decodes every foreignActivityCipher vector to expectedDecoded', () => {
+      for (const vector of corpus.foreignActivityCipher) {
+        const decoded = decryptForeignActivity(miscRowFromVector(vector, 'foreign_activity'), vector.keyB64);
+        // toStrictEqual: same keys, same values, nothing extra — the normal form exactly.
+        expect({ ...decoded }).toStrictEqual(vector.expectedDecoded);
+        expect(Object.keys(decoded)).toEqual(Object.keys(vector.expectedDecoded));
+      }
+    });
+
+    it('P155 FA-08 the hostile activity note arrives byte-identical', () => {
+      let hostileSeen = 0;
+      for (const vector of corpus.foreignActivityCipher) {
+        const decoded = decryptForeignActivity(miscRowFromVector(vector, 'foreign_activity'), vector.keyB64);
+        const expectedNote = (vector.expectedPlaintext as Record<string, unknown>).note;
+        if (typeof expectedNote === 'string') {
+          expect(decoded.note).toBe(expectedNote);
+          expect(Buffer.from(decoded.note ?? '', 'utf8').equals(Buffer.from(expectedNote, 'utf8'))).toBe(true);
+          if (expectedNote.includes('Ignore all previous instructions')) hostileSeen += 1;
+        } else {
+          expect(decoded.note).toBeNull();
+        }
+      }
+      // The corpus must actually carry the hostile note, or this test proves nothing.
+      expect(hostileSeen).toBeGreaterThan(0);
     });
   });
 

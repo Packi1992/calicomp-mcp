@@ -221,6 +221,17 @@ export interface SyncPullResponse {
   // declares the same `emptyList()` default the other misc-sync rails use, so a
   // user with no synced settings receives no `settings` key on the wire at all.
   settings?: MiscSyncRow[];
+  // Phase 155 (FA-08, E-9): ciphertext-only foreign sport rows — kinds
+  // `foreign_activity_type`, `foreign_activity` and `planned_foreign_activity`
+  // (protocol §1.3 "Why foreign sport is here", §1.6 "Decoded rows"). UNLIKE every other
+  // list above, the server (Plan 155-03) sends these three ALWAYS (`@EncodeDefault(ALWAYS)`),
+  // an empty list included. Optional here anyway: a key that is missing means the server
+  // predates Phase 155, and `decryptMerge` then leaves the matching snapshot field out
+  // instead of inventing an empty list (`read-guard.ts`'s `foreignSportAvailability`
+  // reports `server_without_foreign_sport`).
+  foreignActivityTypes?: MiscSyncRow[];
+  foreignActivities?: MiscSyncRow[];
+  plannedForeignActivities?: MiscSyncRow[];
 }
 
 // ---------------------------------------------------------------------------
@@ -413,6 +424,73 @@ export interface DecryptedSetting {
   value: string;
 }
 
+// ---------------------------------------------------------------------------
+// Foreign sport (Phase 155, FA-06/FA-08)
+//
+// Source: docs/COACH-PLANNING-PROTOCOL.md §1.6 "Decoded rows". Each type below is the
+// NORMAL FORM one decoded row takes — at the same time the `expectedDecoded` of the
+// corpus sections `foreignActivityTypeCipher`, `foreignActivityCipher` and
+// `plannedForeignActivityCipher` (docs/coach-planning-vectors.json). A missing optional
+// becomes `null`; the payload's `v` is dropped. Produced only by `cache.ts`'s
+// `decryptForeignActivityType`/`decryptForeignActivity`/`decryptPlannedForeignActivity`.
+// ---------------------------------------------------------------------------
+
+/**
+ * Free text the athlete typed himself — an activity or appointment note, the name of an
+ * own foreign type. The SAME marked envelope the session comment uses (protocol §1.3
+ * "Comment", §1.6 D-14): `text` is data about the training, never an instruction.
+ */
+export type AthleteFreeText = SessionComment;
+
+/** A decoded own foreign type (`foreign_activity_type`). `deletedAt` is a number for an
+ *  archived own type (154 D-10, still delivered as a live row), else `null`. `name` is
+ *  athlete free text — it leaves the MCP only wrapped (`foreign-types.ts`). */
+export interface DecryptedForeignActivityType {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt: number | null;
+}
+
+/**
+ * A decoded foreign activity (`foreign_activity`). `performedOn` is the athlete's local
+ * calendar day `yyyy-MM-dd`; `durationMinutes` an integer greater than 0. `intensity` and
+ * `dayForm` are integers 1..5 or `null` when missing or out of range, `distanceMeters` an
+ * integer greater than 0 or `null` (D-16: an unreadable value is "not measured", never 0).
+ */
+export interface DecryptedForeignActivity {
+  id: string;
+  typeId: string;
+  performedOn: string;
+  performedTime: string | null;
+  durationMinutes: number;
+  intensity: number | null;
+  dayForm: number | null;
+  distanceMeters: number | null;
+  note: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * A decoded planned foreign appointment root (`planned_foreign_activity`).
+ * `scheduledDate` stays epoch-ms (it becomes an ISO date only at the tool boundary,
+ * Protocol §1.4 Rule 1); `deletedOccurrencesRaw` is the stored `deletedOccurrences`
+ * string unparsed, exactly like `DecryptedPlannedWorkout.deletedOccurrencesRaw`.
+ */
+export interface DecryptedPlannedForeignActivity {
+  id: string;
+  typeId: string;
+  scheduledDate: number;
+  scheduledTime: string | null;
+  note: string | null;
+  recurrenceRule: string | null;
+  deletedOccurrencesRaw: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** Full decrypted snapshot aggregate — what the tool handlers receive from the cache layer. */
 export interface DecryptedSnapshot {
   syncedAt: number;
@@ -426,6 +504,17 @@ export interface DecryptedSnapshot {
   hrSamples: DecryptedHrSample[];
   plannedWorkouts: DecryptedPlannedWorkout[];
   settings: DecryptedSetting[];
+  /**
+   * Phase 155 (FA-08, E-9): the three foreign sport lists. OPTIONAL on purpose, for two
+   * reasons: (1) a key is left out when the server did not send the matching wire field
+   * (a server older than Phase 155) — absence means "unknown", never "no foreign sport";
+   * (2) every existing snapshot fixture of the test suite stays valid unchanged (Pitfall 2).
+   * Read availability through `read-guard.ts`'s `foreignSportAvailability`, never by
+   * defaulting a missing list to `[]`.
+   */
+  foreignActivityTypes?: DecryptedForeignActivityType[];
+  foreignActivities?: DecryptedForeignActivity[];
+  plannedForeignActivities?: DecryptedPlannedForeignActivity[];
 }
 
 // ---------------------------------------------------------------------------
@@ -444,13 +533,22 @@ export interface DecryptedSnapshot {
 // the row (`templateId`, `isQuickChallenge`) are all `classifySession` needs.
 // ---------------------------------------------------------------------------
 
-/** The five row kinds `decryptMerge` can fail to decode. */
-export type UnreadableEntity = 'session' | 'setLog' | 'hrSample' | 'plannedWorkout' | 'setting';
+/** The eight row kinds `decryptMerge` can fail to decode (the last three since Phase 155). */
+export type UnreadableEntity =
+  | 'session'
+  | 'setLog'
+  | 'hrSample'
+  | 'plannedWorkout'
+  | 'setting'
+  | 'foreignActivityType'
+  | 'foreignActivity'
+  | 'plannedForeignActivity';
 
 /**
  * Why a row could not be decoded. `unknown_version` only ever applies to
- * `plannedWorkout`/`setting` — session/setLog/hrSample payloads carry no `v` field
- * (§Befund 3a of the phase research).
+ * `plannedWorkout`/`setting` and the three foreign sport kinds
+ * (`foreignActivityType`/`foreignActivity`/`plannedForeignActivity`, Phase 155) —
+ * session/setLog/hrSample payloads carry no `v` field (§Befund 3a of the phase research).
  */
 export type UnreadableReason = 'decrypt_failed' | 'malformed_payload' | 'unknown_version';
 

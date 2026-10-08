@@ -235,6 +235,24 @@ const SessionCipherVectorSchema = z.object({
 });
 
 /**
+ * Phase 155 (FA-08): the `foreignActivityCipher` corpus section — the crypto-parity fixture
+ * proving the MCP decrypts an app-written `foreign_activity` payload (the frozen v1 form of
+ * `ForeignSnapshotGoldenTest.kt`) correctly. Same form as `SessionCipherVectorSchema` above:
+ * same fixed test key (bytes 0x00..0x1F), loose `expectedPlaintext`/`expectedDecoded` records
+ * whose concrete shape the replay (`tests/shared-vectors.test.ts`) owns. `expectedDecoded` is
+ * the §1.6 normal form `decryptForeignActivity` (cache.ts) must return exactly.
+ */
+const ForeignActivityCipherVectorSchema = z.object({
+  name: z.string().min(1),
+  keyB64: z.string().min(1),
+  ciphertextJson: z.string().min(1),
+  expectedPlaintextString: z.string().min(1),
+  expectedPlaintext: z.record(z.string(), z.unknown()),
+  expectedDecoded: z.record(z.string(), z.unknown()),
+  byteRoundTrip: z.boolean(),
+});
+
+/**
  * Phase 136-01 (TRACER SLICE): the `plannedUpdate` corpus section — proves the
  * MCP-side producer (`proposePlannedUpdate`/`buildMoveOccurrenceEnvelope`,
  * `src/tools/propose_planned_update.ts`) emits the pinned envelope AND the pinned
@@ -470,6 +488,9 @@ export const CoachPlanningVectorsSchema = z.object({
   formatProposal: z.array(FormatProposalVectorSchema).min(1),
   plannedWorkoutCipher: PlannedWorkoutCipherVectorSchema,
   sessionCipher: z.array(SessionCipherVectorSchema).min(1),
+  // Phase 155: listed here or Zod's default object parse would silently DROP the section
+  // (Pitfall 3) and every replay over it would pass vacuously.
+  foreignActivityCipher: z.array(ForeignActivityCipherVectorSchema).min(1),
   plannedUpdate: z.array(PlannedUpdateVectorSchema).min(1),
   streak: z.array(StreakVectorSchema).min(1),
   muscleBalance: z.array(MuscleBalanceVectorSchema).min(1),

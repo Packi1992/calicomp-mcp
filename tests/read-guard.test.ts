@@ -18,7 +18,10 @@ const PAT = 'calicomp_pat_testonly';
 const KEY_B64 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 
 function emptyCounts(): Record<UnreadableEntity, number> {
-  return { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 };
+  return {
+    session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
+    foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
+  };
 }
 
 describe('decodeReportOf', () => {

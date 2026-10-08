@@ -498,8 +498,8 @@ describe('get_history — unreadable rows', () => {
       unreadable: [
         { entity: 'session' as const, id: 'sess-corrupt', reason: 'decrypt_failed' as const, createdAt: 1, updatedAt: 1 },
       ],
-      encryptedCount: { session: 3, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
-      failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+      encryptedCount: { session: 3, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
+      failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
     };
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, decodeReport });
 
@@ -530,8 +530,8 @@ describe('get_history — unreadable rows', () => {
   it('P150 D-11 get_history refuses when every encrypted session failed', async () => {
     const decodeReport = {
       unreadable: [{ entity: 'session' as const, id: 'sess-1', reason: 'decrypt_failed' as const }],
-      encryptedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
-      failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+      encryptedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
+      failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
     };
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, decodeReport });
 
@@ -550,8 +550,8 @@ describe('get_history — unreadable rows', () => {
   it('P150 D-13 D-09 a corrupt planned row does not stop get_history', async () => {
     const decodeReport = {
       unreadable: [{ entity: 'plannedWorkout' as const, id: 'row-broken', reason: 'decrypt_failed' as const }],
-      encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0 },
-      failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0 },
+      encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
+      failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
     };
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, decodeReport });
 
@@ -700,8 +700,8 @@ describe('get_history — session classification and template filter', () => {
           sessionKind: 'template' as const,
         },
       ],
-      encryptedCount: { session: 3, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
-      failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0 },
+      encryptedCount: { session: 3, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
+      failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
     };
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, decodeReport });
 
