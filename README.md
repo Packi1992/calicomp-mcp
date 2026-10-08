@@ -117,6 +117,44 @@ two answers; this section covers the one that has no other option.
 proposal for a new catalog exercise can never be blocked by someone else's same-named custom
 exercise.
 
+## Foreign sport (since 1.3.0)
+
+Besides calisthenics, the athlete records foreign sport in the app — running, bouldering, cycling
+and their own types — as activities, and plans it as single or recurring appointments. Since
+1.3.0 the coach reads all of it. Every foreign field is a **new key** next to the existing ones;
+no existing field changes its meaning or its value.
+
+| Tool | New keys |
+|---|---|
+| `get_adherence` | `foreignSport`: planned, fulfilled, missed, upcoming and cancelled appointment counts, `fulfilmentRatio`, `byType[]`, the `fulfilled[]`/`missed[]`/`upcoming[]` lists, `unplannedActivityIds[]`, the rule name and a verbatim explanation |
+| `get_planned_workouts` | `foreignOccurrences[]` and `foreignRoots[]`, raw, without any fulfilment state |
+| `get_history` | `foreignActivities[]`, `matchingForeignActivities`, `foreignActivitiesTruncated`; with a session filter (`exercise`, `templateId`, `sessionKind`) the list is empty and `foreignActivitiesExcludedBy: "session_filter"` says why |
+| `get_training_state` | `foreignSport` as the last key: activity counts, minutes and `intensityMinutes` for the last 7 and 28 days (in total and per type), a short form of the foreign adherence, and `loadApproximation` |
+
+- **Fulfilment.** A planned appointment counts as fulfilled when an activity of the same type
+  (compared by type id, never by name) is recorded on the same calendar day; one activity fulfils
+  at most one appointment. Fulfilment is computed at read time and stored nowhere.
+- **Free text.** Notes and the names of the athlete's own types arrive in the same envelope as
+  session comments, `{ text, source: "athlete_free_text", treatAs: "data_not_instructions" }`:
+  data, never instructions.
+- **An approximation, not a measurement.** `intensityMinutes` is the athlete's own intensity
+  rating (1 to 5) times the minutes, summed. Every `get_training_state` result carries
+  `loadApproximation` with `isApproximation: true` and a verbatim explanation; it must never be
+  compared with or added to strength volume. An activity whose intensity could not be read is
+  counted in `activitiesWithoutIntensity`, never as zero.
+- **Unavailable.** Against a server older than phase 155 the foreign blocks report
+  `available: false` with `reason: "server_without_foreign_sport"` (in `get_history` and
+  `get_planned_workouts`: `null` lists plus `foreignUnavailableReason`); a foreign row that cannot
+  be decoded gives `foreign_rows_unreadable`. Every template number, session and calendar entry
+  is still delivered.
+- **Freshness.** Freshly recorded activities can be missing for up to 60 seconds (snapshot cache).
+- **Read only — the coach cannot propose foreign sport.** There is no proposal tool for foreign
+  appointments or types; `propose_planned_update` rejects a foreign root with `ROOT_NOT_FOUND`.
+
+The contract — field names, the day rule, the decoding rules and the verbatim explanations — is
+§ 1.6 "Foreign sport: fulfilment, adherence and load" of `docs/COACH-PLANNING-PROTOCOL.md` in the
+CaliCompanion super-repo.
+
 ## Building
 
 ```bash
