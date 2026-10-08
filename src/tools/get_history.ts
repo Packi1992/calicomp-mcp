@@ -27,6 +27,15 @@
  * `exerciseDeleted`/`exerciseUnknown`/`exerciseNameSource` when applicable — next to its
  * `exerciseId` (see `exercise-names.ts`).
  *
+ * Phase 155 (FA-08, D-14, D-15, E-8, E-9; protocol §1.6 "Tool outputs" → `get_history`):
+ * foreign sport activities travel in their OWN keys beside the unchanged session keys —
+ * `foreignActivities`, `matchingForeignActivities`, `foreignActivitiesTruncated`, and
+ * when it applies `foreignActivitiesExcludedBy` / `foreignUnavailableReason`. A foreign
+ * activity never enters `sessions`, `setLogs`, `matchingSessions` or `truncated`. Its
+ * window is the zone-free string comparison `from <= performedOn <= to`; `limit` counts
+ * separately; newest first. The note and the name of an own type leave this tool only in
+ * the athlete free-text envelope (`foreign-types.ts`).
+ *
  * Exports:
  *   getHistory(args, snapshot)      — pure function; importable by Phase 121 WRITE tools
  *   registerToolGetHistory(server, cfg) — registers the tool with the MCP server
@@ -46,12 +55,27 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { GetHistorySchema } from '../schemas.js';
 import { getSnapshot } from '../cache.js';
 import { writeExportFile } from '../file-channel.js';
-import { decodeReportOf, assertEntitiesReadable } from '../read-guard.js';
+import {
+  decodeReportOf,
+  assertEntitiesReadable,
+  foreignSportAvailability,
+  EMPTY_DECODE_REPORT,
+} from '../read-guard.js';
+import type { ForeignSportAvailability, ForeignUnavailableReason } from '../read-guard.js';
 import { buildTemplateIndex, classifySession, matchesSessionFilter } from '../session-kind.js';
 import type { SessionKind, TemplateStatus } from '../session-kind.js';
 import { createExerciseNameResolver } from '../exercise-names.js';
 import type { ExerciseNameResolver, SetLogExerciseNameFields } from '../exercise-names.js';
-import type { DecryptedSnapshot, DecryptedSession, DecryptedSetLog, UnreadableRow } from '../types.js';
+import { resolveForeignType, wrapFreeText } from '../foreign-types.js';
+import type { ForeignTypeFields } from '../foreign-types.js';
+import type {
+  AthleteFreeText,
+  DecryptedForeignActivity,
+  DecryptedSnapshot,
+  DecryptedSession,
+  DecryptedSetLog,
+  UnreadableRow,
+} from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -90,6 +114,40 @@ export interface GetHistoryResult {
   matchingSessions: number;
   /** `matchingSessions > limit` — a small limit never silently hides a bigger match set. */
   truncated:        boolean;
+  /**
+   * Phase 155 (FA-08): the foreign sport activities of the window, newest first, capped by
+   * their own `limit`; `null` when foreign sport is unavailable (`foreignUnavailableReason`),
+   * `[]` when a session filter excludes them (`foreignActivitiesExcludedBy`, D-15).
+   */
+  foreignActivities:          GetHistoryForeignActivityItem[] | null;
+  /** Foreign activities in the window, BEFORE `limit` (0 when unavailable or excluded). */
+  matchingForeignActivities:  number;
+  /** `matchingForeignActivities > limit`. */
+  foreignActivitiesTruncated: boolean;
+  /** Set only when `exercise`, `templateId` or `sessionKind` emptied the foreign list (D-15). */
+  foreignActivitiesExcludedBy?: 'session_filter';
+  /** Set only when foreign sport is unavailable (E-8, E-9). */
+  foreignUnavailableReason?:    ForeignUnavailableReason;
+}
+
+/**
+ * One foreign sport activity in `get_history` (protocol §1.6 "Tool outputs"). The type fields
+ * come from `resolveForeignType` (a predefined name as a plain string in `lang`, an own name
+ * in the free-text envelope, an unknown id with `typeUnknown`); `note` is the envelope or
+ * `null` — athlete free text never leaves this tool unmarked (D-14).
+ */
+export interface GetHistoryForeignActivityItem extends ForeignTypeFields {
+  id:              string;
+  typeId:          string;
+  performedOn:     string;
+  performedTime:   string | null;
+  durationMinutes: number;
+  intensity:       number | null;
+  dayForm:         number | null;
+  distanceMeters:  number | null;
+  note:            AthleteFreeText | null;
+  createdAt:       number;
+  updatedAt:       number;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,16 +176,23 @@ export interface GetHistoryResult {
  *      Each returned session is additively classified (Phase 150, D-01/D-02):
  *      `sessionKind`, and `templateStatus` when the kind is `template`. With `resolver`,
  *      each returned set-log additively carries `resolver.forSetLog`'s fields (D-15).
+ *   7. (Phase 155, FA-08) The foreign keys, in their own pass after steps 1-6, which stay
+ *      exactly as they were — see `buildForeignActivities`.
  *
  * @param args     Validated args (GetHistorySchema output — limit is always a number).
  * @param snapshot Pre-decrypted snapshot from the cache layer.
  * @param resolver Optional exercise-name resolver (Phase 150, D-15) — omit for a
  *                 byte-identical result to before this plan.
+ * @param foreignAvailability Optional foreign sport availability of this read (Phase 155,
+ *                 E-8/E-9) — the registered handler passes `foreignSportAvailability(snapshot,
+ *                 report)`; omitted, the snapshot alone decides
+ *                 (`foreignSportAvailability(snapshot, EMPTY_DECODE_REPORT)`).
  */
 export function getHistory(
   args: GetHistoryArgs,
   snapshot: DecryptedSnapshot,
   resolver?: ExerciseNameResolver,
+  foreignAvailability?: ForeignSportAvailability,
 ): GetHistoryResult {
   const { from, to, exercise, templateId, sessionKind, limit } = args;
 
@@ -186,7 +251,103 @@ export function getHistory(
     };
   });
 
-  return { sessions: classifiedSessions, setLogs, matchingSessions, truncated };
+  // Step 7 (Phase 155, FA-08): the foreign list — its own pass, after the session steps,
+  // sharing none of their input. The old keys above are built exactly as before.
+  const foreign = buildForeignActivities(
+    args,
+    snapshot,
+    foreignAvailability ?? foreignSportAvailability(snapshot, EMPTY_DECODE_REPORT),
+  );
+
+  return { sessions: classifiedSessions, setLogs, matchingSessions, truncated, ...foreign };
+}
+
+// ---------------------------------------------------------------------------
+// Foreign sport (Phase 155, FA-08, D-14, D-15, E-8, E-9)
+// ---------------------------------------------------------------------------
+
+type ForeignHistoryPart = Pick<
+  GetHistoryResult,
+  | 'foreignActivities'
+  | 'matchingForeignActivities'
+  | 'foreignActivitiesTruncated'
+  | 'foreignActivitiesExcludedBy'
+  | 'foreignUnavailableReason'
+>;
+
+/** Plain code-unit string order (`<`), never a locale collation (§1.6). */
+function compareStrings(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
+
+/**
+ * Newest first: `performedOn` descending, then `performedTime` descending with `null` last
+ * (an activity with a time of day comes before one without, on the same day), then
+ * `createdAt` descending, then `id` descending as the final deterministic tie-break.
+ */
+function compareForeignNewestFirst(a: DecryptedForeignActivity, b: DecryptedForeignActivity): number {
+  const byDay = compareStrings(b.performedOn, a.performedOn);
+  if (byDay !== 0) return byDay;
+  if (a.performedTime !== b.performedTime) {
+    if (a.performedTime === null) return 1;
+    if (b.performedTime === null) return -1;
+    return compareStrings(b.performedTime, a.performedTime);
+  }
+  if (a.createdAt !== b.createdAt) return b.createdAt - a.createdAt;
+  return compareStrings(b.id, a.id);
+}
+
+/**
+ * Build the foreign keys of `get_history` (protocol §1.6 "Tool outputs" → `get_history`):
+ *   - foreign sport unavailable (E-8/E-9) → `foreignActivities: null`, counters 0,
+ *     `foreignUnavailableReason`; the sessions stay complete;
+ *   - otherwise every activity with `from <= performedOn <= to` (plain string comparison,
+ *     zone-free), counted before the limit, sorted newest first, sliced to `limit`.
+ * Each item carries the resolved type fields and the note in the free-text envelope (D-14).
+ */
+function buildForeignActivities(
+  args: GetHistoryArgs,
+  snapshot: DecryptedSnapshot,
+  availability: ForeignSportAvailability,
+): ForeignHistoryPart {
+  if (!availability.available) {
+    return {
+      foreignActivities: null,
+      matchingForeignActivities: 0,
+      foreignActivitiesTruncated: false,
+      foreignUnavailableReason: availability.reason,
+    };
+  }
+
+  const { from, to, limit, lang } = args;
+  const inWindow = (snapshot.foreignActivities ?? []).filter(
+    (a) => a.performedOn >= from && a.performedOn <= to,
+  );
+  const matchingForeignActivities = inWindow.length;
+  const foreignActivities: GetHistoryForeignActivityItem[] = [...inWindow]
+    .sort(compareForeignNewestFirst)
+    .slice(0, limit)
+    .map((a) => ({
+      id: a.id,
+      typeId: a.typeId,
+      ...resolveForeignType(a.typeId, lang, snapshot.foreignActivityTypes),
+      performedOn: a.performedOn,
+      performedTime: a.performedTime,
+      durationMinutes: a.durationMinutes,
+      intensity: a.intensity,
+      dayForm: a.dayForm,
+      distanceMeters: a.distanceMeters,
+      note: wrapFreeText(a.note),
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+    }));
+
+  return {
+    foreignActivities,
+    matchingForeignActivities,
+    foreignActivitiesTruncated: matchingForeignActivities > limit,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +441,12 @@ export function registerToolGetHistory(
           snapshot: data.snapshot,
           lang: (args as GetHistoryArgs).lang,
         });
-        const result = getHistory(args as GetHistoryArgs, data.snapshot, resolver);
+        const result = getHistory(
+          args as GetHistoryArgs,
+          data.snapshot,
+          resolver,
+          foreignSportAvailability(data.snapshot, report),
+        );
         const unreadable: UnreadableRow[] = report.unreadable;
 
         if ((args as GetHistoryArgs).outputFile) {
