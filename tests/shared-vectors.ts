@@ -274,6 +274,58 @@ const ForeignActivityTypesEntrySchema = z.object({
 });
 
 /**
+ * Phase 155 (FA-06, D-13): the `foreignFulfilment` section — the day rule of protocol §1.6 as
+ * hand-derived vectors over ALREADY EXPANDED occurrences (the expansion itself is proved by
+ * `expansion`). `src/training-state/foreign-adherence.ts`'s `assignForeignFulfilment` replays
+ * every vector exactly (`tests/shared-vectors.test.ts`); the Kotlin twin replays the same
+ * section. `customTypes[]` (own type rows, informative for the name side) and each activity's
+ * `deletedAt` are part of the shape — the objects are deliberately not `.strict()`, so an
+ * informative field added later cannot break the load.
+ */
+const ForeignFulfilmentOccurrenceSchema = z.object({
+  rootId: z.string().min(1),
+  typeId: z.string().min(1),
+  date: ISO_DATE,
+  scheduledTime: z.string().nullable(),
+});
+
+const ForeignFulfilmentActivitySchema = z.object({
+  id: z.string().min(1),
+  typeId: z.string().min(1),
+  performedOn: ISO_DATE,
+  performedTime: z.string().nullable(),
+  createdAt: z.number().int(),
+  deletedAt: z.number().int().nullable(),
+});
+
+const ForeignFulfilmentOpenSchema = z.object({ rootId: z.string().min(1), date: ISO_DATE });
+
+const ForeignFulfilmentVectorSchema = z.object({
+  name: z.string().min(1),
+  asOfDate: ISO_DATE,
+  customTypes: z.array(
+    z.object({ id: z.string().min(1), name: z.string(), deletedAt: z.number().int().nullable() }),
+  ),
+  occurrences: z.array(ForeignFulfilmentOccurrenceSchema),
+  removedDates: z.array(ForeignFulfilmentOpenSchema),
+  activities: z.array(ForeignFulfilmentActivitySchema),
+  expected: z.object({
+    fulfilled: z.array(ForeignFulfilmentOpenSchema.extend({ activityId: z.string().min(1) })),
+    missed: z.array(ForeignFulfilmentOpenSchema),
+    upcoming: z.array(ForeignFulfilmentOpenSchema),
+    unplannedActivityIds: z.array(z.string().min(1)),
+    counts: z.object({
+      planned: z.number().int(),
+      fulfilled: z.number().int(),
+      missed: z.number().int(),
+      upcoming: z.number().int(),
+      removed: z.number().int(),
+    }),
+    fulfilmentRatio: z.number().nullable(),
+  }),
+});
+
+/**
  * Phase 136-01 (TRACER SLICE): the `plannedUpdate` corpus section — proves the
  * MCP-side producer (`proposePlannedUpdate`/`buildMoveOccurrenceEnvelope`,
  * `src/tools/propose_planned_update.ts`) emits the pinned envelope AND the pinned
@@ -515,6 +567,7 @@ export const CoachPlanningVectorsSchema = z.object({
   foreignActivityTypeCipher: z.array(ForeignActivityTypeCipherVectorSchema).min(1),
   foreignActivityCipher: z.array(ForeignActivityCipherVectorSchema).min(1),
   plannedForeignActivityCipher: z.array(PlannedForeignActivityCipherVectorSchema).min(1),
+  foreignFulfilment: z.array(ForeignFulfilmentVectorSchema).min(1),
   plannedUpdate: z.array(PlannedUpdateVectorSchema).min(1),
   streak: z.array(StreakVectorSchema).min(1),
   muscleBalance: z.array(MuscleBalanceVectorSchema).min(1),

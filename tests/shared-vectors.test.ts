@@ -37,6 +37,7 @@ import {
   decryptPlannedForeignActivity,
 } from '../src/cache.js';
 import { FOREIGN_BUILTIN_TYPES } from '../src/foreign-types.js';
+import { assignForeignFulfilment, foreignFulfilmentRatio } from '../src/training-state/foreign-adherence.js';
 import { calculateLongestStreak, calculateCurrentStreak } from '../src/training-state/consistency.js';
 import { toRadarValues, weightedCounts } from '../src/training-state/muscle-balance.js';
 import { weightedCounts as capabilityWeightedCounts } from '../src/training-state/capability-balance.js';
@@ -533,6 +534,55 @@ describe('shared coach-planning vector corpus', () => {
         }
       }
       expect(hostileSeen).toBeGreaterThan(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // foreignFulfilment section (Phase 155, FA-06, D-13): the day rule of protocol §1.6,
+  // replayed through the REAL `assignForeignFulfilment` (LEARNINGS § 9) — the Kotlin twin
+  // replays the same vectors, so both languages run one rule. Expected values are derived
+  // by hand from §1.6 and never adjusted to the code.
+  // -----------------------------------------------------------------------
+
+  describe('foreignFulfilment vectors', () => {
+    it('P155 foreignFulfilment section is non-empty', () => {
+      expect(corpus.foreignFulfilment.length).toBeGreaterThan(0);
+    });
+
+    it('P155 FA-06 assignForeignFulfilment reproduces every foreignFulfilment vector', () => {
+      for (const vector of corpus.foreignFulfilment) {
+        const actual = assignForeignFulfilment(vector.occurrences, vector.activities, vector.asOfDate);
+        const label = `vector "${vector.name}"`;
+        expect(
+          actual.fulfilled.map((f) => ({ rootId: f.rootId, date: f.date, activityId: f.activityId })),
+          label,
+        ).toEqual(vector.expected.fulfilled);
+        expect(actual.missed.map((m) => ({ rootId: m.rootId, date: m.date })), label).toEqual(vector.expected.missed);
+        expect(actual.upcoming.map((u) => ({ rootId: u.rootId, date: u.date })), label).toEqual(
+          vector.expected.upcoming,
+        );
+        expect(actual.unplannedActivityIds, label).toEqual(vector.expected.unplannedActivityIds);
+        // A cancelled date never produces an occurrence (§1.6 "Cancelled dates").
+        for (const removed of vector.removedDates) {
+          expect(
+            vector.occurrences.some((o) => o.rootId === removed.rootId && o.date === removed.date),
+            label,
+          ).toBe(false);
+        }
+        expect(
+          {
+            planned: actual.fulfilled.length + actual.missed.length + actual.upcoming.length,
+            fulfilled: actual.fulfilled.length,
+            missed: actual.missed.length,
+            upcoming: actual.upcoming.length,
+            removed: vector.removedDates.length,
+          },
+          label,
+        ).toEqual(vector.expected.counts);
+        expect(foreignFulfilmentRatio(actual.fulfilled.length, actual.missed.length), label).toBe(
+          vector.expected.fulfilmentRatio,
+        );
+      }
     });
   });
 

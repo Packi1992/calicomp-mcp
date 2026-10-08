@@ -42,7 +42,16 @@ import { loadCoachParameters } from '../coach-parameters.js';
 import { resolveTimeZoneId, toCalendarDay } from '../training-state/time-zone.js';
 import { parseIsoDate, formatIsoDate, plusDays } from '../recurrence.js';
 import { computeAdherence, ADHERENCE_EXPLANATION, type AdherenceResult } from '../training-state/adherence.js';
-import { decodeReportOf, assertEntitiesReadable, assertCalendarReadable, assertTimeZoneReadable } from '../read-guard.js';
+import { computeForeignAdherence, type ForeignAdherenceResult } from '../training-state/foreign-adherence.js';
+import {
+  decodeReportOf,
+  assertEntitiesReadable,
+  assertCalendarReadable,
+  assertTimeZoneReadable,
+  foreignSportAvailability,
+  EMPTY_DECODE_REPORT,
+  type ForeignSportAvailability,
+} from '../read-guard.js';
 import type { DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
 import type { CoachParameters } from '../coach-parameters.js';
 
@@ -58,7 +67,16 @@ export interface GetAdherenceArgs {
   outputFile?: boolean;
 }
 
-export interface GetAdherenceResult extends AdherenceResult {
+/**
+ * The template adherence plus the foreign sport block (Phase 155, FA-06). `foreignSport` is a
+ * NEW key appended after every existing one; it is computed by its own pass before
+ * `computeAdherence` and moves none of the template fields (protocol §1.6).
+ */
+export interface AdherenceWithForeignSport extends AdherenceResult {
+  foreignSport: ForeignAdherenceResult;
+}
+
+export interface GetAdherenceResult extends AdherenceWithForeignSport {
   parametersSource: 'server' | 'defaults';
   /** Rows that could not be decrypted or decoded, independent of the window (D-10). */
   unreadable: UnreadableRow[];
@@ -85,10 +103,18 @@ export interface GetAdherenceResult extends AdherenceResult {
  */
 export function getAdherence(
   args: GetAdherenceArgs,
-  data: { snapshot: DecryptedSnapshot; catalog: CatalogExercise[]; coachParameters: CoachParameters },
+  data: {
+    snapshot: DecryptedSnapshot;
+    catalog: CatalogExercise[];
+    coachParameters: CoachParameters;
+    /** Phase 155 (E-8/E-9): the handler passes the availability of this read; without it the
+     *  snapshot alone decides (`foreignSportAvailability(snapshot, EMPTY_DECODE_REPORT)`). */
+    foreignAvailability?: ForeignSportAvailability;
+  },
   nowMs: number,
-): AdherenceResult {
+): AdherenceWithForeignSport {
   const timeZoneId = resolveTimeZoneId(data.snapshot);
+  const asOfDate = toCalendarDay(nowMs, timeZoneId);
 
   let from: string;
   let to: string;
@@ -96,13 +122,23 @@ export function getAdherence(
     from = args.from;
     to = args.to;
   } else {
-    to = toCalendarDay(nowMs, timeZoneId);
+    to = asOfDate;
     const weeks = args.windowWeeks ?? data.coachParameters.adherenceWindowWeeks;
     from = formatIsoDate(plusDays(parseIsoDate(to), -weeks * 7));
   }
   const toleranceDays = args.toleranceDays ?? data.coachParameters.toleranceDays;
 
-  return computeAdherence(
+  // Phase 155 (FA-06, protocol §1.6 "It is its own pass"): the foreign pass runs FIRST, over
+  // the same window, shares no input with the template passes and writes nothing back.
+  const foreignSport = computeForeignAdherence(
+    { from, to, asOfDate },
+    {
+      snapshot: data.snapshot,
+      availability: data.foreignAvailability ?? foreignSportAvailability(data.snapshot, EMPTY_DECODE_REPORT),
+    },
+  );
+
+  const result = computeAdherence(
     {
       from,
       to,
@@ -112,6 +148,7 @@ export function getAdherence(
     },
     { snapshot: data.snapshot, catalog: data.catalog, timeZoneId },
   );
+  return { ...result, foreignSport };
 }
 
 // ---------------------------------------------------------------------------
@@ -165,7 +202,12 @@ export function registerToolGetAdherence(
         const { params, source } = await loadCoachParameters({ pat, serverUrl });
         const result = getAdherence(
           args as GetAdherenceArgs,
-          { snapshot: data.snapshot, catalog: data.catalog, coachParameters: params },
+          {
+            snapshot: data.snapshot,
+            catalog: data.catalog,
+            coachParameters: params,
+            foreignAvailability: foreignSportAvailability(data.snapshot, report),
+          },
           Date.now(),
         );
         const full: GetAdherenceResult = { ...result, parametersSource: source, unreadable: report.unreadable };

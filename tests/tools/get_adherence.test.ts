@@ -37,7 +37,12 @@ import { GetAdherenceSchema } from '../../src/schemas.js';
 import { getAdherence, registerToolGetAdherence } from '../../src/tools/get_adherence.js';
 import { TRAINING_TIMEZONE_SETTING_KEY, TimeZoneUnavailableError } from '../../src/training-state/time-zone.js';
 import { mockSnapshot, mockCatalog, TEMPLATE_ID_PUSH } from '../fixture.js';
-import type { DecryptedSnapshot, DecryptedPlannedWorkout } from '../../src/types.js';
+import type {
+  DecryptedSnapshot,
+  DecryptedPlannedWorkout,
+  DecryptedPlannedForeignActivity,
+  DecryptedForeignActivity,
+} from '../../src/types.js';
 
 const TZ = 'Europe/Berlin';
 
@@ -68,6 +73,50 @@ function snapshotWithZone(zone: string | null, extra: Partial<DecryptedSnapshot>
     settings: zone === null ? [] : [{ key: TRAINING_TIMEZONE_SETTING_KEY, type: 's', value: zone }],
     ...extra,
   };
+}
+
+// Phase 155 (FA-06): foreign sport fixtures. RUNNING is the predefined type id.
+const FT_RUNNING = 'b85b2339-ddf1-385d-acb2-b0d3d498eeca';
+
+function foreignRoot(
+  overrides: Partial<DecryptedPlannedForeignActivity> & { id: string },
+): DecryptedPlannedForeignActivity {
+  return {
+    typeId: FT_RUNNING,
+    scheduledDate: epochMs(2026, 6, 3),
+    scheduledTime: null,
+    note: null,
+    recurrenceRule: null,
+    deletedOccurrencesRaw: null,
+    createdAt: epochMs(2026, 5, 1),
+    updatedAt: epochMs(2026, 5, 1),
+    ...overrides,
+  };
+}
+
+function foreignActivity(
+  overrides: Partial<DecryptedForeignActivity> & { id: string },
+): DecryptedForeignActivity {
+  return {
+    typeId: FT_RUNNING,
+    performedOn: '2026-06-03',
+    performedTime: null,
+    durationMinutes: 30,
+    intensity: 3,
+    dayForm: null,
+    distanceMeters: null,
+    note: null,
+    createdAt: epochMs(2026, 6, 3),
+    updatedAt: epochMs(2026, 6, 3),
+    ...overrides,
+  };
+}
+
+/** Strip the foreign block — what is left are the template keys of `get_adherence`. */
+function templateKeys(result: object): Record<string, unknown> {
+  const { foreignSport: _foreignSport, ...rest } = result as Record<string, unknown>;
+  void _foreignSport;
+  return rest;
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +223,45 @@ describe('getAdherence', () => {
     );
     expect(result.window.to).toBe('2026-06-04');
     expect(result.window.from).toBe('2026-05-28'); // 1 week = 7 days, not the parameter's 10
+  });
+
+  it('P155 FA-06 get_adherence counts a same-day same-type activity as fulfilled', () => {
+    const templateOnly = snapshotWithZone(TZ, {
+      plannedWorkouts: [root({ id: 'r1', scheduledDate: epochMs(2026, 6, 2) })],
+    });
+    const withForeign: DecryptedSnapshot = {
+      ...templateOnly,
+      foreignActivityTypes: [],
+      foreignActivities: [foreignActivity({ id: 'fa1', performedOn: '2026-06-03', performedTime: '18:10' })],
+      plannedForeignActivities: [foreignRoot({ id: 'fr1', scheduledDate: epochMs(2026, 6, 3), scheduledTime: '18:00' })],
+    };
+    const call = (snapshot: DecryptedSnapshot) =>
+      getAdherence(
+        { from: '2026-06-01', to: '2026-06-07' },
+        { snapshot, catalog: mockCatalog, coachParameters: COACH_PARAMETER_DEFAULTS },
+        epochMs(2026, 6, 4) + 12 * 3_600_000,
+      );
+    const result = call(withForeign);
+    expect(result.foreignSport).toMatchObject({
+      available: true,
+      window: { from: '2026-06-01', to: '2026-06-07' },
+      asOfDate: '2026-06-04',
+      plannedCount: 1,
+      fulfilledCount: 1,
+      missedCount: 0,
+      upcomingCount: 0,
+      removedOccurrenceCount: 0,
+      fulfilmentRatio: 1,
+      fulfilled: [{ date: '2026-06-03', rootId: 'fr1', typeId: FT_RUNNING, activityId: 'fa1' }],
+      unplannedActivityIds: [],
+      rule: 'same_calendar_day_same_type_one_to_one',
+    });
+    // The foreign pass moves no template key: deep equal to the run without foreign data.
+    expect(templateKeys(result)).toEqual(templateKeys(call(templateOnly)));
+    expect(call(templateOnly).foreignSport).toMatchObject({
+      available: false,
+      reason: 'server_without_foreign_sport',
+    });
   });
 
   it('propagates TimeZoneUnavailableError uncaught when no time-zone row is synced', () => {
