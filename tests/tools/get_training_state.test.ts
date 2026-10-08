@@ -33,7 +33,7 @@ import { computeMuscleBalance } from '../../src/training-state/muscle-balance.js
 import { computeTemplateFeedbackSeries } from '../../src/training-state/template-feedback-series.js';
 import { TRAINING_TIMEZONE_SETTING_KEY, TimeZoneUnavailableError } from '../../src/training-state/time-zone.js';
 import { mockSnapshot, mockCatalog } from '../fixture.js';
-import type { DecryptedSnapshot, DecodeReport } from '../../src/types.js';
+import type { DecryptedSnapshot, DecodeReport, DecryptedForeignActivity } from '../../src/types.js';
 
 const TZ = 'Europe/Berlin';
 const NOW_MS = Date.UTC(2026, 2, 16, 12, 0); // 2026-03-16, a Monday
@@ -58,10 +58,11 @@ const EXPECTED_KEYS = [
   'personalRecords',
   'narrative',
   'templateFeedbackSeries',
+  'foreignSport',
 ].sort();
 
 describe('getTrainingState', () => {
-  it('returns exactly the eleven fields of the final result shape (Phase 151, FB-12 adds templateFeedbackSeries)', () => {
+  it('returns exactly the twelve fields of the final result shape (Phase 151 adds templateFeedbackSeries, Phase 155 foreignSport)', () => {
     const snapshot = snapshotWithZone(TZ);
     const result = getTrainingState(
       {},
@@ -223,6 +224,93 @@ describe('getTrainingState', () => {
     expect(result.templateFeedbackSeries).toEqual(computeTemplateFeedbackSeries(snapshot, TZ));
     const keys = Object.keys(result);
     expect(keys.indexOf('templateFeedbackSeries')).toBeGreaterThan(keys.indexOf('narrative'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 155 (FA-08, D-16) — the foreign sport block
+// ---------------------------------------------------------------------------
+
+const FT_RUNNING = 'b85b2339-ddf1-385d-acb2-b0d3d498eeca';
+const FT_BOULDERING = 'bfb3bdb2-6bcc-37b6-92cc-11dec4db64c7';
+
+function foreignActivity(overrides: Partial<DecryptedForeignActivity> & { id: string }): DecryptedForeignActivity {
+  return {
+    typeId: FT_RUNNING,
+    performedOn: '2026-03-16',
+    performedTime: null,
+    durationMinutes: 30,
+    intensity: 3,
+    dayForm: null,
+    distanceMeters: null,
+    note: null,
+    createdAt: Date.UTC(2026, 2, 1),
+    updatedAt: Date.UTC(2026, 2, 1),
+    ...overrides,
+  };
+}
+
+/** Foreign activities around asOfDate 2026-03-16, also on days of the mock sessions. */
+const FOREIGN_ACTIVITIES: DecryptedForeignActivity[] = [
+  foreignActivity({ id: 'fa-today', performedOn: '2026-03-16', durationMinutes: 45, intensity: 4 }),
+  foreignActivity({ id: 'fa-day-6', performedOn: '2026-03-10', durationMinutes: 60, intensity: 2 }),
+  foreignActivity({ id: 'fa-day-7', typeId: FT_BOULDERING, performedOn: '2026-03-09', durationMinutes: 90, intensity: 5 }),
+  foreignActivity({ id: 'fa-day-27', performedOn: '2026-02-17', durationMinutes: 20, intensity: null }),
+  foreignActivity({ id: 'fa-day-28', performedOn: '2026-02-16', durationMinutes: 500, intensity: 5 }),
+  ...mockSnapshot.sessions.map((s, i) =>
+    foreignActivity({ id: `fa-session-day-${i}`, performedOn: new Date(s.startTime).toISOString().slice(0, 10) }),
+  ),
+];
+
+function withForeign(snapshot: DecryptedSnapshot, activities = FOREIGN_ACTIVITIES): DecryptedSnapshot {
+  return { ...snapshot, foreignActivityTypes: [], foreignActivities: activities, plannedForeignActivities: [] };
+}
+
+describe('getTrainingState — Phase 155 foreign sport (D-16)', () => {
+  const baseData = {
+    catalog: mockCatalog,
+    coachParameters: COACH_PARAMETER_DEFAULTS,
+    parametersSource: 'server' as const,
+  };
+
+  it('P155 D-16 foreignSport is the last key and narrative is byte-identical', () => {
+    const plain = snapshotWithZone(TZ);
+    const without = getTrainingState({}, { ...baseData, snapshot: plain }, NOW_MS);
+    const withData = getTrainingState({}, { ...baseData, snapshot: withForeign(plain) }, NOW_MS);
+
+    const keys = Object.keys(withData);
+    expect(keys.slice(-2)).toEqual(['templateFeedbackSeries', 'foreignSport']);
+    expect(withData.narrative).toBe(without.narrative);
+    const { foreignSport: _a, ...oldWith } = withData;
+    const { foreignSport: _b, ...oldWithout } = without;
+    expect(JSON.stringify(oldWith)).toBe(JSON.stringify(oldWithout));
+    expect(oldWith.consistency).toEqual(oldWithout.consistency);
+
+    expect(withData.foreignSport.available).toBe(true);
+    expect(withData.foreignSport.asOfDate).toBe('2026-03-16');
+  });
+
+  it('P155 D-16 the windows end on asOfDate and span 7 and 28 days inclusive', () => {
+    const result = getTrainingState(
+      {},
+      { ...baseData, snapshot: withForeign(snapshotWithZone(TZ), FOREIGN_ACTIVITIES.slice(0, 5)) },
+      NOW_MS,
+    );
+    const sport = result.foreignSport;
+    if (!sport.available) throw new Error('expected an available foreign block');
+    const { last7Days, last28Days } = sport.windows;
+    expect([last7Days.from, last7Days.to]).toEqual(['2026-03-10', '2026-03-16']);
+    expect([last28Days.from, last28Days.to]).toEqual(['2026-02-17', '2026-03-16']);
+    // 7 days: fa-today + fa-day-6 (fa-day-7 is outside).
+    expect(last7Days.activityCount).toBe(2);
+    expect(last7Days.totalMinutes).toBe(105);
+    expect(last7Days.intensityMinutes).toBe(4 * 45 + 2 * 60);
+    // 28 days: plus fa-day-7 and fa-day-27 (no intensity); fa-day-28 is outside.
+    expect(last28Days.activityCount).toBe(4);
+    expect(last28Days.totalMinutes).toBe(45 + 60 + 90 + 20);
+    expect(last28Days.intensityMinutes).toBe(4 * 45 + 2 * 60 + 5 * 90);
+    expect(last28Days.activitiesWithoutIntensity).toBe(1);
+    expect(sport.loadApproximation).toMatchObject({ metric: 'intensity_x_minutes', isApproximation: true });
   });
 });
 

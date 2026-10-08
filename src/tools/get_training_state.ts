@@ -68,7 +68,14 @@ import {
 } from '../training-state/exercise-progress.js';
 import { buildNarrative } from '../training-state/narrative.js';
 import { computeTemplateFeedbackSeries, type TemplateFeedbackSeries } from '../training-state/template-feedback-series.js';
-import { decodeReportOf, assertEntitiesReadable, assertTimeZoneReadable } from '../read-guard.js';
+import { computeForeignLoadWindow, FOREIGN_LOAD_EXPLANATION, type ForeignLoadWindow } from '../training-state/foreign-load.js';
+import {
+  decodeReportOf,
+  assertEntitiesReadable,
+  assertTimeZoneReadable,
+  foreignSportAvailability,
+  type ForeignSportAvailability,
+} from '../read-guard.js';
 import { createExerciseNameResolver, type ExerciseNameFields, type ExerciseNameResolver } from '../exercise-names.js';
 import type { DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
 
@@ -125,6 +132,33 @@ export interface GetTrainingStatePersonalRecords {
   maxHoldSeconds: PersonalRecordWithName[];
 }
 
+/**
+ * The marking of the foreign load figure (Phase 155, D-16): `intensityMinutes` is a
+ * self-assessed approximation, never a measurement. Carried in EVERY `foreignSport` block,
+ * with `FOREIGN_LOAD_EXPLANATION` verbatim (protocol §1.6 "Verbatim explanations").
+ */
+export interface ForeignLoadApproximation {
+  metric: 'intensity_x_minutes';
+  isApproximation: true;
+  explanation: string;
+}
+
+/**
+ * The foreign sport block of the overview (Phase 155, FA-08, D-16; protocol §1.6 "Tool
+ * outputs", `get_training_state.foreignSport`). Appended as the LAST key, after `narrative`
+ * and `templateFeedbackSeries`; nothing in it feeds `consistency` or `narrative`.
+ */
+export interface TrainingStateForeignSport {
+  available: true;
+  asOfDate: string;
+  /** `last7Days` = `asOfDate-6`…`asOfDate`, `last28Days` = `asOfDate-27`…`asOfDate` (D-16). */
+  windows: {
+    last7Days: ForeignLoadWindow;
+    last28Days: ForeignLoadWindow;
+  };
+  loadApproximation: ForeignLoadApproximation;
+}
+
 /** The tool's final, additive-only result shape (D-14/D-22). */
 export interface GetTrainingStateResult {
   timeZoneId: string;
@@ -158,6 +192,12 @@ export interface GetTrainingStateResult {
    * never sees it and every field above stays byte-identical to before this field existed.
    */
   templateFeedbackSeries: TemplateFeedbackSeries[];
+  /**
+   * Foreign sport (Phase 155, FA-08, D-16) — computed strictly AFTER `narrative` and
+   * `templateFeedbackSeries` and appended as the last key, so every field above stays
+   * byte-identical with and without foreign data.
+   */
+  foreignSport: TrainingStateForeignSport;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +238,12 @@ export function getTrainingState(
      * NEVER consulted while building `narrative` (D-03 — see below).
      */
     nameResolver?: ExerciseNameResolver;
+    /**
+     * Phase 155 (E-8/E-9): the availability of the foreign sport block of this read. The
+     * registered handler passes `foreignSportAvailability(snapshot, report)`; without it the
+     * snapshot alone decides (`foreignSportAvailability(snapshot, EMPTY_DECODE_REPORT)`).
+     */
+    foreignAvailability?: ForeignSportAvailability;
   },
   nowMs: number,
 ): GetTrainingStateResult {
@@ -315,6 +361,11 @@ export function getTrainingState(
   // byte-identical to before this plan (T-151-50).
   const templateFeedbackSeries = computeTemplateFeedbackSeries(snapshot, timeZoneId, nameResolver);
 
+  // Phase 155 (FA-08, D-16): the foreign sport block, computed AFTER narrative and
+  // templateFeedbackSeries from the snapshot's foreign lists only — no value above reads it,
+  // so consistency and narrative never count a foreign activity (protocol §1.6).
+  const foreignSport = buildForeignSport(snapshot, asOfDate, args.lang);
+
   return {
     timeZoneId,
     asOfDate,
@@ -328,6 +379,35 @@ export function getTrainingState(
     personalRecords: enrichedPersonalRecords,
     narrative,
     templateFeedbackSeries,
+    foreignSport,
+  };
+}
+
+/** A fresh marking object per result (D-16) — never a shared mutable constant. */
+function foreignLoadApproximation(): ForeignLoadApproximation {
+  return { metric: 'intensity_x_minutes', isApproximation: true, explanation: FOREIGN_LOAD_EXPLANATION };
+}
+
+/**
+ * The `foreignSport` block: the load windows of the last 7 and 28 days, both ending on the
+ * athlete's own `asOfDate` (inclusive). Read time only, stored nowhere.
+ */
+function buildForeignSport(
+  snapshot: DecryptedSnapshot,
+  asOfDate: string,
+  lang: string | undefined,
+): TrainingStateForeignSport {
+  const activities = snapshot.foreignActivities ?? [];
+  const types = snapshot.foreignActivityTypes;
+  const today = parseIsoDate(asOfDate);
+  return {
+    available: true,
+    asOfDate,
+    windows: {
+      last7Days: computeForeignLoadWindow(activities, formatIsoDate(plusDays(today, -6)), asOfDate, types, lang),
+      last28Days: computeForeignLoadWindow(activities, formatIsoDate(plusDays(today, -27)), asOfDate, types, lang),
+    },
+    loadApproximation: foreignLoadApproximation(),
   };
 }
 
@@ -411,6 +491,7 @@ export function registerToolGetTrainingState(
             parametersSource: source,
             calendarReadable,
             nameResolver,
+            foreignAvailability: foreignSportAvailability(data.snapshot, report),
           },
           Date.now(),
         );
