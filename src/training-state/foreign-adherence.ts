@@ -43,6 +43,7 @@ import {
   parseIsoDate,
   RecurrenceRuleError,
 } from '../recurrence.js';
+import type { ForeignTypeFields } from '../foreign-types.js';
 import type { ForeignSportAvailability, ForeignUnavailableReason } from '../read-guard.js';
 import type { DecryptedPlannedForeignActivity, DecryptedSnapshot } from '../types.js';
 
@@ -115,6 +116,15 @@ export interface ForeignRemovedDate {
   date: string;
 }
 
+/** One `byType[]` entry: the resolved type fields plus the four appointment counters. */
+export interface ForeignAdherenceByType extends ForeignTypeFields {
+  typeId: string;
+  plannedCount: number;
+  fulfilledCount: number;
+  missedCount: number;
+  upcomingCount: number;
+}
+
 /** The `get_adherence.foreignSport` block when foreign sport cannot be read (E-8, E-9). */
 export interface ForeignAdherenceUnavailable {
   available: false;
@@ -133,6 +143,7 @@ export interface ForeignAdherenceAvailable {
   upcomingCount: number;
   removedOccurrenceCount: number;
   fulfilmentRatio: number | null;
+  byType: ForeignAdherenceByType[];
   fulfilled: ForeignFulfilledOccurrence[];
   missed: ForeignOpenOccurrence[];
   upcoming: ForeignOpenOccurrence[];
@@ -356,6 +367,7 @@ export function computeForeignAdherence(
     upcomingCount,
     removedOccurrenceCount: expanded.removed.length,
     fulfilmentRatio: foreignFulfilmentRatio(fulfilledCount, missedCount),
+    byType: [], // RED stub (155-07 Aufgabe 2) — replaced in the GREEN commit
     fulfilled: assignment.fulfilled,
     missed: assignment.missed,
     upcoming: assignment.upcoming,

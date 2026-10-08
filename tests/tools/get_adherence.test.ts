@@ -35,6 +35,7 @@ import * as fileChannelModule from '../../src/file-channel.js';
 import { COACH_PARAMETER_DEFAULTS } from '../../src/coach-parameters.js';
 import { GetAdherenceSchema } from '../../src/schemas.js';
 import { getAdherence, registerToolGetAdherence } from '../../src/tools/get_adherence.js';
+import { FOREIGN_ADHERENCE_EXPLANATION } from '../../src/training-state/foreign-adherence.js';
 import { TRAINING_TIMEZONE_SETTING_KEY, TimeZoneUnavailableError } from '../../src/training-state/time-zone.js';
 import { mockSnapshot, mockCatalog, TEMPLATE_ID_PUSH } from '../fixture.js';
 import type {
@@ -468,5 +469,142 @@ describe('get_adherence — registered MCP handler', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain(TRAINING_TIMEZONE_SETTING_KEY);
     expect(result.content[0].text).not.toContain('Missing synchronized settings key');
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 155 (FA-06, E-8, E-9): the foreign sport block of the handler
+  // -------------------------------------------------------------------------
+
+  function foreignSnapshot(): DecryptedSnapshot {
+    return snapshotWithZone(TZ, {
+      plannedWorkouts: [root({ id: 'r1', scheduledDate: epochMs(2026, 6, 4) })],
+      foreignActivityTypes: [],
+      foreignActivities: [foreignActivity({ id: 'fa1', performedOn: '2026-06-03' })],
+      plannedForeignActivities: [
+        foreignRoot({ id: 'fr1', scheduledDate: epochMs(2026, 6, 3) }),
+        foreignRoot({ id: 'fr2', scheduledDate: epochMs(2026, 6, 2) }),
+      ],
+    });
+  }
+
+  it('P155 E-9 get_adherence reports server_without_foreign_sport and still returns template numbers', async () => {
+    const snapshot = snapshotWithZone(TZ, {
+      plannedWorkouts: [root({ id: 'r1', scheduledDate: epochMs(2026, 6, 4) })],
+    });
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetAdherence(server, DUMMY_CFG);
+
+    const result = await getHandler(server)({ from: '2026-06-01', to: '2026-06-10' });
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as Record<string, unknown>;
+    expect(body.plannedCount).toBe(1);
+    expect(body.adherenceRatio).toBe(0);
+    expect(body.foreignSport).toEqual({
+      available: false,
+      reason: 'server_without_foreign_sport',
+      explanation: FOREIGN_ADHERENCE_EXPLANATION,
+    });
+    expect(Object.keys(body).at(-1)).toBe('unreadable');
+    expect(Object.keys(body).indexOf('foreignSport')).toBeGreaterThan(Object.keys(body).indexOf('explanation'));
+  });
+
+  it('P155 E-8 get_adherence reports foreign_rows_unreadable for an unreadable foreign row and still returns template numbers', async () => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(foreignSnapshot()),
+      decodeReport: {
+        unreadable: [{ entity: 'foreignActivity', id: 'fa-broken', reason: 'malformed_payload' }],
+        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 2, plannedForeignActivity: 2 },
+        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 1, plannedForeignActivity: 0 },
+      },
+    });
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetAdherence(server, DUMMY_CFG);
+
+    const result = await getHandler(server)({ from: '2026-06-01', to: '2026-06-10' });
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as Record<string, unknown>;
+    expect(body.plannedCount).toBe(1);
+    expect(body.foreignSport).toEqual({
+      available: false,
+      reason: 'foreign_rows_unreadable',
+      explanation: FOREIGN_ADHERENCE_EXPLANATION,
+    });
+    expect(body.unreadable).toEqual([{ entity: 'foreignActivity', id: 'fa-broken', reason: 'malformed_payload' }]);
+  });
+
+  it('P155 FA-06 the outputFile summary carries the foreign counts', async () => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(foreignSnapshot()));
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+    vi.mocked(fileChannelModule.writeExportFile).mockResolvedValue({
+      path: '/tmp/calicomp-mcp-exports/fake-uuid.json',
+      bytes: 999,
+      itemCount: 1,
+    });
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetAdherence(server, DUMMY_CFG);
+
+    // Window ends 2026-06-10, so "today" (Date.now()) lies after every appointment.
+    const result = await getHandler(server)({ from: '2026-06-01', to: '2026-06-10', outputFile: true });
+    const [writtenPayload] = vi.mocked(fileChannelModule.writeExportFile).mock.calls[0];
+    expect((writtenPayload as Record<string, unknown>).foreignSport).toMatchObject({
+      available: true,
+      fulfilled: [{ date: '2026-06-03', rootId: 'fr1', typeId: FT_RUNNING, activityId: 'fa1' }],
+    });
+
+    const body = JSON.parse(result.content[0].text) as Record<string, unknown>;
+    expect(body.foreignSport).toEqual({
+      available: true,
+      plannedCount: 2,
+      fulfilledCount: 1,
+      missedCount: 1,
+      upcomingCount: 0,
+      removedOccurrenceCount: 0,
+      fulfilmentRatio: 0.5,
+    });
+  });
+
+  it('P155 FA-06 the outputFile summary carries the reason when foreign sport is unavailable', async () => {
+    const snapshot = snapshotWithZone(TZ, { plannedWorkouts: [root({ id: 'r1', scheduledDate: epochMs(2026, 6, 4) })] });
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+    vi.mocked(fileChannelModule.writeExportFile).mockResolvedValue({
+      path: '/tmp/calicomp-mcp-exports/fake-uuid.json',
+      bytes: 10,
+      itemCount: 1,
+    });
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetAdherence(server, DUMMY_CFG);
+
+    const result = await getHandler(server)({ from: '2026-06-01', to: '2026-06-10', outputFile: true });
+    const body = JSON.parse(result.content[0].text) as Record<string, unknown>;
+    expect(body.foreignSport).toEqual({ available: false, reason: 'server_without_foreign_sport' });
+  });
+
+  it('P155 FA-06 the description says template counts exclude foreign sport', () => {
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetAdherence(server, DUMMY_CFG);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const description = (server as any)._registeredTools['get_adherence'].description as string;
+    expect(description).toContain('plannedCount, matchedCount, uncertainCount, missedCount and removedOccurrenceCount count template trainings only');
+    expect(description).toContain('foreignSport');
+    expect(description).toContain('toleranceDays applies to template trainings only');
+    expect(description).toContain(FOREIGN_ADHERENCE_EXPLANATION);
+    expect(description).toContain('60 seconds');
+    expect(description).not.toMatch(/propose[^.]*foreign/i);
   });
 });

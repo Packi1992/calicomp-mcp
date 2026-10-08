@@ -541,3 +541,45 @@ describe('computeAdherence — the second axis: templateId-less sessions via mus
     expect(result.matches[0].similarity).toBeCloseTo(1.0, 10);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 155 (SC 2, T-155-28): foreign sport in the snapshot moves no template number
+// ---------------------------------------------------------------------------
+
+describe('computeAdherence — foreign sport is its own pass (Phase 155)', () => {
+  it('P155 SC2 computeAdherence is identical with and without foreign data', () => {
+    const FT_RUNNING = 'b85b2339-ddf1-385d-acb2-b0d3d498eeca';
+    const base = snapshotWith({
+      plannedWorkouts: [
+        root({ id: 'r1', scheduledDate: epochMs(2026, 6, 2, 0, 0), recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU', deletedOccurrencesRaw: '["2026-06-09"]' }),
+      ],
+      sessions: [
+        session({ id: 's1', startTime: epochMs(2026, 6, 2), endTime: epochMs(2026, 6, 2, 13) }),
+        session({ id: 's-free', templateId: undefined, startTime: epochMs(2026, 6, 4), endTime: epochMs(2026, 6, 4, 13) }),
+      ],
+    });
+    // Foreign data on the same days as template occurrences and sessions, plus a foreign
+    // appointment on a template day, an own type and an unknown type.
+    const withForeign: DecryptedSnapshot = {
+      ...base,
+      foreignActivityTypes: [
+        { id: 'ft-own', name: 'Wandern', createdAt: epochMs(2026, 5, 1), updatedAt: epochMs(2026, 5, 1), deletedAt: null },
+      ],
+      foreignActivities: [
+        { id: 'fa1', typeId: FT_RUNNING, performedOn: '2026-06-02', performedTime: '07:00', durationMinutes: 30, intensity: 3, dayForm: null, distanceMeters: null, note: null, createdAt: epochMs(2026, 6, 2), updatedAt: epochMs(2026, 6, 2) },
+        { id: 'fa2', typeId: 'ft-own', performedOn: '2026-06-09', performedTime: null, durationMinutes: 90, intensity: null, dayForm: 2, distanceMeters: 5000, note: 'Notiz', createdAt: epochMs(2026, 6, 9), updatedAt: epochMs(2026, 6, 9) },
+        { id: 'fa3', typeId: 'ft-unknown', performedOn: '2026-06-04', performedTime: null, durationMinutes: 20, intensity: 5, dayForm: null, distanceMeters: null, note: null, createdAt: epochMs(2026, 6, 4), updatedAt: epochMs(2026, 6, 4) },
+      ],
+      plannedForeignActivities: [
+        { id: 'fr1', typeId: FT_RUNNING, scheduledDate: epochMs(2026, 6, 2, 0, 0), scheduledTime: '07:00', note: null, recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU', deletedOccurrencesRaw: '["2026-06-16"]', createdAt: epochMs(2026, 5, 1), updatedAt: epochMs(2026, 5, 1) },
+      ],
+    };
+    const args = { from: '2026-06-01', to: '2026-06-21', ...ARGS };
+    const without = computeAdherence(args, { snapshot: base, catalog: mockCatalog, timeZoneId: TZ });
+    const withData = computeAdherence(args, { snapshot: withForeign, catalog: mockCatalog, timeZoneId: TZ });
+    expect(withData).toEqual(without);
+    expect(JSON.stringify(withData)).toBe(JSON.stringify(without));
+    expect(without.plannedCount).toBe(2);
+    expect(without.removedOccurrenceCount).toBe(1);
+  });
+});
