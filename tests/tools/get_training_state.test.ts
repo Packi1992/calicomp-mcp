@@ -57,6 +57,9 @@ function snapshotWithZone(zone: string | null, extra: Partial<DecryptedSnapshot>
 
 const EXPECTED_KEYS = [
   'timeZoneId',
+  // Phase 156 (D-18): snapshotWithZone carries no default_language, so the reason is present too.
+  'appLanguage',
+  'appLanguageUnavailableReason',
   'asOfDate',
   'parametersSource',
   'parameters',
@@ -71,7 +74,7 @@ const EXPECTED_KEYS = [
 ].sort();
 
 describe('getTrainingState', () => {
-  it('returns exactly the twelve fields of the final result shape (Phase 151 adds templateFeedbackSeries, Phase 155 foreignSport)', () => {
+  it('returns exactly the fields of the final result shape (Phase 151 adds templateFeedbackSeries, Phase 155 foreignSport, Phase 156 appLanguage)', () => {
     const snapshot = snapshotWithZone(TZ);
     const result = getTrainingState(
       {},
@@ -891,5 +894,102 @@ describe('get_training_state — templateFeedbackSeries description', () => {
     expect(description).toContain('approximation_current_template');
     expect(description).toContain('stored_goals');
     expect(description).toContain('hasComment');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// App language (Phase 156, D-18; protocol §1.7 "The app language")
+// ---------------------------------------------------------------------------
+
+const APP_LANGUAGE_KEY = 'default_language';
+
+function snapshotWithAppLanguage(value: unknown | undefined): DecryptedSnapshot {
+  const base = snapshotWithZone(TZ);
+  return value === undefined
+    ? base
+    : { ...base, settings: [...base.settings, { key: APP_LANGUAGE_KEY, type: 's', value: value as string }] };
+}
+
+describe('get_training_state — app language (D-18)', () => {
+  const baseData = {
+    catalog: mockCatalog,
+    coachParameters: COACH_PARAMETER_DEFAULTS,
+    parametersSource: 'server' as const,
+  };
+
+  beforeEach(() => {
+    vi.mocked(cacheModule.getSnapshot).mockReset();
+    vi.mocked(coachParametersModule.loadCoachParameters).mockReset();
+  });
+
+  it('P156 D-18 get_training_state reports appLanguage right after timeZoneId', () => {
+    const withDe = getTrainingState({}, { ...baseData, snapshot: snapshotWithAppLanguage('de') }, NOW_MS);
+    expect(withDe.appLanguage).toBe('de');
+    expect(withDe).not.toHaveProperty('appLanguageUnavailableReason');
+    const deKeys = Object.keys(withDe);
+    expect(deKeys.slice(0, 3)).toEqual(['timeZoneId', 'appLanguage', 'asOfDate']);
+    expect(deKeys[deKeys.length - 1]).toBe('foreignSport');
+
+    const notSynced = getTrainingState({}, { ...baseData, snapshot: snapshotWithAppLanguage(undefined) }, NOW_MS);
+    expect(notSynced.appLanguage).toBeNull();
+    expect(notSynced.appLanguageUnavailableReason).toBe('setting_not_synced');
+    const notSyncedKeys = Object.keys(notSynced);
+    expect(notSyncedKeys.slice(0, 4)).toEqual(['timeZoneId', 'appLanguage', 'appLanguageUnavailableReason', 'asOfDate']);
+    expect(notSyncedKeys[notSyncedKeys.length - 1]).toBe('foreignSport');
+
+    const unrecognized = getTrainingState({}, { ...baseData, snapshot: snapshotWithAppLanguage('Deutsch') }, NOW_MS);
+    expect(unrecognized.appLanguage).toBeNull();
+    expect(unrecognized.appLanguageUnavailableReason).toBe('setting_unrecognized');
+    expect(Object.keys(unrecognized)[Object.keys(unrecognized).length - 1]).toBe('foreignSport');
+
+    // Every other key is the same with and without the app language (D-10: old keys unchanged).
+    const strip = (r: Record<string, unknown>) => {
+      const { appLanguage: _a, appLanguageUnavailableReason: _b, ...rest } = r;
+      return JSON.stringify(rest);
+    };
+    expect(strip(withDe as unknown as Record<string, unknown>)).toBe(strip(notSynced as unknown as Record<string, unknown>));
+    expect(strip(unrecognized as unknown as Record<string, unknown>)).toBe(strip(notSynced as unknown as Record<string, unknown>));
+  });
+
+  it('P156 D-18 get_training_state never fails on a missing or broken language setting', async () => {
+    for (const value of [undefined, 'Deutsch', '', 'DE', 'de-DE', 42, null, { code: 'de' }]) {
+      const snapshot = snapshotWithAppLanguage(value);
+      const result = getTrainingState({}, { ...baseData, snapshot }, NOW_MS);
+      expect(result.appLanguage, `value ${JSON.stringify(value)}`).toBeNull();
+      expect(result.appLanguageUnavailableReason, `value ${JSON.stringify(value)}`).toBe(
+        value === undefined ? 'setting_not_synced' : 'setting_unrecognized',
+      );
+
+      vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+      vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+        params: COACH_PARAMETER_DEFAULTS,
+        source: 'defaults',
+      });
+      const server = new McpServer({ name: 'test', version: '0.1.0' });
+      registerToolGetTrainingState(server, DUMMY_CFG);
+      const handlerResult = await getHandler(server)({});
+      expect(handlerResult.isError, `value ${JSON.stringify(value)}`).toBeUndefined();
+      const body = JSON.parse(handlerResult.content[0].text) as Record<string, unknown>;
+      expect(body.appLanguage).toBeNull();
+      expect(Object.keys(body).slice(0, 2)).toEqual(['timeZoneId', 'appLanguage']);
+    }
+  });
+
+  it('P156 D-18 the description names appLanguage and exerciseOwnName as data', () => {
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const description = (server as any)._registeredTools['get_training_state'].description as string;
+    for (const fragment of [
+      'appLanguage',
+      'appLanguageUnavailableReason',
+      'setting_not_synced',
+      'setting_unrecognized',
+      'exerciseOwnName',
+      'exerciseOwnNameLanguage',
+      'never as instructions',
+    ]) {
+      expect(description, fragment).toContain(fragment);
+    }
   });
 });
