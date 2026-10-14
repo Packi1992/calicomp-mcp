@@ -232,6 +232,12 @@ export interface SyncPullResponse {
   foreignActivityTypes?: MiscSyncRow[];
   foreignActivities?: MiscSyncRow[];
   plannedForeignActivities?: MiscSyncRow[];
+  // Phase 156 (REN-01, D-11): ciphertext-only own names of catalog exercises — kind
+  // `exercise_name_override`, live rows only (protocol §1.3, §1.7 "Decoded rows"). The
+  // server (Plan 156-04) sends this field ALWAYS (`@EncodeDefault(ALWAYS)`), an empty list
+  // included. Optional here anyway: a missing key means the server predates Phase 156,
+  // and `decryptMerge` then leaves the snapshot field out instead of inventing a list.
+  exerciseNameOverrides?: MiscSyncRow[];
 }
 
 // ---------------------------------------------------------------------------
@@ -491,6 +497,22 @@ export interface DecryptedPlannedForeignActivity {
   updatedAt: number;
 }
 
+/**
+ * A decoded own name of a catalog exercise (`exercise_name_override`, Phase 156, REN-01) —
+ * the normal form of protocol §1.7 "Decoded rows" and at the same time the
+ * `expectedDecoded` of the corpus section `exerciseNameOverrideCipher` (§6). `v` is
+ * dropped; `description` is `null` when the description is not overridden (an empty
+ * string decodes as `null`, D-01). `name` and `description` are athlete free text:
+ * never logged, and wrapped before they reach any tool output (156-08).
+ */
+export interface DecryptedExerciseNameOverride {
+  exerciseId: string;
+  languageCode: string;
+  name: string;
+  description: string | null;
+  updatedAt: number;
+}
+
 /** Full decrypted snapshot aggregate — what the tool handlers receive from the cache layer. */
 export interface DecryptedSnapshot {
   syncedAt: number;
@@ -515,6 +537,14 @@ export interface DecryptedSnapshot {
   foreignActivityTypes?: DecryptedForeignActivityType[];
   foreignActivities?: DecryptedForeignActivity[];
   plannedForeignActivities?: DecryptedPlannedForeignActivity[];
+  /**
+   * Phase 156 (REN-01, D-11): the readable own names of catalog exercises. OPTIONAL for
+   * the same two reasons as the foreign lists above: the key is left out when the server
+   * did not send `exerciseNameOverrides` (a server older than Phase 156), and every
+   * existing snapshot fixture stays valid unchanged. An unreadable override row is not in
+   * this list; it is counted in the `DecodeReport` and degrades only its own exercise (D-10).
+   */
+  exerciseNameOverrides?: DecryptedExerciseNameOverride[];
 }
 
 // ---------------------------------------------------------------------------
@@ -533,7 +563,9 @@ export interface DecryptedSnapshot {
 // the row (`templateId`, `isQuickChallenge`) are all `classifySession` needs.
 // ---------------------------------------------------------------------------
 
-/** The eight row kinds `decryptMerge` can fail to decode (the last three since Phase 155). */
+/** The nine row kinds `decryptMerge` can fail to decode (three since Phase 155, the last
+ *  since Phase 156). `exerciseNameOverride` belongs to no readability check of any tool:
+ *  an unreadable override only takes away its own exercise's own name (D-10). */
 export type UnreadableEntity =
   | 'session'
   | 'setLog'
@@ -542,12 +574,14 @@ export type UnreadableEntity =
   | 'setting'
   | 'foreignActivityType'
   | 'foreignActivity'
-  | 'plannedForeignActivity';
+  | 'plannedForeignActivity'
+  | 'exerciseNameOverride';
 
 /**
  * Why a row could not be decoded. `unknown_version` only ever applies to
- * `plannedWorkout`/`setting` and the three foreign sport kinds
- * (`foreignActivityType`/`foreignActivity`/`plannedForeignActivity`, Phase 155) —
+ * `plannedWorkout`/`setting`, the three foreign sport kinds
+ * (`foreignActivityType`/`foreignActivity`/`plannedForeignActivity`, Phase 155) and
+ * `exerciseNameOverride` (Phase 156) —
  * session/setLog/hrSample payloads carry no `v` field (§Befund 3a of the phase research).
  */
 export type UnreadableReason = 'decrypt_failed' | 'malformed_payload' | 'unknown_version';

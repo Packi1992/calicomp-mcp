@@ -862,8 +862,8 @@ describe('get_stats — registered MCP handler (Phase 150, D-10/D-11)', () => {
       ...mockCacheFor(mockSnapshot),
       decodeReport: {
         unreadable: [{ entity: 'session', id: 'sess-broken', reason: 'decrypt_failed' }],
-        encryptedCount: { session: 2, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
-        failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
+        encryptedCount: { session: 2, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0 },
+        failedCount: { session: 1, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0 },
       },
     });
 
@@ -887,8 +887,8 @@ describe('get_stats — registered MCP handler (Phase 150, D-10/D-11)', () => {
       ...mockCacheFor(mockSnapshot),
       decodeReport: {
         unreadable: [{ entity: 'setLog', id: 'sl-broken', reason: 'decrypt_failed' }],
-        encryptedCount: { session: 0, setLog: 1, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
-        failedCount: { session: 0, setLog: 1, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 },
+        encryptedCount: { session: 0, setLog: 1, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0 },
+        failedCount: { session: 0, setLog: 1, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0 },
       },
     });
 

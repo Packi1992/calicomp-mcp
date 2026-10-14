@@ -636,7 +636,7 @@ describe('get_training_state — registered MCP handler', () => {
   // Phase 150 (D-32/D-11/D-09-ermessen) — per-row decode fault tolerance
   // -------------------------------------------------------------------------
 
-  const EMPTY_COUNTS = { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0 };
+  const EMPTY_COUNTS = { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0 };
 
   const REPORT_ONE_BROKEN_PLANNED: DecodeReport = {
     unreadable: [{ entity: 'plannedWorkout', id: 'pw-broken', reason: 'decrypt_failed' }],

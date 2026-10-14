@@ -35,6 +35,7 @@ import {
   decryptForeignActivity,
   decryptForeignActivityType,
   decryptPlannedForeignActivity,
+  decryptExerciseNameOverride,
 } from '../src/cache.js';
 import { FOREIGN_BUILTIN_TYPES } from '../src/foreign-types.js';
 import { assignForeignFulfilment, foreignFulfilmentRatio } from '../src/training-state/foreign-adherence.js';
@@ -534,6 +535,76 @@ describe('shared coach-planning vector corpus', () => {
         }
       }
       expect(hostileSeen).toBeGreaterThan(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // exerciseNameOverrideCipher section (Phase 156, REN-01, D-11): crypto parity for an
+  // app-written `exercise_name_override` payload — byte-identical plaintext through
+  // `decrypt()`, and `decryptExerciseNameOverride()` — the real decode boundary
+  // `decryptMerge` uses — returning exactly the §1.7 normal form `expectedDecoded`, the
+  // hostile name at NAME_MAX and the description at DESCRIPTION_MAX included.
+  // -----------------------------------------------------------------------
+
+  describe('exerciseNameOverrideCipher vectors', () => {
+    it('P156 exerciseNameOverrideCipher section is non-empty', () => {
+      expect(corpus.exerciseNameOverrideCipher.length).toBeGreaterThan(0);
+    });
+
+    it('P156 D-11 every exerciseNameOverrideCipher vector decrypts to its exact plaintext string', () => {
+      for (const vector of corpus.exerciseNameOverrideCipher) {
+        expect(decrypt(vector.ciphertextJson, vector.keyB64)).toBe(vector.expectedPlaintextString);
+      }
+    });
+
+    it('P156 D-11 decryptExerciseNameOverride decodes every exerciseNameOverrideCipher vector to expectedDecoded', () => {
+      for (const vector of corpus.exerciseNameOverrideCipher) {
+        const decoded = decryptExerciseNameOverride(
+          miscRowFromVector(vector, 'exercise_name_override'),
+          vector.keyB64,
+        );
+        // toStrictEqual: same keys, same values, nothing extra — the normal form exactly.
+        expect({ ...decoded }).toStrictEqual(vector.expectedDecoded);
+        expect(Object.keys(decoded)).toEqual(Object.keys(vector.expectedDecoded));
+      }
+    });
+
+    it('P156 D-11 the hostile own name and description arrive byte-identical', () => {
+      let hostileNameSeen = 0;
+      let nameAtLimitSeen = 0;
+      let descriptionAtLimitSeen = 0;
+      let nullDescriptionSeen = 0;
+      for (const vector of corpus.exerciseNameOverrideCipher) {
+        const decoded = decryptExerciseNameOverride(
+          miscRowFromVector(vector, 'exercise_name_override'),
+          vector.keyB64,
+        );
+        const plaintext = vector.expectedPlaintext as Record<string, unknown>;
+        const expectedName = plaintext.name as string;
+        expect(decoded.name).toBe(expectedName);
+        expect(Buffer.from(decoded.name, 'utf8').equals(Buffer.from(expectedName, 'utf8'))).toBe(true);
+        if (expectedName.includes('Ignore all')) hostileNameSeen += 1;
+        // NAME_MAX = 255 UTF-16 code units (protocol §1.7) — the decoder never cuts.
+        if (expectedName.length === 255) nameAtLimitSeen += 1;
+        const expectedDescription = plaintext.description;
+        if (typeof expectedDescription === 'string') {
+          expect(decoded.description).toBe(expectedDescription);
+          expect(
+            Buffer.from(decoded.description ?? '', 'utf8').equals(Buffer.from(expectedDescription, 'utf8')),
+          ).toBe(true);
+          // DESCRIPTION_MAX = 1000 UTF-16 code units (protocol §1.7).
+          if (expectedDescription.length === 1000) descriptionAtLimitSeen += 1;
+        } else {
+          expect(expectedDescription).toBeNull();
+          expect(decoded.description).toBeNull();
+          nullDescriptionSeen += 1;
+        }
+      }
+      // The corpus must actually carry each edge, or this test proves nothing.
+      expect(hostileNameSeen).toBeGreaterThan(0);
+      expect(nameAtLimitSeen).toBeGreaterThan(0);
+      expect(descriptionAtLimitSeen).toBeGreaterThan(0);
+      expect(nullDescriptionSeen).toBeGreaterThan(0);
     });
   });
 

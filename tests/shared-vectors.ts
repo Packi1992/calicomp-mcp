@@ -261,6 +261,23 @@ const ForeignActivityTypeCipherVectorSchema = ForeignActivityCipherVectorSchema;
 const PlannedForeignActivityCipherVectorSchema = ForeignActivityCipherVectorSchema;
 
 /**
+ * Phase 156 (REN-01, D-11): `exerciseNameOverrideCipher` — own names of catalog exercises
+ * (kind `exercise_name_override`, protocol §1.7), a hostile name at `NAME_MAX` without a
+ * description and a name with a description at `DESCRIPTION_MAX` in another language. Same
+ * form and same fixed test key as the foreign sport cipher sections above; `expectedDecoded`
+ * is the §1.7 normal form `decryptExerciseNameOverride` (cache.ts) must return exactly.
+ */
+const ExerciseNameOverrideCipherVectorSchema = z.object({
+  name: z.string().min(1),
+  keyB64: z.string().min(1),
+  ciphertextJson: z.string().min(1),
+  expectedPlaintextString: z.string().min(1),
+  expectedPlaintext: z.record(z.string(), z.unknown()),
+  expectedDecoded: z.record(z.string(), z.unknown()),
+  byteRoundTrip: z.boolean(),
+});
+
+/**
  * Phase 155 (E-15): the three predefined foreign types — key, deterministic id and the
  * English and German name. `src/foreign-types.ts`'s `FOREIGN_BUILTIN_TYPES` must equal this
  * section exactly (`tests/shared-vectors.test.ts`), the app's own table is checked against
@@ -568,6 +585,9 @@ export const CoachPlanningVectorsSchema = z.object({
   foreignActivityCipher: z.array(ForeignActivityCipherVectorSchema).min(1),
   plannedForeignActivityCipher: z.array(PlannedForeignActivityCipherVectorSchema).min(1),
   foreignFulfilment: z.array(ForeignFulfilmentVectorSchema).min(1),
+  // Phase 156: listed for the same reason as the Phase 155 sections above — an unlisted
+  // section would be silently dropped by the parse and its replay would pass vacuously.
+  exerciseNameOverrideCipher: z.array(ExerciseNameOverrideCipherVectorSchema).min(1),
   plannedUpdate: z.array(PlannedUpdateVectorSchema).min(1),
   streak: z.array(StreakVectorSchema).min(1),
   muscleBalance: z.array(MuscleBalanceVectorSchema).min(1),

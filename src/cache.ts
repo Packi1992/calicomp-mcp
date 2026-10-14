@@ -37,6 +37,14 @@
  *   strictness lives in `read-guard.ts`'s `foreignSportAvailability`, which only ever
  *   degrades the foreign block — no existing tool fails because of a foreign row.
  *
+ * Own names of catalog exercises (Phase 156, REN-01, D-10/D-11):
+ *   `exerciseNameOverrides` (kind `exercise_name_override`, protocol §1.7) is always
+ *   encrypted and decodes per row through the same front half as the foreign sport kinds
+ *   (`decryptForeignPayload`). A missing wire field leaves the snapshot key OUT (a server
+ *   older than Phase 156). An unreadable override row is counted in the `DecodeReport`
+ *   under `exerciseNameOverride` and belongs to no readability check: it only takes away
+ *   the own name of its one exercise in its one language, never a tool.
+ *
  * Per-row decode fault tolerance (Phase 150, D-08/D-10/D-11/D-12):
  *   Sessions, set-logs, HR samples, planned workouts and settings ALL decode per row —
  *   a single bad row (`RowDecodeError` below) never aborts `decryptMerge`. Failures land
@@ -73,6 +81,7 @@ import type {
   DecryptedForeignActivity,
   DecryptedForeignActivityType,
   DecryptedPlannedForeignActivity,
+  DecryptedExerciseNameOverride,
   NormalizedBlock,
   NormalizedTemplateExercise,
   CatalogExercise,
@@ -135,10 +144,12 @@ function newDecodeReport(): DecodeReport {
     encryptedCount: {
       session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
       foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
+      exerciseNameOverride: 0,
     },
     failedCount: {
       session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
       foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
+      exerciseNameOverride: 0,
     },
   };
 }
@@ -599,7 +610,8 @@ export function decryptPlannedWorkout(row: MiscSyncRow, keyB64: string): Decrypt
 const FOREIGN_LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * The common front half of the three foreign sport decoders: tombstone-shaped empty
+ * The common front half of the three foreign sport decoders (and, since Phase 156, of
+ * `decryptExerciseNameOverride`): tombstone-shaped empty
  * payload, decrypt failure, plaintext that is not a JSON object, `v !== 1`. Every guard
  * throws a `RowDecodeError` naming only the wire kind, the row id and the cause — never
  * plaintext, ciphertext or key material (T-120-17, T-155-24); the `v` that does not
@@ -609,7 +621,7 @@ function decryptForeignPayload(row: MiscSyncRow, keyB64: string, wireKind: strin
   if (!row.encryptedPayload) {
     throw new RowDecodeError(
       `${wireKind} row ${row.id} arrived with an empty encryptedPayload — this is the tombstone ` +
-        'shape the server should already filter out (Plan 155-03); the pull contract may have changed',
+        'shape the server should already filter out (Plans 155-03, 156-04); the pull contract may have changed',
       'malformed_payload',
     );
   }
@@ -752,6 +764,46 @@ export function decryptPlannedForeignActivity(row: MiscSyncRow, keyB64: string):
   };
 }
 
+// ---------------------------------------------------------------------------
+// Own names of catalog exercises (Phase 156, REN-01; protocol §1.7 "Decoded rows")
+// ---------------------------------------------------------------------------
+
+/**
+ * Decrypt one `exercise_name_override` row into its §1.7 normal form
+ * `{ exerciseId, languageCode, name, description, updatedAt }` (Phase 156, REN-01, D-11).
+ *
+ * Unreadable (throws `RowDecodeError`): the front-half guards of `decryptForeignPayload` —
+ * empty payload (`malformed_payload`), decrypt failure (`decrypt_failed`), plaintext that
+ * is not a JSON object (`malformed_payload`), `v !== 1` (`unknown_version`) — and a
+ * missing or empty `exerciseId`, `languageCode` or `name` (`malformed_payload`).
+ *
+ * `description` is a string or `null`; an empty string decodes as `null` (D-01: never the
+ * empty string). A decoder neither cuts nor rejects a value because of its length — the
+ * corpus pins a name at `NAME_MAX` and a description at `DESCRIPTION_MAX` byte for byte.
+ * `updatedAt` is the edit time inside the payload, else the wire row's routing timestamp.
+ *
+ * Exported and throwing for the same reason as `decryptPlannedWorkout`: the corpus replay
+ * (`tests/shared-vectors.test.ts`) must run through this exact function. Never logs —
+ * `name` and `description` are athlete free text, and no error message carries them.
+ */
+export function decryptExerciseNameOverride(row: MiscSyncRow, keyB64: string): DecryptedExerciseNameOverride {
+  const p = decryptForeignPayload(row, keyB64, 'exercise_name_override');
+  const exerciseId = requiredString(p.exerciseId);
+  const languageCode = requiredString(p.languageCode);
+  const name = requiredString(p.name);
+  if (exerciseId === undefined || languageCode === undefined || name === undefined) {
+    throw new RowDecodeError(`exercise_name_override row ${row.id} has a malformed payload`, 'malformed_payload');
+  }
+  const description = optionalString(p.description);
+  return {
+    exerciseId,
+    languageCode,
+    name,
+    description: description === '' ? null : description,
+    updatedAt: timestampOr(p.updatedAt, row.updatedAt),
+  };
+}
+
 /**
  * Decode every planned-workout row, tolerating a per-row failure (Phase 150,
  * D-08/D-09/D-10/D-12) — same shape as `decodeSessions` above, calling the exported
@@ -862,12 +914,16 @@ function decodeSettings(rows: MiscSyncRow[], keyB64: string, report: DecodeRepor
  * An unreadable row is reported by entity, id, reason and routing timestamps only, never
  * with content; it makes the foreign block unavailable (`read-guard.ts`'s
  * `foreignSportAvailability`) and touches nothing else.
+ *
+ * Since Phase 156 (D-10) the same loop decodes the own names of catalog exercises
+ * (`exerciseNameOverride`): an unreadable override is reported the same way and takes
+ * away only its own exercise's own name — no availability rule reads it.
  */
 function decodeForeignRows<T>(
   rows: MiscSyncRow[],
   keyB64: string,
   report: DecodeReport,
-  entity: 'foreignActivityType' | 'foreignActivity' | 'plannedForeignActivity',
+  entity: 'foreignActivityType' | 'foreignActivity' | 'plannedForeignActivity' | 'exerciseNameOverride',
   decryptRow: (row: MiscSyncRow, keyB64: string) => T,
 ): T[] {
   const decoded: T[] = [];
@@ -1016,6 +1072,16 @@ function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: Decryp
       ? {
           plannedForeignActivities: decodeForeignRows(
             raw.plannedForeignActivities, keyB64, decodeReport, 'plannedForeignActivity', decryptPlannedForeignActivity,
+          ),
+        }
+      : {}),
+    // Phase 156 (D-11): same rule as the foreign fields — the server sends the field
+    // always (Plan 156-04); a missing one means a server older than Phase 156, and the
+    // snapshot key is then left out rather than reported as "no own names".
+    ...(raw.exerciseNameOverrides != null
+      ? {
+          exerciseNameOverrides: decodeForeignRows(
+            raw.exerciseNameOverrides, keyB64, decodeReport, 'exerciseNameOverride', decryptExerciseNameOverride,
           ),
         }
       : {}),
