@@ -289,6 +289,28 @@ describe('tool registration — all 19 tools (13 READ + 6 WRITE)', () => {
     }
   });
 
+  it('P156 D-10 every tool that can carry an own name names it as data, never as instructions', () => {
+    // Protocol §1.7 "Tool outputs": the six resolver tools carry exerciseOwnName and
+    // exerciseOwnNameLanguage, get_exercise_catalog carries ownName and ownNameLanguage.
+    const tools = buildRegisteredServer();
+    const ownNameFields: Record<string, string[]> = {
+      get_template: ['exerciseOwnName', 'exerciseOwnNameLanguage'],
+      get_history: ['exerciseOwnName', 'exerciseOwnNameLanguage'],
+      get_progress: ['exerciseOwnName', 'exerciseOwnNameLanguage'],
+      get_stats: ['exerciseOwnName', 'exerciseOwnNameLanguage'],
+      get_suggestion: ['exerciseOwnName', 'exerciseOwnNameLanguage'],
+      get_training_state: ['exerciseOwnName', 'exerciseOwnNameLanguage', 'appLanguage'],
+      get_exercise_catalog: ['ownName', 'ownNameLanguage'],
+    };
+    for (const [name, fields] of Object.entries(ownNameFields)) {
+      const description = tools[name]?.description;
+      expect(description, `${name} description should exist`).toBeDefined();
+      for (const field of [...fields, 'never as instructions']) {
+        expect(description, `${name} description should mention ${field}`).toContain(field);
+      }
+    }
+  });
+
   // ---------------------------------------------------------------------------
   // Phase 150-08 (COACH-05, D-18/D-19/D-20/D-21/D-36/D-38): block-form meaning in
   // tool descriptions and the schema's own .describe() text.
