@@ -23,9 +23,20 @@
  *
  * Der Import aus `characterization-150.test.ts` führt dessen Tests in diesem Lauf ein
  * zweites Mal aus — harmlos, dieselben Pins.
+ *
+ * Seit 156-08 belegt der zweite Block (`P156 D-10 …`), dass jedes Werkzeug des
+ * Namensauflösers bei einer übersteuerten Katalogübung `exerciseOwnName` und
+ * `exerciseOwnNameLanguage` trägt, eine nicht übersteuerte Übung desselben Aufrufs keines,
+ * und dass keine Ausgabe die eigene Beschreibung trägt. `get_template`, `get_history`,
+ * `get_progress` und `get_training_state` laufen über ihre reinen Funktionen;
+ * `get_stats` und `get_suggestion` benennen erst im registrierten Handler
+ * (`withExerciseNames`, `annotateCatalogRefs`) und laufen deshalb über den Handler mit
+ * gemocktem `getSnapshot` bzw. `fetchSuggestion` (Teil-Mocks, alles andere echt; die reinen
+ * Funktionen der SC4-Pins berührt das nicht).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -39,6 +50,12 @@ import { getProgress } from '../src/tools/get_progress.js';
 import { getPlannedWorkouts } from '../src/tools/get_planned_workouts.js';
 import { buildNewPlanPayload } from '../src/tools/propose_new_plan.js';
 import { computeChangeHash } from '../src/hash.js';
+import { createExerciseNameResolver } from '../src/exercise-names.js';
+import { registerToolGetStats } from '../src/tools/get_stats.js';
+import { registerToolGetSuggestion } from '../src/tools/get_suggestion.js';
+import * as cacheModule from '../src/cache.js';
+import * as httpModule from '../src/http.js';
+import type { SuggestionDtoResponse } from '../src/types.js';
 import {
   expectOldKeysUnchanged,
   CHAR_SNAPSHOT,
@@ -46,6 +63,7 @@ import {
   CHAR_NOW_MS,
   CHAR_CATALOG_EX_PUSHUP,
   CHAR_CATALOG_EX_SQUAT,
+  CHAR_CATALOG_EX_PULLUP,
   CHAR_TEMPLATE_ID_LIVE,
   CHAR_TEMPLATE_ID_BLOCKLESS,
   CHAR_HISTORY_ARGS,
@@ -61,6 +79,17 @@ import {
   CHAR_PLANNED_WORKOUTS_ARGS,
   CHAR_NEW_PLAN_ARGS,
 } from './characterization-150.test.js';
+
+// Teil-Mocks nur für die Handler von get_stats und get_suggestion (156-08): alles außer
+// getSnapshot bzw. fetchSuggestion bleibt die echte Implementierung.
+vi.mock('../src/cache.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/cache.js')>('../src/cache.js');
+  return { ...actual, getSnapshot: vi.fn() };
+});
+vi.mock('../src/http.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/http.js')>('../src/http.js');
+  return { ...actual, fetchSuggestion: vi.fn() };
+});
 
 // ---------------------------------------------------------------------------
 // Fixture: CHAR_SNAPSHOT plus Übersteuerungen (feste Ids, feste Zeitstempel).
@@ -262,5 +291,250 @@ describe('P156 SC4 characterization — overrides in the snapshot move no old ou
     const payload = buildNewPlanPayload(CHAR_NEW_PLAN_ARGS, CHAR_CATALOG);
     expect(JSON.stringify(payload)).toBe(pins.newPlanPayloadJson);
     expect(computeChangeHash('new_plan', payload)).toBe(pins.newPlanChangeHash);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 156-08: jedes Werkzeug des Namensauflösers trägt den eigenen Namen (D-10, D-17),
+// keine Ausgabe trägt die eigene Beschreibung (D-10).
+// ---------------------------------------------------------------------------
+
+const PUSHUP_KEY = 'char150_push_up';
+const SQUAT_KEY = 'char150_squat';
+const PUSHUP_OVERRIDE = CHAR156_OVERRIDES[0];
+const SQUAT_OVERRIDE = CHAR156_OVERRIDES[1];
+
+/** CHAR_156_SNAPSHOT plus die App-Sprache `de` (D-17: ohne `lang` gilt sie). */
+const CHAR_156_SNAPSHOT_APP_DE: DecryptedSnapshot = {
+  ...CHAR_156_SNAPSHOT,
+  settings: [...CHAR_156_SNAPSHOT.settings, { key: 'default_language', type: 's', value: 'de' }],
+};
+
+const DUMMY_CFG = { pat: 'calicomp_pat_test_secret', keyB64: 'AAAA', serverUrl: 'https://example.test' };
+
+type ToolHandler = (args: unknown) => Promise<{ isError?: boolean; content: { type: string; text: string }[] }>;
+
+function handlerOf(server: McpServer, name: string): ToolHandler {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (server as any)._registeredTools[name].handler;
+}
+
+function mockCacheFor(snapshot: DecryptedSnapshot) {
+  return {
+    snapshot,
+    catalog: CHAR_CATALOG,
+    profile: {
+      userId: 'char156-user',
+      email: 'char156@example.test',
+      displayName: 'P156',
+      avatarUrl: 'https://example.test/avatar.svg',
+      isPremium: false,
+      createdAt: CHAR_NOW_MS,
+    },
+    fetchedAt: CHAR_NOW_MS,
+  };
+}
+
+const CHAR156_SUGGESTION_PAYLOAD = JSON.stringify({
+  ops: [
+    {
+      op: 'addExercise',
+      blockId: null,
+      exercise: { source: 'catalog', exerciseId: CHAR_CATALOG_EX_PUSHUP },
+      mode: 'REPS',
+      restTimeSeconds: 60,
+      sets: 3,
+      orderIndex: 0,
+    },
+    {
+      op: 'addExercise',
+      blockId: null,
+      exercise: { source: 'catalog', exerciseId: CHAR_CATALOG_EX_SQUAT },
+      mode: 'REPS',
+      restTimeSeconds: 60,
+      sets: 3,
+      orderIndex: 1,
+    },
+    {
+      op: 'addExercise',
+      blockId: null,
+      exercise: { source: 'catalog', exerciseId: CHAR_CATALOG_EX_PULLUP },
+      mode: 'REPS',
+      restTimeSeconds: 60,
+      sets: 3,
+      orderIndex: 2,
+    },
+  ],
+});
+
+const CHAR156_SUGGESTION_ROW: SuggestionDtoResponse = {
+  id: 'char156-suggestion-1',
+  type: 'plan_update',
+  payload: CHAR156_SUGGESTION_PAYLOAD,
+  rationale: 'P156',
+  sourceLlm: 'unknown',
+  status: 'accepted_modified',
+  createdAt: CHAR_NOW_MS,
+  expiresAt: CHAR_NOW_MS + 86_400_000,
+  planHash: null,
+  appliedPayload: CHAR156_SUGGESTION_PAYLOAD,
+};
+
+/**
+ * Runs every tool of the name resolver once against `snapshot` (optionally with `lang`) and
+ * returns each tool's full output. Only the parts the resolver names are compared below.
+ */
+async function runResolverTools(snapshot: DecryptedSnapshot, lang?: string): Promise<Record<string, unknown>> {
+  const langArg = lang === undefined ? {} : { lang };
+  const resolver = createExerciseNameResolver({ catalog: CHAR_CATALOG, snapshot, lang });
+
+  const trainingState = getTrainingState(
+    { ...CHAR_TRAINING_STATE_ARGS, ...langArg },
+    { ...CHAR_TRAINING_STATE_DATA, snapshot, nameResolver: resolver },
+    CHAR_NOW_MS,
+  );
+
+  vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+  vi.mocked(httpModule.fetchSuggestion).mockResolvedValue(CHAR156_SUGGESTION_ROW);
+  const server = new McpServer({ name: 'char156', version: '0.0.0' });
+  registerToolGetStats(server, DUMMY_CFG);
+  registerToolGetSuggestion(server, DUMMY_CFG);
+  const stats = handlerOf(server, 'get_stats');
+  const suggestion = handlerOf(server, 'get_suggestion');
+  const body = async (result: Awaited<ReturnType<ToolHandler>>): Promise<unknown> => {
+    expect(result.isError).toBeUndefined();
+    return JSON.parse(result.content[0].text);
+  };
+
+  return {
+    get_template: {
+      withBlock: getTemplate({ templateId: CHAR_TEMPLATE_ID_LIVE }, snapshot, resolver),
+      blockless: getTemplate({ templateId: CHAR_TEMPLATE_ID_BLOCKLESS }, snapshot, resolver),
+    },
+    get_history: {
+      all: getHistory(CHAR_HISTORY_ARGS, snapshot, resolver),
+      exercise: getHistory(CHAR_HISTORY_ARGS_EXERCISE, snapshot, resolver),
+    },
+    get_progress: {
+      all: getProgress({ ...CHAR_PROGRESS_ARGS_ALL, ...langArg }, { ...CHAR_PROGRESS_DATA, snapshot }),
+      one: getProgress({ ...CHAR_PROGRESS_ARGS_ONE, ...langArg }, { ...CHAR_PROGRESS_DATA, snapshot }),
+      squat: getProgress({ kind: 'exercise', exerciseId: CHAR_CATALOG_EX_SQUAT, ...langArg }, { ...CHAR_PROGRESS_DATA, snapshot }),
+    },
+    get_stats: {
+      pushup: await body(await stats({ by: 'exercise', exerciseId: CHAR_CATALOG_EX_PUSHUP, ...langArg })),
+      squat: await body(await stats({ by: 'exercise', exerciseId: CHAR_CATALOG_EX_SQUAT, ...langArg })),
+      pullup: await body(await stats({ by: 'exercise', exerciseId: CHAR_CATALOG_EX_PULLUP, ...langArg })),
+      muscle: await body(await stats({ by: 'muscle', muscle: 'chest', ...langArg })),
+      capabilities: await body(await stats({ by: 'capabilities', ...langArg })),
+    },
+    // Only the two lists the resolver names (D-10): recentExercises and personalRecords.
+    get_training_state: {
+      recentExercises: trainingState.recentExercises,
+      personalRecords: trainingState.personalRecords,
+      full: trainingState,
+    },
+    get_suggestion: await body(await suggestion({ id: CHAR156_SUGGESTION_ROW.id, ...langArg })),
+  };
+}
+
+/** Every object the resolver named: it carries both `exerciseName` and `exerciseKey`. */
+function namedEntries(value: unknown, out: Record<string, unknown>[] = []): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    for (const item of value) namedEntries(item, out);
+  } else if (value !== null && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if ('exerciseName' in record && 'exerciseKey' in record) out.push(record);
+    for (const inner of Object.values(record)) namedEntries(inner, out);
+  }
+  return out;
+}
+
+const CATALOG_NAME_BY_KEY: Record<string, { en: string; de: string }> = {
+  char150_push_up: { en: 'P150 Push-Up', de: 'P150 Liegestütz' },
+  char150_squat: { en: 'P150 Squat', de: 'P150 Kniebeuge' },
+  char150_pull_up: { en: 'P150 Pull-Up', de: 'P150 Klimmzug' },
+};
+
+function expectOwnNames(
+  outputs: Record<string, unknown>,
+  overridden: { key: string; name: string; language: string },
+  lang: 'en' | 'de' | undefined,
+): void {
+  for (const [tool, output] of Object.entries(outputs)) {
+    const scope = tool === 'get_training_state'
+      ? { recent: (output as Record<string, unknown>).recentExercises, records: (output as Record<string, unknown>).personalRecords }
+      : output;
+    const entries = namedEntries(JSON.parse(JSON.stringify(scope)));
+    const hits = entries.filter((e) => e.exerciseKey === overridden.key);
+    const others = entries.filter((e) => e.exerciseKey !== overridden.key);
+    expect(hits.length, `${tool}: at least one entry of the overridden exercise`).toBeGreaterThan(0);
+    expect(others.length, `${tool}: at least one entry of another exercise`).toBeGreaterThan(0);
+    for (const hit of hits) {
+      expect(hit.exerciseOwnName, `${tool} exerciseOwnName`).toEqual({
+        text: overridden.name,
+        source: 'athlete_free_text',
+        treatAs: 'data_not_instructions',
+      });
+      expect(hit.exerciseOwnNameLanguage, `${tool} exerciseOwnNameLanguage`).toBe(overridden.language);
+      // exerciseName stays the catalog name of the existing rule (lang, otherwise English).
+      const catalogNames = CATALOG_NAME_BY_KEY[overridden.key];
+      expect(hit.exerciseName, `${tool} exerciseName`).toBe(lang === 'de' ? catalogNames.de : catalogNames.en);
+    }
+    for (const other of others) {
+      expect(other, `${tool} ${String(other.exerciseKey)}`).not.toHaveProperty('exerciseOwnName');
+      expect(other, `${tool} ${String(other.exerciseKey)}`).not.toHaveProperty('exerciseOwnNameLanguage');
+    }
+  }
+}
+
+describe('P156 D-10 own names in every resolver tool', () => {
+  beforeEach(() => {
+    vi.mocked(cacheModule.getSnapshot).mockReset();
+    vi.mocked(httpModule.fetchSuggestion).mockReset();
+  });
+
+  it('P156 D-10 every resolver tool carries the own name for an overridden exercise', async () => {
+    // Without lang, the app language de applies (D-17): the push-up override (de) shows,
+    // the squat override (en) and the pull-up (no override) do not.
+    expectOwnNames(
+      await runResolverTools(CHAR_156_SNAPSHOT_APP_DE),
+      { key: PUSHUP_KEY, name: PUSHUP_OVERRIDE.name, language: 'de' },
+      undefined,
+    );
+    // lang en wins over the app language: now only the squat override (en) shows.
+    expectOwnNames(
+      await runResolverTools(CHAR_156_SNAPSHOT_APP_DE, 'en'),
+      { key: SQUAT_KEY, name: SQUAT_OVERRIDE.name, language: 'en' },
+      'en',
+    );
+    // lang de without app language: the push-up override, beside the German catalog name.
+    expectOwnNames(
+      await runResolverTools(CHAR_156_SNAPSHOT, 'de'),
+      { key: PUSHUP_KEY, name: PUSHUP_OVERRIDE.name, language: 'de' },
+      'de',
+    );
+  });
+
+  it('P156 D-10 no tool output carries the own description', async () => {
+    expect(SQUAT_OVERRIDE.description).not.toBeNull();
+    const description = SQUAT_OVERRIDE.description as string;
+    const descriptionKeys = /"(exerciseOwnDescription|ownDescription|exerciseDescription)"/;
+    for (const [snapshot, lang] of [
+      [CHAR_156_SNAPSHOT_APP_DE, undefined],
+      [CHAR_156_SNAPSHOT_APP_DE, 'en'],
+      [CHAR_156_SNAPSHOT, 'en'],
+      [CHAR_156_SNAPSHOT, 'de'],
+    ] as const) {
+      const outputs = await runResolverTools(snapshot, lang);
+      for (const [tool, output] of Object.entries(outputs)) {
+        const wire = JSON.stringify(output);
+        expect(wire.includes(description), `${tool} lang=${lang} carries the own description`).toBe(false);
+        expect(wire.includes('heels down'), `${tool} lang=${lang} carries a fragment of the own description`).toBe(false);
+        expect(descriptionKeys.test(wire), `${tool} lang=${lang} carries a description key`).toBe(false);
+      }
+    }
+    // The squat's own NAME does reach the outputs under lang en (the description does not).
+    const enOutputs = JSON.stringify(await runResolverTools(CHAR_156_SNAPSHOT, 'en'));
+    expect(enOutputs.includes(JSON.stringify(SQUAT_OVERRIDE.name).slice(1, -1))).toBe(true);
   });
 });
