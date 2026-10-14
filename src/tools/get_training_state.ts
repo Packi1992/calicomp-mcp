@@ -80,8 +80,8 @@ import {
   type ForeignUnavailableReason,
 } from '../read-guard.js';
 import { createExerciseNameResolver, type ExerciseNameFields, type ExerciseNameResolver } from '../exercise-names.js';
-import { resolveAppLanguage } from '../app-language.js';
-import type { DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
+import { resolveAppLanguage, type AppLanguageUnavailableReason } from '../app-language.js';
+import type { DecodeReport, DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -110,14 +110,24 @@ export interface GetTrainingStateAdherence {
 }
 
 /**
+ * The resolver fields an entry of `recentExercises`/`personalRecords` carries: the Phase 150
+ * names (D-16) and the Phase 156 own name with its language (D-10, protocol §1.7 "Tool
+ * outputs"). The resolver spreads all five at runtime; the result types name them all, so
+ * `GetTrainingStateResult` describes the actual output (gap round, WR-MCP-05). The own-name
+ * keys exist only for a catalog exercise with a live own name in the effective language.
+ */
+type OwnNamePick = 'exerciseKey' | 'exerciseDeleted' | 'exerciseUnknown' | 'exerciseOwnName' | 'exerciseOwnNameLanguage';
+
+/**
  * One recently trained exercise's HEADER data — deliberately WITHOUT `points` (same
  * schmalheit reasoning; the full series is `get_progress`'s job).
  *
- * `exerciseKey`/`exerciseDeleted`/`exerciseUnknown` are additive (Phase 150, D-16) —
- * present ONLY when the tool's `nameResolver` is supplied (always true for the
- * registered handler; `Partial` keeps a caller who omits it byte-identical).
+ * `exerciseKey`/`exerciseDeleted`/`exerciseUnknown` are additive (Phase 150, D-16), and so are
+ * `exerciseOwnName`/`exerciseOwnNameLanguage` (Phase 156, D-10) — present ONLY when the
+ * tool's `nameResolver` is supplied (always true for the registered handler; `Partial` keeps
+ * a caller who omits it byte-identical).
  */
-export interface GetTrainingStateRecentExercise extends Partial<Pick<ExerciseNameFields, 'exerciseKey' | 'exerciseDeleted' | 'exerciseUnknown'>> {
+export interface GetTrainingStateRecentExercise extends Partial<Pick<ExerciseNameFields, OwnNamePick>> {
   exerciseId: string;
   exerciseName: string | null;
   metric: ExerciseProgressMetric;
@@ -127,8 +137,8 @@ export interface GetTrainingStateRecentExercise extends Partial<Pick<ExerciseNam
   rule: string;
 }
 
-/** One personal record, additively named (Phase 150, D-16) — same additivity story as above. */
-export type PersonalRecordWithName = PersonalRecord & Partial<Pick<ExerciseNameFields, 'exerciseKey' | 'exerciseDeleted' | 'exerciseUnknown'>>;
+/** One personal record, additively named (Phase 150, D-16; Phase 156, D-10) — same additivity story as above. */
+export type PersonalRecordWithName = PersonalRecord & Partial<Pick<ExerciseNameFields, OwnNamePick>>;
 
 /** `computePersonalRecords`'s result shape, additively named (Phase 150, D-16). */
 export interface GetTrainingStatePersonalRecords {
@@ -200,9 +210,11 @@ export interface GetTrainingStateResult {
   appLanguage: string | null;
   /**
    * Present ONLY when `appLanguage` is `null` — a conditional spread, never `undefined`:
-   * `setting_not_synced` (the setting is missing) or `setting_unrecognized` (not a code).
+   * `setting_not_synced` (the setting row is missing), `setting_unreadable` (the row arrived
+   * but cannot be decrypted or decoded; gap round, WR-MCP-04) or `setting_unrecognized`
+   * (readable, but not a code).
    */
-  appLanguageUnavailableReason?: 'setting_not_synced' | 'setting_unrecognized';
+  appLanguageUnavailableReason?: AppLanguageUnavailableReason;
   asOfDate: string;
   parametersSource: 'server' | 'defaults';
   parameters: CoachParameters;
@@ -285,6 +297,12 @@ export function getTrainingState(
      * snapshot alone decides (`foreignSportAvailability(snapshot, EMPTY_DECODE_REPORT)`).
      */
     foreignAvailability?: ForeignSportAvailability;
+    /**
+     * Phase 156 gap round (WR-MCP-04): the `unreadable` list of this read's decode report.
+     * The registered handler passes it so a `default_language` row that arrived but cannot
+     * be read yields `setting_unreadable`; without it a missing row is `setting_not_synced`.
+     */
+    decodeReport?: Pick<DecodeReport, 'unreadable'>;
   },
   nowMs: number,
 ): GetTrainingStateResult {
@@ -296,6 +314,7 @@ export function getTrainingState(
     calendarReadable = true,
     nameResolver,
     foreignAvailability = foreignSportAvailability(data.snapshot, EMPTY_DECODE_REPORT),
+    decodeReport,
   } = data;
 
   // Exactly ONE resolution for this whole tool call — every calculator below receives
@@ -304,9 +323,9 @@ export function getTrainingState(
   const asOfDate = toCalendarDay(nowMs, timeZoneId);
 
   // Phase 156 (D-18): the app language as a field of its own. `resolveAppLanguage` never
-  // throws — a missing or unrecognized setting yields `null` with a named reason, nothing
-  // else of this result depends on it.
-  const appLanguage = resolveAppLanguage(snapshot);
+  // throws — a missing, unreadable (WR-MCP-04, with the decode report) or unrecognized
+  // setting yields `null` with a named reason, nothing else of this result depends on it.
+  const appLanguage = resolveAppLanguage(snapshot, decodeReport);
 
   const consistency = computeConsistency(snapshot, catalog, timeZoneId, nowMs);
   const muscleBalance = computeMuscleBalance(snapshot, catalog, nowMs);
@@ -533,8 +552,11 @@ export function registerToolGetTrainingState(
         'applies to (lang, otherwise appLanguage); exerciseName stays the catalog name, and ' +
         'proposals keep naming exercises by exerciseId/exerciseKey. appLanguage, directly after ' +
         'timeZoneId, is the language the athlete set in the app, or null with ' +
-        'appLanguageUnavailableReason \'setting_not_synced\' (the setting never travelled) or ' +
-        '\'setting_unrecognized\' (not a language code); it never fails the tool. ' +
+        'appLanguageUnavailableReason when the setting is missing or unreadable or holds no ' +
+        'language code: ' +
+        '\'setting_not_synced\' (the setting row is missing), \'setting_unreadable\' (the row ' +
+        'arrived but cannot be decrypted or decoded) or \'setting_unrecognized\' (readable, but ' +
+        'not a language code); it never fails the tool. ' +
         'templateFeedbackSeries carries, per template, up to the last 8 completed sessions ' +
         '(newest first, at most 20 templates, ordered by their own latest session) with the ' +
         'athlete\'s execution- and feel-scale feedback ({value, state, setLaterAt}), whether a ' +
@@ -602,6 +624,7 @@ export function registerToolGetTrainingState(
             calendarReadable,
             nameResolver,
             foreignAvailability: foreignSportAvailability(data.snapshot, report),
+            decodeReport: report,
           },
           Date.now(),
         );

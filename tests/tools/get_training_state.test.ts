@@ -28,11 +28,16 @@ import * as cacheModule from '../../src/cache.js';
 import * as coachParametersModule from '../../src/coach-parameters.js';
 import { COACH_PARAMETER_DEFAULTS } from '../../src/coach-parameters.js';
 import { getTrainingState, registerToolGetTrainingState } from '../../src/tools/get_training_state.js';
+import type {
+  GetTrainingStateRecentExercise,
+  GetTrainingStateResult,
+  PersonalRecordWithName,
+} from '../../src/tools/get_training_state.js';
 import { computeConsistency } from '../../src/training-state/consistency.js';
 import { computeMuscleBalance } from '../../src/training-state/muscle-balance.js';
 import { computeTemplateFeedbackSeries } from '../../src/training-state/template-feedback-series.js';
 import { TRAINING_TIMEZONE_SETTING_KEY, TimeZoneUnavailableError } from '../../src/training-state/time-zone.js';
-import { mockSnapshot, mockCatalog } from '../fixture.js';
+import { mockSnapshot, mockCatalog, CATALOG_EXERCISE_ID_PUSHUP } from '../fixture.js';
 import { computeForeignAdherence } from '../../src/training-state/foreign-adherence.js';
 import { FOREIGN_LOAD_EXPLANATION } from '../../src/training-state/foreign-load.js';
 import { protocolExplanation } from '../protocol-text.js';
@@ -991,5 +996,145 @@ describe('get_training_state — app language (D-18)', () => {
     ]) {
       expect(description, fragment).toContain(fragment);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 156 gap round: result types (WR-MCP-05) and setting_unreadable (WR-MCP-04)
+// ---------------------------------------------------------------------------
+
+describe('get_training_state — own-name result types and an unreadable language setting (WR-MCP-04/05)', () => {
+  const COUNTS_ZERO = { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0 };
+
+  beforeEach(() => {
+    vi.mocked(cacheModule.getSnapshot).mockReset();
+    vi.mocked(coachParametersModule.loadCoachParameters).mockReset();
+  });
+
+  it('P156 WR-MCP-05 recent exercises and personal records carry the own-name keys in their result types', async () => {
+    // Type level: both result types accept the own-name keys in an object literal (excess
+    // property checks would reject them otherwise; `npm run typecheck` covers this file).
+    const NO_DIRECTION = { label: 'insufficient-data', firstHalfMean: null, secondHalfMean: null, relativeChange: null } as const;
+    const ownName = { text: 'P156 Meine Liegestütze', source: 'athlete_free_text', treatAs: 'data_not_instructions' } as const;
+    const recent: GetTrainingStateRecentExercise = {
+      exerciseId: CATALOG_EXERCISE_ID_PUSHUP,
+      exerciseName: 'Push-Up',
+      metric: 'reps',
+      lastTrainedOn: '2026-03-16',
+      bestSetDirection: NO_DIRECTION,
+      sessionTotalDirection: NO_DIRECTION,
+      rule: 'P156 rule',
+      exerciseKey: 'push_up',
+      exerciseOwnName: ownName,
+      exerciseOwnNameLanguage: 'de',
+    };
+    const record: PersonalRecordWithName = {
+      exerciseId: CATALOG_EXERCISE_ID_PUSHUP,
+      exerciseName: 'Push-Up',
+      value: 20,
+      achievedOn: '2026-03-16',
+      exerciseKey: 'push_up',
+      exerciseOwnName: ownName,
+      exerciseOwnNameLanguage: 'de',
+    };
+    expect(recent.exerciseOwnNameLanguage).toBe('de');
+    expect(record.exerciseOwnName).toEqual(ownName);
+
+    // Runtime: the real handler puts exactly these keys into both lists.
+    const base = snapshotWithZone(TZ);
+    const snapshot: DecryptedSnapshot = {
+      ...base,
+      settings: [...base.settings, { key: 'default_language', type: 's', value: 'de' }],
+      exerciseNameOverrides: [
+        {
+          exerciseId: CATALOG_EXERCISE_ID_PUSHUP,
+          languageCode: 'de',
+          name: ownName.text,
+          description: null,
+          updatedAt: 1_700_000_500_000,
+        },
+      ],
+    };
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    const result = await getHandler(server)({});
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as GetTrainingStateResult;
+
+    const recentPushUp = body.recentExercises.find((e) => e.exerciseId === CATALOG_EXERCISE_ID_PUSHUP);
+    expect(recentPushUp).toBeDefined();
+    expect(recentPushUp?.exerciseOwnName).toEqual(ownName);
+    expect(recentPushUp?.exerciseOwnNameLanguage).toBe('de');
+    expect(recentPushUp?.exerciseName).toBe('Push-Up');
+
+    const recordPushUp = body.personalRecords.maxReps.find((r) => r.exerciseId === CATALOG_EXERCISE_ID_PUSHUP);
+    expect(recordPushUp).toBeDefined();
+    expect(recordPushUp?.exerciseOwnName).toEqual(ownName);
+    expect(recordPushUp?.exerciseOwnNameLanguage).toBe('de');
+
+    // Entries of other exercises carry neither key.
+    for (const entry of [...body.recentExercises, ...body.personalRecords.maxReps]) {
+      if (entry.exerciseId === CATALOG_EXERCISE_ID_PUSHUP) continue;
+      expect(entry).not.toHaveProperty('exerciseOwnName');
+      expect(entry).not.toHaveProperty('exerciseOwnNameLanguage');
+    }
+  });
+
+  it('P156 WR-MCP-04 get_training_state reports setting_unreadable for an unreadable language setting', async () => {
+    // The default_language row arrived but could not be decoded: it is missing from
+    // snapshot.settings and stands in the decode report with its key. The time-zone row
+    // is readable, so the tool runs.
+    const snapshot = snapshotWithZone(TZ);
+    const report: DecodeReport = {
+      unreadable: [{ entity: 'setting', id: 'set-lang', reason: 'decrypt_failed', key: 'default_language' }],
+      encryptedCount: { ...COUNTS_ZERO, setting: 2 },
+      failedCount: { ...COUNTS_ZERO, setting: 1 },
+    };
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...mockCacheFor(snapshot), decodeReport: report });
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    const result = await getHandler(server)({});
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text) as Record<string, unknown>;
+    expect(body.appLanguage).toBeNull();
+    expect(body.appLanguageUnavailableReason).toBe('setting_unreadable');
+    expect(Object.keys(body).slice(0, 4)).toEqual(['timeZoneId', 'appLanguage', 'appLanguageUnavailableReason', 'asOfDate']);
+    expect(body.unreadable).toEqual(report.unreadable);
+
+    // The same snapshot without the report entry still means "missing".
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+    const missing = JSON.parse((await getHandler(server)({})).content[0].text) as Record<string, unknown>;
+    expect(missing.appLanguageUnavailableReason).toBe('setting_not_synced');
+
+    // Another unreadable setting does not turn a missing language row into an unreadable one.
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(snapshot),
+      decodeReport: {
+        ...report,
+        unreadable: [{ entity: 'setting', id: 'set-other', reason: 'decrypt_failed', key: 'rest_seconds' }],
+      },
+    });
+    const other = JSON.parse((await getHandler(server)({})).content[0].text) as Record<string, unknown>;
+    expect(other.appLanguageUnavailableReason).toBe('setting_not_synced');
+  });
+
+  it('P156 WR-MCP-04 the description says missing or unreadable and names all three reasons', () => {
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const description = (server as any)._registeredTools['get_training_state'].description as string;
+    for (const fragment of ['missing or unreadable', 'setting_not_synced', 'setting_unrecognized', 'setting_unreadable']) {
+      expect(description, fragment).toContain(fragment);
+    }
+    expect(description).not.toContain('never travelled');
   });
 });

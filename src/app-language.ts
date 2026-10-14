@@ -13,15 +13,20 @@
  *
  * A value counts only when it consists of two to three lower-case letters
  * (`^[a-z]{2,3}$`, for example `de`). Otherwise the result is `null` with a named reason:
- * `setting_not_synced` when the row is missing (the app syncs `default_language` only once
- * the athlete has chosen a language), `setting_unrecognized` when its value is not such a
- * code. Unlike `resolveTimeZoneId`, this function NEVER throws: a missing app language only
- * takes away the own-name fallback, it never fails a tool.
+ * `setting_not_synced` only when the row is missing (the app syncs `default_language` only
+ * once the athlete has chosen a language), `setting_unreadable` when the row arrived but
+ * could not be decrypted or decoded (it then stands in the decode report's `unreadable`
+ * list with `entity: "setting"` and its key; Phase 156 gap round, WR-MCP-04, protocol 1.29),
+ * `setting_unrecognized` when its value is readable but not such a code. The decode report
+ * is optional: a caller without one (the name resolver, which only needs the code) gets
+ * `setting_not_synced` for an unreadable row too, which takes away the same fallback. Unlike
+ * `resolveTimeZoneId`, this function NEVER throws: a missing app language only takes away
+ * the own-name fallback, it never fails a tool.
  *
  * Pure, no I/O, no console output.
  */
 
-import type { DecryptedSnapshot } from './types.js';
+import type { DecodeReport, DecryptedSnapshot } from './types.js';
 
 /** The synchronized `settings` key carrying the app's chosen language code. */
 export const APP_LANGUAGE_SETTING_KEY = 'default_language';
@@ -29,19 +34,38 @@ export const APP_LANGUAGE_SETTING_KEY = 'default_language';
 /** The language code of the app, or `null` with the reason it is not available. */
 export type AppLanguageResolution =
   | { languageCode: string }
-  | { languageCode: null; reason: 'setting_not_synced' | 'setting_unrecognized' };
+  | { languageCode: null; reason: AppLanguageUnavailableReason };
+
+/**
+ * Why the app language is not available (protocol §1.7 "The app language"):
+ * `setting_not_synced` = the row is missing, `setting_unreadable` = the row arrived but
+ * cannot be decrypted or decoded, `setting_unrecognized` = readable but not a language code.
+ */
+export type AppLanguageUnavailableReason = 'setting_not_synced' | 'setting_unreadable' | 'setting_unrecognized';
 
 const LANGUAGE_CODE_PATTERN = /^[a-z]{2,3}$/;
 
 /**
  * Resolve the app language from a decrypted snapshot's `settings` array (protocol §1.7
- * "The app language"). Never throws.
+ * "The app language"). With the decode report of the same read, a `default_language` row
+ * listed there as unreadable yields `setting_unreadable` instead of `setting_not_synced`.
+ * Never throws.
  */
-export function resolveAppLanguage(snapshot: DecryptedSnapshot): AppLanguageResolution {
+export function resolveAppLanguage(
+  snapshot: DecryptedSnapshot,
+  report?: Pick<DecodeReport, 'unreadable'>,
+): AppLanguageResolution {
   const settings: DecryptedSnapshot['settings'] | undefined = snapshot.settings;
   const row = Array.isArray(settings) ? settings.find((s) => s.key === APP_LANGUAGE_SETTING_KEY) : undefined;
   if (!row) {
-    return { languageCode: null, reason: 'setting_not_synced' };
+    const unreadable: unknown = report?.unreadable;
+    const arrivedUnreadable =
+      Array.isArray(unreadable) &&
+      unreadable.some(
+        (r: { entity?: unknown; key?: unknown } | null | undefined) =>
+          r?.entity === 'setting' && r.key === APP_LANGUAGE_SETTING_KEY,
+      );
+    return { languageCode: null, reason: arrivedUnreadable ? 'setting_unreadable' : 'setting_not_synced' };
   }
   const value: unknown = row.value;
   if (typeof value !== 'string' || !LANGUAGE_CODE_PATTERN.test(value)) {
