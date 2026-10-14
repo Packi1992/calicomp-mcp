@@ -1432,3 +1432,202 @@ describe('decrypt-merge: foreign sport (Phase 155)', () => {
     expect(foreignSportAvailability(cache.snapshot, cache.decodeReport!)).toEqual({ available: true });
   });
 });
+
+// ── Decrypt-merge: own names of catalog exercises (Phase 156) ───────────────
+
+describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
+  const OVERRIDE_KEY_B64 = Buffer.from(Array.from({ length: 32 }, (_, i) => i)).toString('base64');
+  let ivCounter = 0;
+
+  /** A real `{"iv":...,"ct":...}` envelope; a fresh IV per call (test-only key). */
+  function encryptOverride(payload: Record<string, unknown>): string {
+    ivCounter += 1;
+    const iv = Buffer.alloc(12);
+    iv.writeUInt32BE(ivCounter, 4);
+    const cipher = createCipheriv('aes-256-gcm', Buffer.from(OVERRIDE_KEY_B64, 'base64'), iv);
+    const ctBuf = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final(), cipher.getAuthTag()]);
+    return JSON.stringify({ iv: iv.toString('base64'), ct: ctBuf.toString('base64') });
+  }
+
+  function overrideRow(id: string, clientLocalId: string, encryptedPayload: string): MiscSyncRow {
+    return {
+      id,
+      kind: 'exercise_name_override',
+      clientLocalId,
+      encryptedPayload,
+      createdAt: 1_791_400_000_000,
+      updatedAt: 1_791_400_000_000,
+    };
+  }
+
+  const SECRET_NAME = 'P156 private own name that must never reach a report';
+  const SECRET_DESCRIPTION = 'P156 private own description that must never reach a report';
+
+  /** The §1.7 plaintext form v1, key order binding. */
+  function overridePayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      v: 1,
+      exerciseId: '15600000-0000-4000-8000-0000000000a1',
+      languageCode: 'de',
+      name: SECRET_NAME,
+      description: null,
+      updatedAt: 1_791_450_000_000,
+      ...overrides,
+    };
+  }
+
+  const PLAINTEXT_SESSION: SyncSessionDto = {
+    id: 'sess-p156',
+    startTime: 1_791_200_000_000,
+    endTime: 1_791_203_600_000,
+    isManual: false,
+    isCorrected: false,
+    isQuickChallenge: false,
+    createdAt: 1_791_200_000_000,
+    updatedAt: 1_791_200_000_000,
+  };
+
+  const TEMPLATE = {
+    id: 'tpl-p156',
+    name: 'Pull',
+    createdAt: 1_791_000_000_000,
+    updatedAt: 1_791_000_000_000,
+    isFavoriteForWatch: false,
+  };
+
+  it('P156 D-11 decryptMerge leaves exerciseNameOverrides absent when the server sends none', async () => {
+    mockFetchSnapshot.mockResolvedValueOnce(makePull({ sessions: [PLAINTEXT_SESSION], templates: [TEMPLATE] }));
+
+    const cache = await getSnapshot(PAT, OVERRIDE_KEY_B64, URL);
+
+    // A server older than Phase 156: the key is left OUT, never an invented empty list.
+    expect(cache.snapshot).not.toHaveProperty('exerciseNameOverrides');
+    expect(cache.snapshot.sessions).toHaveLength(1);
+    expect(cache.snapshot.templates).toHaveLength(1);
+    expect(cache.decodeReport!.unreadable).toEqual([]);
+    expect(cache.decodeReport!.encryptedCount.exerciseNameOverride).toBe(0);
+    expect(cache.decodeReport!.failedCount.exerciseNameOverride).toBe(0);
+
+    // A Phase 156 server with no overrides sends an empty list, and the snapshot carries it.
+    __resetCache();
+    mockFetchSnapshot.mockResolvedValueOnce(makePull({ exerciseNameOverrides: [] }));
+    const fresh = await getSnapshot(PAT, OVERRIDE_KEY_B64, URL);
+    expect(fresh.snapshot.exerciseNameOverrides).toEqual([]);
+  });
+
+  it('P156 D-10 one unreadable override row lands in the decode report and leaves sessions, templates and other overrides readable', async () => {
+    const consoleSpies = (['log', 'warn', 'error', 'info', 'debug'] as const).map((m) =>
+      vi.spyOn(console, m).mockImplementation(() => undefined),
+    );
+    try {
+      const readable = encryptOverride(overridePayload({ description: SECRET_DESCRIPTION }));
+      // A real envelope with one flipped ciphertext byte: GCM authentication fails.
+      const broken = JSON.parse(
+        encryptOverride(overridePayload({ exerciseId: '15600000-0000-4000-8000-0000000000a2' })),
+      ) as { iv: string; ct: string };
+      const ctBuf = Buffer.from(broken.ct, 'base64');
+      ctBuf[0] ^= 0xff;
+      const tampered = JSON.stringify({ iv: broken.iv, ct: ctBuf.toString('base64') });
+      const versionTwo = encryptOverride(overridePayload({ v: 2, exerciseId: '15600000-0000-4000-8000-0000000000a3' }));
+      const emptyName = encryptOverride(overridePayload({ name: '', exerciseId: '15600000-0000-4000-8000-0000000000a4' }));
+
+      mockFetchSnapshot.mockResolvedValueOnce(
+        makePull({
+          sessions: [PLAINTEXT_SESSION],
+          templates: [TEMPLATE],
+          exerciseNameOverrides: [
+            overrideRow('row-eno-1', '15600000-0000-4000-8000-0000000000a1:de', readable),
+            overrideRow('row-eno-2', '15600000-0000-4000-8000-0000000000a2:de', tampered),
+            overrideRow('row-eno-3', '15600000-0000-4000-8000-0000000000a3:de', versionTwo),
+            overrideRow('row-eno-4', '15600000-0000-4000-8000-0000000000a4:de', emptyName),
+          ],
+        }),
+      );
+
+      const cache = await getSnapshot(PAT, OVERRIDE_KEY_B64, URL);
+      const { snapshot } = cache;
+      const report = cache.decodeReport!;
+
+      // The readable override is in the snapshot, in the §1.7 normal form.
+      expect(snapshot.exerciseNameOverrides).toEqual([
+        {
+          exerciseId: '15600000-0000-4000-8000-0000000000a1',
+          languageCode: 'de',
+          name: SECRET_NAME,
+          description: SECRET_DESCRIPTION,
+          updatedAt: 1_791_450_000_000,
+        },
+      ]);
+      // Each unreadable row is reported by entity, id, reason and routing timestamps only.
+      const routing = { createdAt: 1_791_400_000_000, updatedAt: 1_791_400_000_000 };
+      expect(report.unreadable).toEqual([
+        { entity: 'exerciseNameOverride', id: 'row-eno-2', reason: 'decrypt_failed', ...routing },
+        { entity: 'exerciseNameOverride', id: 'row-eno-3', reason: 'unknown_version', ...routing },
+        { entity: 'exerciseNameOverride', id: 'row-eno-4', reason: 'malformed_payload', ...routing },
+      ]);
+      expect(report.encryptedCount.exerciseNameOverride).toBe(4);
+      expect(report.failedCount.exerciseNameOverride).toBe(3);
+
+      // Sessions and templates stay readable; no readability guard trips (D-10).
+      expect(snapshot.sessions.map((s) => s.id)).toEqual(['sess-p156']);
+      expect(snapshot.templates.map((t) => t.id)).toEqual(['tpl-p156']);
+      expect(() =>
+        assertEntitiesReadable(
+          report,
+          ['session', 'setLog', 'hrSample', 'plannedWorkout', 'setting'],
+          'History error',
+        ),
+      ).not.toThrow();
+      expect(foreignSportAvailability(snapshot, report)).toEqual({
+        available: false,
+        reason: 'server_without_foreign_sport',
+      });
+
+      // No content, ciphertext, key or PAT in the report (T-156-25).
+      const reportJson = JSON.stringify(report);
+      expect(reportJson).not.toContain(SECRET_NAME);
+      expect(reportJson).not.toContain(SECRET_DESCRIPTION);
+      expect(reportJson).not.toContain(broken.ct);
+      expect(reportJson).not.toContain(OVERRIDE_KEY_B64);
+      expect(reportJson).not.toContain(PAT);
+      // Nothing was printed while decoding (MUST NOT log a decrypted own name).
+      for (const spy of consoleSpies) expect(spy).not.toHaveBeenCalled();
+    } finally {
+      for (const spy of consoleSpies) spy.mockRestore();
+    }
+  });
+
+  it('P156 D-01 an empty description decodes as null', async () => {
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        exerciseNameOverrides: [
+          overrideRow(
+            'row-eno-empty-desc',
+            '15600000-0000-4000-8000-0000000000a5:en',
+            encryptOverride(
+              overridePayload({
+                exerciseId: '15600000-0000-4000-8000-0000000000a5',
+                languageCode: 'en',
+                name: 'Close-grip chin-up',
+                description: '',
+              }),
+            ),
+          ),
+        ],
+      }),
+    );
+
+    const cache = await getSnapshot(PAT, OVERRIDE_KEY_B64, URL);
+
+    expect(cache.snapshot.exerciseNameOverrides).toEqual([
+      {
+        exerciseId: '15600000-0000-4000-8000-0000000000a5',
+        languageCode: 'en',
+        name: 'Close-grip chin-up',
+        description: null,
+        updatedAt: 1_791_450_000_000,
+      },
+    ]);
+    expect(cache.decodeReport!.unreadable).toEqual([]);
+  });
+});
