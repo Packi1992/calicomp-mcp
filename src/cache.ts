@@ -39,11 +39,14 @@
  *
  * Own names of catalog exercises (Phase 156, REN-01, D-10/D-11):
  *   `exerciseNameOverrides` (kind `exercise_name_override`, protocol §1.7) is always
- *   encrypted and decodes per row through the same front half as the foreign sport kinds
- *   (`decryptForeignPayload`). A missing wire field leaves the snapshot key OUT (a server
+ *   encrypted and decodes per row: the same decryption front half as the foreign sport
+ *   kinds (`decryptMiscPlaintext`), then the §1.7 decoding rules of
+ *   `decodeExerciseNameOverridePlaintext` (versions 1 and 2, the blank rule of
+ *   `isBlankOverrideText`). A missing wire field leaves the snapshot key OUT (a server
  *   older than Phase 156). An unreadable override row is counted in the `DecodeReport`
  *   under `exerciseNameOverride` and belongs to no readability check: it only takes away
- *   the own name of its one exercise in its one language, never a tool.
+ *   the own name of its one exercise in its one language, never a tool. Two readable rows
+ *   on the same key leave only the newer one in the snapshot (WR-MCP-03).
  *
  * Per-row decode fault tolerance (Phase 150, D-08/D-10/D-11/D-12):
  *   Sessions, set-logs, HR samples, planned workouts and settings ALL decode per row —
@@ -610,21 +613,14 @@ export function decryptPlannedWorkout(row: MiscSyncRow, keyB64: string): Decrypt
 const FOREIGN_LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * The common front half of the three foreign sport decoders (and, since Phase 156, of
- * `decryptExerciseNameOverride`): tombstone-shaped empty
- * payload, decrypt failure, plaintext that is not a JSON object, `v` not one of
- * `allowedVersions` (default `[1]`; the foreign sport decoders keep it, the own names of
- * catalog exercises read versions 1 and 2 since the gap round of Phase 156, D-22). Every
- * guard throws a `RowDecodeError` naming only the wire kind, the row id and the cause —
- * never plaintext, ciphertext or key material (T-120-17, T-155-24); the `v` that does not
- * match is not echoed either, because it comes from inside the decrypted payload.
+ * The decryption front half every misc decoder shares (the three foreign sport kinds and,
+ * since Phase 156, `exercise_name_override`; protocol §1.7 "Decoded rows", rules 1 and 2):
+ * a tombstone-shaped empty payload (`malformed_payload`) and a decrypt failure
+ * (`decrypt_failed`). Returns the decrypted plaintext JSON string. Every guard throws a
+ * `RowDecodeError` naming only the wire kind, the row id and the cause — never plaintext,
+ * ciphertext or key material (T-120-17, T-155-24).
  */
-function decryptForeignPayload(
-  row: MiscSyncRow,
-  keyB64: string,
-  wireKind: string,
-  allowedVersions: readonly number[] = [1],
-): Record<string, unknown> {
+function decryptMiscPlaintext(row: MiscSyncRow, keyB64: string, wireKind: string): string {
   if (!row.encryptedPayload) {
     throw new RowDecodeError(
       `${wireKind} row ${row.id} arrived with an empty encryptedPayload — this is the tombstone ` +
@@ -632,12 +628,21 @@ function decryptForeignPayload(
       'malformed_payload',
     );
   }
-  let plaintextJson: string;
   try {
-    plaintextJson = decrypt(row.encryptedPayload, keyB64);
+    return decrypt(row.encryptedPayload, keyB64);
   } catch {
     throw new RowDecodeError(`${wireKind} row ${row.id} could not be decrypted`, 'decrypt_failed');
   }
+}
+
+/**
+ * The common front half of the three foreign sport decoders: `decryptMiscPlaintext`, then
+ * a plaintext that is not a JSON object (`malformed_payload`) and `v !== 1`
+ * (`unknown_version`). The `v` that does not match is not echoed, because it comes from
+ * inside the decrypted payload.
+ */
+function decryptForeignPayload(row: MiscSyncRow, keyB64: string, wireKind: string): Record<string, unknown> {
+  const plaintextJson = decryptMiscPlaintext(row, keyB64, wireKind);
   let parsed: unknown;
   try {
     parsed = JSON.parse(plaintextJson);
@@ -648,7 +653,7 @@ function decryptForeignPayload(
     throw new RowDecodeError(`${wireKind} row ${row.id} has a malformed payload`, 'malformed_payload');
   }
   const plaintext = parsed as Record<string, unknown>;
-  if (typeof plaintext.v !== 'number' || !allowedVersions.includes(plaintext.v)) {
+  if (plaintext.v !== 1) {
     throw new RowDecodeError(`${wireKind} row ${row.id} has an unknown schema version`, 'unknown_version');
   }
   return plaintext;
@@ -776,41 +781,163 @@ export function decryptPlannedForeignActivity(row: MiscSyncRow, keyB64: string):
 // ---------------------------------------------------------------------------
 
 /**
- * Decrypt one `exercise_name_override` row into its §1.7 normal form
- * `{ exerciseId, languageCode, name, description, updatedAt }` (Phase 156, REN-01, D-11).
+ * The set W of protocol §1.7 "Blank text" as ONE character class over UTF-16 code units
+ * (no `u` flag: the class tests code units, exactly the unit §1.7 names):
+ * U+0009–U+000D, U+001C–U+0020, U+00A0, U+1680, U+2000–U+200D, U+2028, U+2029, U+202F,
+ * U+205F, U+2060, U+3000, U+FEFF.
  *
- * Unreadable (throws `RowDecodeError`): the front-half guards of `decryptForeignPayload` —
- * empty payload (`malformed_payload`), decrypt failure (`decrypt_failed`), plaintext that
- * is not a JSON object (`malformed_payload`), `v` neither 1 nor 2 (`unknown_version`) —
- * and a missing or empty `exerciseId`, `languageCode` or `name` (`malformed_payload`);
- * only version 2 may carry `name: null` (name not overridden, D-22).
+ * Deliberately NOT `String.prototype.trim()`: JavaScript's trim cuts U+FEFF but not U+001F
+ * (Kotlin's `isBlank()` does the opposite), and neither cuts U+200B although it looks just as
+ * empty. Both sides therefore test against this written-out list; the corpus pins it at the
+ * vectors `name-blank-unit-separator` (U+001F), `name-blank-zero-width` (U+200B U+FEFF),
+ * `name-blank-bom`, `name-blank-all-of-w` and `name-invisible-outside-w` (U+180E, readable).
+ */
+const BLANK_OVERRIDE_TEXT = /^[\u0009-\u000D\u001C-\u0020\u00A0\u1680\u2000-\u200D\u2028\u2029\u202F\u205F\u2060\u3000\uFEFF]*$/;
+
+/**
+ * Whether `value` is blank in the sense of protocol §1.7 "Blank text": empty, or only code
+ * units of the set W (`BLANK_OVERRIDE_TEXT`). Pure; never trims — blankness decides readable
+ * or unreadable, never the value (a visible name keeps code units of W at its edges).
+ */
+export function isBlankOverrideText(value: string): boolean {
+  return BLANK_OVERRIDE_TEXT.test(value);
+}
+
+/** A canonical lower-case UUID — the only readable `exerciseId` (§1.7 "Decoded rows", rule 5). */
+const CANONICAL_LOWER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * Decode the decrypted plaintext of one `exercise_name_override` row into its §1.7 normal
+ * form `{ exerciseId, languageCode, name, description, updatedAt }` (Phase 156 gap round,
+ * WR-MCP-03, IN-TC-07, D-22). Pure and exported: the corpus section
+ * `exerciseNameOverrideDecode` replays every vector through exactly this function
+ * (`tests/shared-vectors.test.ts`), and the app's decoder replays the same vectors, so both
+ * languages decide every row the same way.
  *
- * `description` is a string or `null`; an empty string decodes as `null` (D-01: never the
- * empty string). A decoder neither cuts nor rejects a value because of its length — the
- * corpus pins a name at `NAME_MAX` and a description at `DESCRIPTION_MAX` byte for byte.
- * `updatedAt` is the edit time inside the payload, else the wire row's routing timestamp.
+ * The rules of §1.7 "Decoded rows", checked in this order; the first failing rule names the
+ * reason (rules 1 and 2, empty payload and decryption, lie before this level):
+ *   3. not a JSON object → `malformed_payload`;
+ *   4. `v` missing, not an integer or neither 1 nor 2 → `unknown_version`;
+ *   5. → `malformed_payload`: `exerciseId` not a canonical lower-case UUID; `languageCode`
+ *      not a non-empty string; `"<exerciseId>:<languageCode>"` not the row's `clientLocalId`;
+ *      `updatedAt` missing or not an integer (no fallback to the server clock any more);
+ *      version 1: `name` missing, not a string or blank; version 2: `name` missing, neither a
+ *      string nor `null`, or blank; `description` present and neither a string nor `null`;
+ *      version 2 without an own value (`name` null and no non-blank description).
+ * A readable row: unknown keys ignored, a blank or missing description is `null`, no value
+ * is trimmed or cut for its length. "Blank" is `isBlankOverrideText`.
  *
- * Exported and throwing for the same reason as `decryptPlannedWorkout`: the corpus replay
+ * Every violation throws a `RowDecodeError` naming only the row id and the cause — never
+ * the name, the description, `v` or anything else from inside the payload (T-156-99).
+ */
+export function decodeExerciseNameOverridePlaintext(
+  plaintextJson: string,
+  row: Pick<MiscSyncRow, 'id' | 'clientLocalId'>,
+): DecryptedExerciseNameOverride {
+  const malformed = (): RowDecodeError =>
+    new RowDecodeError(`exercise_name_override row ${row.id} has a malformed payload`, 'malformed_payload');
+
+  // Rule 3: a JSON object.
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(plaintextJson);
+  } catch {
+    throw malformed();
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw malformed();
+  }
+  const p = parsed as Record<string, unknown>;
+
+  // Rule 4: v is the integer 1 or 2 (the string "1", 1.5, null and a missing v are not).
+  const v = p.v;
+  if (v !== 1 && v !== 2) {
+    throw new RowDecodeError(`exercise_name_override row ${row.id} has an unknown schema version`, 'unknown_version');
+  }
+
+  // Rule 5: identity, key, edit time, name, description.
+  const exerciseId = p.exerciseId;
+  if (typeof exerciseId !== 'string' || !CANONICAL_LOWER_UUID.test(exerciseId)) throw malformed();
+  const languageCode = p.languageCode;
+  if (typeof languageCode !== 'string' || languageCode.length === 0) throw malformed();
+  if (`${exerciseId}:${languageCode}` !== row.clientLocalId) throw malformed();
+  const updatedAt = p.updatedAt;
+  if (typeof updatedAt !== 'number' || !Number.isInteger(updatedAt)) throw malformed();
+
+  const rawName = p.name;
+  let name: string | null;
+  if (typeof rawName === 'string') {
+    if (isBlankOverrideText(rawName)) throw malformed();
+    name = rawName;
+  } else if (v === 2 && rawName === null) {
+    name = null; // version 2: the name is not overridden and stays the catalog name (D-22)
+  } else {
+    throw malformed(); // missing, wrong type, or null in version 1
+  }
+
+  const rawDescription = p.description;
+  if (rawDescription !== undefined && rawDescription !== null && typeof rawDescription !== 'string') {
+    throw malformed();
+  }
+  const description =
+    typeof rawDescription === 'string' && !isBlankOverrideText(rawDescription) ? rawDescription : null;
+
+  // Version 2 without an own value: no override at all.
+  if (name === null && description === null) throw malformed();
+
+  return { exerciseId, languageCode, name, description, updatedAt };
+}
+
+/**
+ * Decrypt one `exercise_name_override` row into its §1.7 normal form (Phase 156, REN-01,
+ * D-11; versions 1 and 2 since the gap round, D-22): `decryptMiscPlaintext` (rules 1 and 2:
+ * empty payload `malformed_payload`, decrypt failure `decrypt_failed`), then
+ * `decodeExerciseNameOverridePlaintext` (rules 3 to 5). The edit time is the payload's own
+ * `updatedAt`; a row without one is unreadable (no fallback to the wire row's timestamp).
+ *
+ * Exported and throwing for the same reason as `decryptPlannedWorkout`: the corpus replays
  * (`tests/shared-vectors.test.ts`) must run through this exact function. Never logs —
  * `name` and `description` are athlete free text, and no error message carries them.
  */
 export function decryptExerciseNameOverride(row: MiscSyncRow, keyB64: string): DecryptedExerciseNameOverride {
-  const p = decryptForeignPayload(row, keyB64, 'exercise_name_override', [1, 2]);
-  const exerciseId = requiredString(p.exerciseId);
-  const languageCode = requiredString(p.languageCode);
-  // Version 2 (D-22): `name: null` = the name is not overridden and stays the catalog name.
-  const name: string | null | undefined = p.v === 2 && p.name === null ? null : requiredString(p.name);
-  if (exerciseId === undefined || languageCode === undefined || name === undefined) {
-    throw new RowDecodeError(`exercise_name_override row ${row.id} has a malformed payload`, 'malformed_payload');
+  return decodeExerciseNameOverridePlaintext(decryptMiscPlaintext(row, keyB64, 'exercise_name_override'), row);
+}
+
+/** `a` is the newer state than `b` (§1.7 "Decoded rows", two rows on the same key). */
+function isNewerOverrideRow(
+  a: { row: MiscSyncRow; override: DecryptedExerciseNameOverride },
+  b: { row: MiscSyncRow; override: DecryptedExerciseNameOverride },
+): boolean {
+  if (a.override.updatedAt !== b.override.updatedAt) return a.override.updatedAt > b.override.updatedAt;
+  if (a.row.updatedAt !== b.row.updatedAt) return a.row.updatedAt > b.row.updatedAt;
+  return a.row.id > b.row.id;
+}
+
+/**
+ * Decode every override row (per-row fault tolerance through `decodeForeignRows`) and keep
+ * ONE entry per key `"<exerciseId>:<languageCode>"` (WR-MCP-03; §1.7 "Decoded rows"): the
+ * larger `updatedAt` from the payload, on a tie the larger server `updatedAt` of the row,
+ * then the lexicographically larger row id. The other row is a superseded state, not an
+ * unreadable one, and is dropped silently. The winners keep their order in the pull.
+ */
+function decodeExerciseNameOverrides(
+  rows: MiscSyncRow[],
+  keyB64: string,
+  report: DecodeReport,
+): DecryptedExerciseNameOverride[] {
+  const decoded = decodeForeignRows(rows, keyB64, report, 'exerciseNameOverride', (row, key) => ({
+    row,
+    override: decryptExerciseNameOverride(row, key),
+  }));
+  const newestByKey = new Map<string, (typeof decoded)[number]>();
+  for (const entry of decoded) {
+    const key = `${entry.override.exerciseId}:${entry.override.languageCode}`;
+    const current = newestByKey.get(key);
+    if (current === undefined || isNewerOverrideRow(entry, current)) newestByKey.set(key, entry);
   }
-  const description = optionalString(p.description);
-  return {
-    exerciseId,
-    languageCode,
-    name,
-    description: description === '' ? null : description,
-    updatedAt: timestampOr(p.updatedAt, row.updatedAt),
-  };
+  return decoded
+    .filter((entry) => newestByKey.get(`${entry.override.exerciseId}:${entry.override.languageCode}`) === entry)
+    .map((entry) => entry.override);
 }
 
 /**
@@ -1087,12 +1214,9 @@ function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: Decryp
     // Phase 156 (D-11): same rule as the foreign fields — the server sends the field
     // always (Plan 156-04); a missing one means a server older than Phase 156, and the
     // snapshot key is then left out rather than reported as "no own names".
+    // Gap round (WR-MCP-03): one entry per key, the newer state (decodeExerciseNameOverrides).
     ...(raw.exerciseNameOverrides != null
-      ? {
-          exerciseNameOverrides: decodeForeignRows(
-            raw.exerciseNameOverrides, keyB64, decodeReport, 'exerciseNameOverride', decryptExerciseNameOverride,
-          ),
-        }
+      ? { exerciseNameOverrides: decodeExerciseNameOverrides(raw.exerciseNameOverrides, keyB64, decodeReport) }
       : {}),
   };
 

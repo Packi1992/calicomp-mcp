@@ -36,6 +36,8 @@ import {
   decryptForeignActivityType,
   decryptPlannedForeignActivity,
   decryptExerciseNameOverride,
+  decodeExerciseNameOverridePlaintext,
+  RowDecodeError,
 } from '../src/cache.js';
 import { FOREIGN_BUILTIN_TYPES } from '../src/foreign-types.js';
 import { assignForeignFulfilment, foreignFulfilmentRatio } from '../src/training-state/foreign-adherence.js';
@@ -659,6 +661,59 @@ describe('shared coach-planning vector corpus', () => {
       }
       expect(decodedCount).toBe(2);
       expect(nullNameSeen).toBe(1);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // exerciseNameOverrideDecode section (Phase 156 gap round, WR-MCP-03, IN-TC-07): the
+  // decoding rules of §1.7 "Decoded rows" at the plaintext level, through the REAL
+  // `decodeExerciseNameOverridePlaintext` that `decryptExerciseNameOverride` (and thereby
+  // `decryptMerge`) uses. The Kotlin twin (ExerciseNameOverrideDecodeVectorsTest.kt, plan
+  // 156-32) replays the same vectors, so both languages decide every row the same way.
+  // Expected outcomes are derived by hand from §1.7 and never adjusted to the code.
+  // -----------------------------------------------------------------------
+
+  describe('exerciseNameOverrideDecode vectors', () => {
+    it('P156 WR-MCP-03 exerciseNameOverrideDecode section holds all 54 vectors', () => {
+      // A replay that read fewer vectors than the corpus carries would pass vacuously.
+      expect(corpus.exerciseNameOverrideDecode).toHaveLength(54);
+      expect(new Set(corpus.exerciseNameOverrideDecode.map((v) => v.name)).size).toBe(54);
+    });
+
+    it('P156 WR-MCP-03 every exerciseNameOverrideDecode vector decodes to its expected outcome', () => {
+      let readableSeen = 0;
+      let unreadableSeen = 0;
+      for (const vector of corpus.exerciseNameOverrideDecode) {
+        const row = { id: `exercise_name_override-${vector.name}`, clientLocalId: vector.clientLocalId };
+        const expected = vector.expected;
+        if (expected.readable) {
+          const decoded = decodeExerciseNameOverridePlaintext(vector.plaintext, row);
+          // toStrictEqual: same keys, same values, nothing extra — the normal form exactly,
+          // byte for byte (no trimming, no cutting for length).
+          expect({ ...decoded }, vector.name).toStrictEqual(expected.decoded);
+          expect(Object.keys(decoded), vector.name).toEqual(Object.keys(expected.decoded));
+          readableSeen += 1;
+        } else {
+          let caught: unknown;
+          try {
+            decodeExerciseNameOverridePlaintext(vector.plaintext, row);
+          } catch (err) {
+            caught = err;
+          }
+          expect(caught, vector.name).toBeInstanceOf(RowDecodeError);
+          expect((caught as RowDecodeError).reason, vector.name).toBe(expected.reason);
+          // The message names the row id and the cause only, never content from the payload.
+          expect((caught as RowDecodeError).message, vector.name).toMatch(
+            new RegExp(
+              `^exercise_name_override row ${row.id} has (a malformed payload|an unknown schema version)$`,
+            ),
+          );
+          unreadableSeen += 1;
+        }
+      }
+      expect(readableSeen + unreadableSeen).toBe(54);
+      expect(readableSeen).toBeGreaterThan(0);
+      expect(unreadableSeen).toBeGreaterThan(0);
     });
   });
 

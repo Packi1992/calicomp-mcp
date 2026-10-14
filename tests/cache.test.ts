@@ -29,6 +29,7 @@ import type {
   SyncExerciseTranslationDto,
   SyncSessionDto,
   MiscSyncRow,
+  CatalogExercise,
 } from '../src/types.js';
 
 // ── Module mocks (hoisted by vitest before static imports) ──────────────────
@@ -39,8 +40,15 @@ vi.mock('../src/crypto.js', async () => {
 });
 
 // ── Imports after mocks ──────────────────────────────────────────────────────
-import { getSnapshot, __resetCache, projectUserExerciseToCatalog, decryptSession } from '../src/cache.js';
+import {
+  getSnapshot,
+  __resetCache,
+  projectUserExerciseToCatalog,
+  decryptSession,
+  isBlankOverrideText,
+} from '../src/cache.js';
 import { assertEntitiesReadable, foreignSportAvailability } from '../src/read-guard.js';
+import { createExerciseNameResolver } from '../src/exercise-names.js';
 import * as httpModule from '../src/http.js';
 import * as cryptoModule from '../src/crypto.js';
 
@@ -1631,5 +1639,191 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
       },
     ]);
     expect(cache.decodeReport!.unreadable).toEqual([]);
+  });
+  // ── Phase 156 gap round: decoding rules as in the app (WR-MCP-03, IN-TC-07, D-04) ──
+
+  const ID_A = '15600000-0000-4000-8000-0000000000b1';
+  const ID_B = '15600000-0000-4000-8000-0000000000b2';
+  const ID_C = '15600000-0000-4000-8000-0000000000b3';
+  const ID_D = '15600000-0000-4000-8000-0000000000b4';
+  const ID_E = '15600000-0000-4000-8000-0000000000b5';
+
+  /** A curated catalog exercise for the resolver (German catalog name `Katalog <key>`). */
+  function catalogExercise(id: string, key: string): CatalogExercise {
+    return {
+      id,
+      key,
+      nameEn: `Catalog ${key}`,
+      mode: 'REPS',
+      usesWeight: false,
+      lastModifiedAt: 1_700_000_000_000,
+      translations: [{ languageCode: 'de', name: `Katalog ${key}` }],
+      muscleGroups: [],
+      equipment: [],
+      capabilities: [],
+      origin: 'CATALOG',
+    };
+  }
+
+  /** A wire row with its own server `updatedAt` (the tie-break after the payload's). */
+  function rowAt(id: string, clientLocalId: string, encryptedPayload: string, rowUpdatedAt: number): MiscSyncRow {
+    return { ...overrideRow(id, clientLocalId, encryptedPayload), updatedAt: rowUpdatedAt };
+  }
+
+  it('P156 WR-MCP-03 two rows on the same key keep the one with the newer payload updatedAt', async () => {
+    const payloadA = (name: string, updatedAt: number) =>
+      encryptOverride(overridePayload({ exerciseId: ID_A, name, updatedAt }));
+    const other = encryptOverride(overridePayload({ exerciseId: ID_B, name: 'P156 B bleibt', updatedAt: 5 }));
+    const keyA = `${ID_A}:de`;
+    const keyB = `${ID_B}:de`;
+
+    const scenarios: Array<{ label: string; rows: MiscSyncRow[]; winner: string }> = [
+      {
+        // The newer payload stands FIRST, so "the later one in the array wins" would fail.
+        label: 'newer payload updatedAt',
+        rows: [
+          rowAt('row-a-new', keyA, payloadA('P156 neuer Stand', 2_000), 1_000),
+          rowAt('row-b', keyB, other, 1_000),
+          rowAt('row-a-old', keyA, payloadA('P156 alter Stand', 1_000), 9_000),
+        ],
+        winner: 'P156 neuer Stand',
+      },
+      {
+        label: 'payload tie, larger server updatedAt of the row',
+        rows: [
+          rowAt('row-a-1', keyA, payloadA('P156 Server neuer', 3_000), 8_000),
+          rowAt('row-b', keyB, other, 1_000),
+          rowAt('row-a-2', keyA, payloadA('P156 Server aelter', 3_000), 7_000),
+        ],
+        winner: 'P156 Server neuer',
+      },
+      {
+        label: 'payload and row tie, lexicographically larger row id',
+        rows: [
+          rowAt('row-a-z', keyA, payloadA('P156 Id groesser', 3_000), 8_000),
+          rowAt('row-b', keyB, other, 1_000),
+          rowAt('row-a-a', keyA, payloadA('P156 Id kleiner', 3_000), 8_000),
+        ],
+        winner: 'P156 Id groesser',
+      },
+    ];
+
+    const catalog = [catalogExercise(ID_A, 'p156_a'), catalogExercise(ID_B, 'p156_b')];
+    for (const scenario of scenarios) {
+      __resetCache();
+      mockFetchSnapshot.mockResolvedValueOnce(makePull({ exerciseNameOverrides: scenario.rows }));
+      const cache = await getSnapshot(PAT, OVERRIDE_KEY_B64, URL);
+      const overrides = cache.snapshot.exerciseNameOverrides ?? [];
+
+      // Exactly one entry per key; the other key is untouched and the order is kept.
+      expect(overrides.map((o) => `${o.exerciseId}:${o.languageCode}`), scenario.label).toEqual([keyA, keyB]);
+      expect(overrides[0].name, scenario.label).toBe(scenario.winner);
+      expect(overrides[1].name, scenario.label).toBe('P156 B bleibt');
+      // A superseded row is dropped silently: it is not unreadable.
+      expect(cache.decodeReport!.unreadable, scenario.label).toEqual([]);
+      expect(cache.decodeReport!.failedCount.exerciseNameOverride, scenario.label).toBe(0);
+
+      // The resolver and the catalog tool see the same single winner.
+      const resolver = createExerciseNameResolver({ catalog, snapshot: cache.snapshot, lang: 'de' });
+      expect(resolver.forExerciseId(ID_A).exerciseOwnName?.text, scenario.label).toBe(scenario.winner);
+    }
+  });
+
+  it('P156 WR-MCP-03 a row whose payload names another exercise than its key is unreadable and gives no own name', async () => {
+    const consoleSpies = (['log', 'warn', 'error', 'info', 'debug'] as const).map((m) =>
+      vi.spyOn(console, m).mockImplementation(() => undefined),
+    );
+    try {
+      // Key names exercise A, the payload names exercise B (T-156-97).
+      const crossed = encryptOverride(overridePayload({ exerciseId: ID_B, name: SECRET_NAME }));
+      mockFetchSnapshot.mockResolvedValueOnce(
+        makePull({ exerciseNameOverrides: [overrideRow('row-crossed', `${ID_A}:de`, crossed)] }),
+      );
+      const cache = await getSnapshot(PAT, OVERRIDE_KEY_B64, URL);
+
+      expect(cache.snapshot.exerciseNameOverrides).toEqual([]);
+      expect(cache.decodeReport!.unreadable).toEqual([
+        {
+          entity: 'exerciseNameOverride',
+          id: 'row-crossed',
+          reason: 'malformed_payload',
+          createdAt: 1_791_400_000_000,
+          updatedAt: 1_791_400_000_000,
+        },
+      ]);
+      expect(JSON.stringify(cache.decodeReport)).not.toContain(SECRET_NAME);
+
+      const catalog = [catalogExercise(ID_A, 'p156_a'), catalogExercise(ID_B, 'p156_b')];
+      const resolver = createExerciseNameResolver({ catalog, snapshot: cache.snapshot, lang: 'de' });
+      for (const id of [ID_A, ID_B]) {
+        expect(resolver.forExerciseId(id)).not.toHaveProperty('exerciseOwnName');
+        expect(resolver.forExerciseId(id)).not.toHaveProperty('exerciseOwnNameLanguage');
+      }
+      for (const spy of consoleSpies) expect(spy).not.toHaveBeenCalled();
+    } finally {
+      for (const spy of consoleSpies) spy.mockRestore();
+    }
+  });
+
+  it('P156 D-04 a pulled override with a blank name is unreadable and leaves no own name', async () => {
+    const zeroWidth = encryptOverride(overridePayload({ exerciseId: ID_C, name: '\u200B\uFEFF' }));
+    const spaces = encryptOverride(overridePayload({ exerciseId: ID_D, name: '   ' }));
+    // A visible name with code units from W at its edges stays byte for byte as it is.
+    const visibleWithEdges = encryptOverride(overridePayload({ exerciseId: ID_E, name: '\uFEFFDips ' }));
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        exerciseNameOverrides: [
+          overrideRow('row-blank-zw', `${ID_C}:de`, zeroWidth),
+          overrideRow('row-blank-sp', `${ID_D}:de`, spaces),
+          overrideRow('row-visible', `${ID_E}:de`, visibleWithEdges),
+        ],
+      }),
+    );
+    const cache = await getSnapshot(PAT, OVERRIDE_KEY_B64, URL);
+
+    expect(cache.snapshot.exerciseNameOverrides?.map((o) => o.exerciseId)).toEqual([ID_E]);
+    expect(cache.snapshot.exerciseNameOverrides?.[0].name).toBe('\uFEFFDips ');
+    const routing = { createdAt: 1_791_400_000_000, updatedAt: 1_791_400_000_000 };
+    expect(cache.decodeReport!.unreadable).toEqual([
+      { entity: 'exerciseNameOverride', id: 'row-blank-zw', reason: 'malformed_payload', ...routing },
+      { entity: 'exerciseNameOverride', id: 'row-blank-sp', reason: 'malformed_payload', ...routing },
+    ]);
+
+    const catalog = [
+      catalogExercise(ID_C, 'p156_c'),
+      catalogExercise(ID_D, 'p156_d'),
+      catalogExercise(ID_E, 'p156_e'),
+    ];
+    const resolver = createExerciseNameResolver({ catalog, snapshot: cache.snapshot, lang: 'de' });
+    expect(resolver.forExerciseId(ID_C)).toEqual({ exerciseName: 'Katalog p156_c', exerciseKey: 'p156_c' });
+    expect(resolver.forExerciseId(ID_D)).toEqual({ exerciseName: 'Katalog p156_d', exerciseKey: 'p156_d' });
+    expect(resolver.forExerciseId(ID_E).exerciseOwnName?.text).toBe('\uFEFFDips ');
+  });
+
+  it('P156 D-04 isBlankOverrideText tests exactly the set W of §1.7, never trim()', () => {
+    // The set W of protocol §1.7 "Blank text", written out as code unit ranges.
+    const W: Array<[number, number]> = [
+      [0x0009, 0x000d], [0x001c, 0x0020], [0x00a0, 0x00a0], [0x1680, 0x1680], [0x2000, 0x200d],
+      [0x2028, 0x2029], [0x202f, 0x202f], [0x205f, 0x205f], [0x2060, 0x2060], [0x3000, 0x3000],
+      [0xfeff, 0xfeff],
+    ];
+    const inW = (unit: number): boolean => W.some(([lo, hi]) => unit >= lo && unit <= hi);
+    let blankUnits = 0;
+    for (let unit = 0; unit <= 0xffff; unit += 1) {
+      const text = String.fromCharCode(unit);
+      expect(isBlankOverrideText(text), `U+${unit.toString(16).padStart(4, '0')}`).toBe(inW(unit));
+      if (inW(unit)) blankUnits += 1;
+    }
+    expect(blankUnits).toBe(5 + 5 + 1 + 1 + 14 + 2 + 1 + 1 + 1 + 1 + 1);
+    expect(isBlankOverrideText('')).toBe(true);
+    expect(isBlankOverrideText(' \u001f\u3000\u200b\ufeff')).toBe(true);
+    expect(isBlankOverrideText(' a ')).toBe(false);
+    // Where JavaScript's own trim() differs from W (the reason not to use it).
+    expect('\u001f'.trim()).toBe('\u001f');
+    expect(isBlankOverrideText('\u001f')).toBe(true);
+    expect('\u200b'.trim()).toBe('\u200b');
+    expect(isBlankOverrideText('\u200b')).toBe(true);
+    expect('\u180e'.trim()).toBe('\u180e');
+    expect(isBlankOverrideText('\u180e')).toBe(false);
   });
 });
