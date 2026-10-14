@@ -158,8 +158,8 @@ CaliCompanion super-repo.
 ## Own names of catalog exercises (since 1.3.0)
 
 The athlete can rename a catalog exercise in the app. Such an **override** is personal and
-encrypted: it replaces the name (and optionally the description) of one catalog exercise in one
-language, travels through the athlete's encrypted sync, and the server only ever holds ciphertext.
+encrypted: it replaces the name, the description or both of one catalog exercise in one language,
+travels through the athlete's encrypted sync, and the server only ever holds ciphertext.
 Since 1.3.0 the coach sees the own name next to the catalog name. Every field below is a **new
 key**; every existing key keeps its value — above all, `exerciseName` stays the catalog name,
 byte for byte as before.
@@ -181,19 +181,32 @@ byte for byte as before.
   otherwise English) and never follows `default_language`.
 - **The app language.** `appLanguage` is the value of `default_language` when it is a code of two
   to three lower-case letters, for example `de`. Otherwise it is `null`, and
-  `appLanguageUnavailableReason` says why: `setting_not_synced` (the app syncs the setting only
-  once the athlete has chosen a language) or `setting_unrecognized`. The tool never fails because
-  of it.
-- **Absent, not null.** Without an override in the effective language — and always for the
-  athlete's own exercises, a deleted or unknown exercise, an unreadable override row, or a server
-  older than phase 156 — the new name fields are missing, and every output is exactly as before.
+  `appLanguageUnavailableReason` says why: `setting_not_synced` (the setting row is missing; the
+  app syncs the setting only once the athlete has chosen a language), `setting_unreadable` (the
+  setting arrived but could not be decrypted or decoded) or `setting_unrecognized` (readable, but
+  not such a code). The tool never fails because of it.
+- **Absent, not null.** Without an override in the effective language, with a description-only
+  override (see below), for the athlete's own exercises, a deleted or unknown exercise, and
+  against a server older than phase 156, the new name fields are missing; nothing else in the
+  output changes.
+- **Description only.** An override can change only the description and keep the name (payload
+  version 2 with `name: null`). The name then stays the catalog name and keeps following catalog
+  updates: the tools carry no `exerciseOwnName` for that exercise, and `get_exercise_catalog` no
+  `ownName`.
+- **An unreadable override is visible, not silent.** An override row that cannot be decrypted or
+  decoded, one with a blank name included (empty or only characters of the list in § 1.7 "Blank
+  text", since protocol 1.29), stands in `unreadable` with `entity: "exerciseNameOverride"`, its
+  `id` and its `reason`, never its content. It takes away only the own name of that exercise in
+  that language; `exerciseName`, `exerciseKey`, the own names of every other exercise and every
+  other key stay complete. The descriptions of the six tools with an `unreadable` list say the
+  same.
 - **No own description.** An overridden description is decoded but not output by any tool of
-  this version.
+  this version; a readable description-only override therefore changes no tool output.
 - **Freshness.** A freshly entered own name can be missing for up to 60 seconds (snapshot cache).
 
 The contract — the payload form, the conflict rule between devices, the decoding rules, the
 language rule and the field names — is § 1.7 "Own names of catalog exercises" of
-`docs/COACH-PLANNING-PROTOCOL.md` in the CaliCompanion super-repo.
+`docs/COACH-PLANNING-PROTOCOL.md` (version 1.29) in the CaliCompanion super-repo.
 
 ## Building
 

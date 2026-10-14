@@ -151,13 +151,6 @@ const OVERRIDE_UNREADABLE_SENTENCE =
   'An entry with entity "exerciseNameOverride" only takes away that exercise\'s own name; ' +
   'every other field is complete.';
 
-/** The tools that already carry {@link OVERRIDE_UNREADABLE_SENTENCE}. */
-const OVERRIDE_UNREADABLE_SENTENCE_TOOL_NAMES = [
-  'get_progress',
-  'get_training_state',
-  'get_history',
-] as const;
-
 /** Phase 150, D-29 — the two calendar tools that point to `get_template` for exercises. */
 const CALENDAR_TOOL_NAMES = ['get_planned_workouts', 'get_adherence'] as const;
 
@@ -327,7 +320,7 @@ describe('tool registration — all 19 tools (13 READ + 6 WRITE)', () => {
     }
   });
 
-  it.each(OVERRIDE_UNREADABLE_SENTENCE_TOOL_NAMES)(
+  it.each(UNREADABLE_CARRYING_TOOL_NAMES)(
     "P156 WR-MCP-02 %s says an exerciseNameOverride entry only takes away that exercise's own name",
     (name) => {
       // Protocol 1.29 §1.7 "Tool outputs": an unreadable override row stands in unreadable with

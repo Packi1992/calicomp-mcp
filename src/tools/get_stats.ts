@@ -568,7 +568,9 @@ export function registerToolGetStats(
         'proposals by exerciseId and exerciseKey, never by an own name. ' +
         'Every result carries unreadable: rows ' +
         'that could not be decrypted or decoded (entity, id, reason and plaintext routing ' +
-        'fields); an empty list means every encrypted row was read.',
+        'fields); an empty list means every encrypted row was read. An entry with entity ' +
+        '"exerciseNameOverride" only takes away that exercise\'s own name; every other field ' +
+        'is complete.',
       inputSchema: GetStatsSchema,
       annotations: { readOnlyHint: true },
     },

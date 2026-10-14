@@ -214,7 +214,9 @@ export function registerToolGetAdherence(
         'to write the full pair/missed lists to a local file instead of returning them inline. ' +
         'Every result carries unreadable: rows that could not be decrypted or decoded (entity, ' +
         'id, reason and plaintext routing fields), independent of the date window; an empty ' +
-        'list means every encrypted row was read. If any session/set-log/setting row of a kind ' +
+        'list means every encrypted row was read. An entry with entity "exerciseNameOverride" ' +
+        'only takes away that exercise\'s own name; every other field is complete. ' +
+        'If any session/set-log/setting row of a kind ' +
         'this tool needs, any planned_workout row, or the athlete\'s time-zone setting cannot be ' +
         'decoded, this tool fails instead of returning a partial or misleading answer. This tool ' +
         'lists no exerciseId: every occurrence carries templateName; read the exercises of a ' +
