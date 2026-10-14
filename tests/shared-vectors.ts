@@ -278,6 +278,56 @@ const ExerciseNameOverrideCipherVectorSchema = z.object({
 });
 
 /**
+ * Phase 156 gap round (D-22, plan 156-26): `exerciseNameOverrideCipherV2` — the plaintext
+ * form version 2 of §1.7, a description-only override (`name: null`) and a version-2 row
+ * that carries a name (read-only, the writer never produces it). Same form and same fixed
+ * test key as `exerciseNameOverrideCipher`; `expectedDecoded.name` is a string or `null`.
+ */
+const ExerciseNameOverrideCipherV2VectorSchema = z.object({
+  name: z.string().min(1),
+  keyB64: z.string().min(1),
+  ciphertextJson: z.string().min(1),
+  expectedPlaintextString: z.string().min(1),
+  expectedPlaintext: z.record(z.string(), z.unknown()),
+  expectedDecoded: z.object({
+    exerciseId: z.string(),
+    languageCode: z.string(),
+    name: z.string().nullable(),
+    description: z.string().nullable(),
+    updatedAt: z.number().int(),
+  }),
+  byteRoundTrip: z.boolean(),
+});
+
+/**
+ * Phase 156 gap round (WR-MCP-03, IN-TC-07, plan 156-26): `exerciseNameOverrideDecode` —
+ * the decoding rules of §1.7 "Decoded rows" at the plaintext level (no encryption). Each
+ * vector names the row's `clientLocalId` and the plaintext, and expects either the normal
+ * form (`readable: true`) or the reason of the first failing rule (`readable: false`).
+ */
+const ExerciseNameOverrideDecodeVectorSchema = z.object({
+  name: z.string().min(1),
+  clientLocalId: z.string(),
+  plaintext: z.string(),
+  expected: z.discriminatedUnion('readable', [
+    z.object({
+      readable: z.literal(true),
+      decoded: z.object({
+        exerciseId: z.string(),
+        languageCode: z.string(),
+        name: z.string().nullable(),
+        description: z.string().nullable(),
+        updatedAt: z.number().int(),
+      }),
+    }),
+    z.object({
+      readable: z.literal(false),
+      reason: z.enum(['malformed_payload', 'unknown_version']),
+    }),
+  ]),
+});
+
+/**
  * Phase 155 (E-15): the three predefined foreign types — key, deterministic id and the
  * English and German name. `src/foreign-types.ts`'s `FOREIGN_BUILTIN_TYPES` must equal this
  * section exactly (`tests/shared-vectors.test.ts`), the app's own table is checked against
@@ -588,6 +638,10 @@ export const CoachPlanningVectorsSchema = z.object({
   // Phase 156: listed for the same reason as the Phase 155 sections above — an unlisted
   // section would be silently dropped by the parse and its replay would pass vacuously.
   exerciseNameOverrideCipher: z.array(ExerciseNameOverrideCipherVectorSchema).min(1),
+  // Phase 156 gap round (156-26): same reason again — both sections must be listed, or the
+  // parse drops them and the replays in shared-vectors.test.ts measure nothing.
+  exerciseNameOverrideCipherV2: z.array(ExerciseNameOverrideCipherV2VectorSchema).min(1),
+  exerciseNameOverrideDecode: z.array(ExerciseNameOverrideDecodeVectorSchema).min(1),
   plannedUpdate: z.array(PlannedUpdateVectorSchema).min(1),
   streak: z.array(StreakVectorSchema).min(1),
   muscleBalance: z.array(MuscleBalanceVectorSchema).min(1),

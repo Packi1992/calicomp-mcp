@@ -612,12 +612,19 @@ const FOREIGN_LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 /**
  * The common front half of the three foreign sport decoders (and, since Phase 156, of
  * `decryptExerciseNameOverride`): tombstone-shaped empty
- * payload, decrypt failure, plaintext that is not a JSON object, `v !== 1`. Every guard
- * throws a `RowDecodeError` naming only the wire kind, the row id and the cause — never
- * plaintext, ciphertext or key material (T-120-17, T-155-24); the `v` that does not
+ * payload, decrypt failure, plaintext that is not a JSON object, `v` not one of
+ * `allowedVersions` (default `[1]`; the foreign sport decoders keep it, the own names of
+ * catalog exercises read versions 1 and 2 since the gap round of Phase 156, D-22). Every
+ * guard throws a `RowDecodeError` naming only the wire kind, the row id and the cause —
+ * never plaintext, ciphertext or key material (T-120-17, T-155-24); the `v` that does not
  * match is not echoed either, because it comes from inside the decrypted payload.
  */
-function decryptForeignPayload(row: MiscSyncRow, keyB64: string, wireKind: string): Record<string, unknown> {
+function decryptForeignPayload(
+  row: MiscSyncRow,
+  keyB64: string,
+  wireKind: string,
+  allowedVersions: readonly number[] = [1],
+): Record<string, unknown> {
   if (!row.encryptedPayload) {
     throw new RowDecodeError(
       `${wireKind} row ${row.id} arrived with an empty encryptedPayload — this is the tombstone ` +
@@ -641,7 +648,7 @@ function decryptForeignPayload(row: MiscSyncRow, keyB64: string, wireKind: strin
     throw new RowDecodeError(`${wireKind} row ${row.id} has a malformed payload`, 'malformed_payload');
   }
   const plaintext = parsed as Record<string, unknown>;
-  if (plaintext.v !== 1) {
+  if (typeof plaintext.v !== 'number' || !allowedVersions.includes(plaintext.v)) {
     throw new RowDecodeError(`${wireKind} row ${row.id} has an unknown schema version`, 'unknown_version');
   }
   return plaintext;
@@ -774,8 +781,9 @@ export function decryptPlannedForeignActivity(row: MiscSyncRow, keyB64: string):
  *
  * Unreadable (throws `RowDecodeError`): the front-half guards of `decryptForeignPayload` —
  * empty payload (`malformed_payload`), decrypt failure (`decrypt_failed`), plaintext that
- * is not a JSON object (`malformed_payload`), `v !== 1` (`unknown_version`) — and a
- * missing or empty `exerciseId`, `languageCode` or `name` (`malformed_payload`).
+ * is not a JSON object (`malformed_payload`), `v` neither 1 nor 2 (`unknown_version`) —
+ * and a missing or empty `exerciseId`, `languageCode` or `name` (`malformed_payload`);
+ * only version 2 may carry `name: null` (name not overridden, D-22).
  *
  * `description` is a string or `null`; an empty string decodes as `null` (D-01: never the
  * empty string). A decoder neither cuts nor rejects a value because of its length — the
@@ -787,10 +795,11 @@ export function decryptPlannedForeignActivity(row: MiscSyncRow, keyB64: string):
  * `name` and `description` are athlete free text, and no error message carries them.
  */
 export function decryptExerciseNameOverride(row: MiscSyncRow, keyB64: string): DecryptedExerciseNameOverride {
-  const p = decryptForeignPayload(row, keyB64, 'exercise_name_override');
+  const p = decryptForeignPayload(row, keyB64, 'exercise_name_override', [1, 2]);
   const exerciseId = requiredString(p.exerciseId);
   const languageCode = requiredString(p.languageCode);
-  const name = requiredString(p.name);
+  // Version 2 (D-22): `name: null` = the name is not overridden and stays the catalog name.
+  const name: string | null | undefined = p.v === 2 && p.name === null ? null : requiredString(p.name);
   if (exerciseId === undefined || languageCode === undefined || name === undefined) {
     throw new RowDecodeError(`exercise_name_override row ${row.id} has a malformed payload`, 'malformed_payload');
   }

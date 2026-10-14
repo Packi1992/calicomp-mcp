@@ -18,6 +18,9 @@
 import { describe, it, expect } from 'vitest';
 import { createExerciseNameResolver } from '../src/exercise-names.js';
 import { getTemplate } from '../src/tools/get_template.js';
+import { getExerciseCatalog } from '../src/tools/get_exercise_catalog.js';
+import { decryptExerciseNameOverride } from '../src/cache.js';
+import { loadCoachPlanningVectors } from './shared-vectors.js';
 import type { CatalogExercise, DecryptedExerciseNameOverride, DecryptedSnapshot } from '../src/types.js';
 
 const CATALOG_ID = 'aaaaaaaa-1111-4000-a000-000000000001';
@@ -464,5 +467,101 @@ describe('createExerciseNameResolver — own names (Phase 156, D-10/D-17)', () =
         key === 'exerciseOwnName' || key === 'exerciseOwnNameLanguage' ? undefined : inner,
       );
     expect(strip(result)).toStrictEqual(JSON.parse(JSON.stringify(baseline)));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 156 gap round — description-only override (D-22; protocol §1.7 "Plaintext form,
+// version 2" and "Tool outputs"). Tracer: the corpus vector is decoded by the REAL
+// `decryptExerciseNameOverride`, put into a snapshot and read by two tools.
+// ---------------------------------------------------------------------------
+
+describe('own names — description-only override (Phase 156 gap round, D-22)', () => {
+  it('P156 D-22 a description-only override gives no own name in get_template and get_exercise_catalog', () => {
+    const vector = loadCoachPlanningVectors().exerciseNameOverrideCipherV2.find(
+      (v) => v.name === 'description-only-hostile-description-at-limit',
+    );
+    expect(vector).toBeDefined();
+    const decoded = decryptExerciseNameOverride(
+      {
+        id: 'row-p156-d22',
+        kind: 'exercise_name_override',
+        clientLocalId: `${vector!.expectedDecoded.exerciseId}:${vector!.expectedDecoded.languageCode}`,
+        encryptedPayload: vector!.ciphertextJson,
+        createdAt: 0,
+        updatedAt: 0,
+      },
+      vector!.keyB64,
+    );
+    expect(decoded.name).toBeNull();
+    const ownDescription = decoded.description;
+    expect(typeof ownDescription).toBe('string');
+
+    // The vector's exercise is a curated catalog exercise with a German catalog name.
+    const describedExercise: CatalogExercise = {
+      ...curatedExercise,
+      id: decoded.exerciseId,
+      key: 'dead_hang',
+      nameEn: 'Dead Hang',
+      translations: [{ languageCode: 'de', name: 'Toter Hang' }],
+    };
+    const catalog = [describedExercise, otherCuratedExercise];
+    const templateSnapshot = (overrides?: DecryptedExerciseNameOverride[]): DecryptedSnapshot => ({
+      ...emptySnapshot(),
+      settings: [{ key: 'default_language', type: 's', value: 'de' }],
+      ...(overrides !== undefined ? { exerciseNameOverrides: overrides } : {}),
+      templates: [
+        {
+          id: 'tpl-156-d22',
+          name: 'P156 D-22 Vorlage',
+          createdAt: 1_700_000_000_000,
+          updatedAt: 1_700_000_000_000,
+          isFavoriteForWatch: false,
+        },
+      ],
+      templateExercises: [
+        {
+          id: 'te-156-d22',
+          templateId: 'tpl-156-d22',
+          exerciseId: decoded.exerciseId,
+          exerciseSource: 'CATALOG',
+          mode: 'REPS',
+          restTimeSeconds: 60,
+          sets: 3,
+          orderIndex: 0,
+          createdAt: 1_700_000_000_000,
+          updatedAt: 1_700_000_000_000,
+        },
+      ],
+    });
+    const withOverride = templateSnapshot([decoded]);
+    const before = templateSnapshot();
+
+    for (const lang of ['de', undefined]) {
+      // get_template: exerciseName stays the catalog name, no own-name key at all.
+      const run = (snapshot: DecryptedSnapshot) =>
+        getTemplate({ templateId: 'tpl-156-d22' }, snapshot, createExerciseNameResolver({ catalog, snapshot, lang }));
+      const result = run(withOverride);
+      const baseline = run(before);
+      expect(result).not.toBeNull();
+      const [entry] = result!.templateExercises;
+      expect(entry.exerciseName).toBe(lang === 'de' ? 'Toter Hang' : 'Dead Hang');
+      expect(entry).not.toHaveProperty('exerciseOwnName');
+      expect(entry).not.toHaveProperty('exerciseOwnNameLanguage');
+      expect(JSON.parse(JSON.stringify(result))).toStrictEqual(JSON.parse(JSON.stringify(baseline)));
+
+      // get_exercise_catalog: no ownName/ownNameLanguage, every key as without the override.
+      const catalogResult = getExerciseCatalog(lang === undefined ? {} : { lang }, catalog, withOverride);
+      const catalogBaseline = getExerciseCatalog(lang === undefined ? {} : { lang }, catalog, before);
+      for (const catalogEntry of catalogResult) {
+        expect(catalogEntry).not.toHaveProperty('ownName');
+        expect(catalogEntry).not.toHaveProperty('ownNameLanguage');
+      }
+      expect(JSON.parse(JSON.stringify(catalogResult))).toStrictEqual(JSON.parse(JSON.stringify(catalogBaseline)));
+
+      // The own (hostile) description is decoded but output by neither tool.
+      expect(JSON.stringify(result)).not.toContain(ownDescription!.slice(0, 40));
+      expect(JSON.stringify(catalogResult)).not.toContain(ownDescription!.slice(0, 40));
+    }
   });
 });

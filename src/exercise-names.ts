@@ -46,6 +46,12 @@
  * but never output (D-10 names the name only). An unreadable override row never reaches
  * `exerciseNameOverrides` (cache.ts), so it only takes away its own exercise's field.
  *
+ * Phase 156 gap round (D-22, WR-MCP-03, IN-MCP-02): an override whose `name` is `null`
+ * (plaintext form version 2, a description-only override) gives NO own name. The choice of
+ * the own name is one exported function, `ownNameFor`, over one index built by
+ * `buildOwnNameIndex`; the resolver here and `get_exercise_catalog` both call it, so the
+ * rule is kept once.
+ *
  * This module performs no I/O, throws nothing and never logs (T-120-17/T-120-18 unaffected;
  * an own name is athlete free text, T-156-27).
  *
@@ -53,6 +59,8 @@
  *   ExerciseNameFields         — the four additive fields every resolution result carries
  *   ExerciseNameResolver       — the resolver's own shape (for typing tool-layer callers)
  *   createExerciseNameResolver — builds the resolver's lookup maps ONCE per call
+ *   OwnNameIndex / buildOwnNameIndex / ownNameLanguageFor / ownNameFor
+ *                              — the one shared own-name rule (resolver + catalog tool)
  *
  * Patterns: src/tools/get_exercise_catalog.ts (the `lang` -> translation -> `nameEn`
  *           fallback pattern, reused verbatim here for both catalog and user-exercise
@@ -89,7 +97,54 @@ export interface ExerciseNameFields {
 }
 
 /** The catalog-key prefix of a projected user exercise — never eligible for an own name. */
-const USER_EXERCISE_KEY_PREFIX = 'user_exercise:';
+export const USER_EXERCISE_KEY_PREFIX = 'user_exercise:';
+
+/**
+ * Live overrides keyed `"<exerciseId>:<languageCode>"` (the mirror row's own `clientLocalId`
+ * form) — one entry per key; `decryptMerge` (cache.ts) already keeps only the newer of two
+ * rows on the same key (WR-MCP-03).
+ */
+export type OwnNameIndex = ReadonlyMap<string, DecryptedExerciseNameOverride>;
+
+/** Build the own-name index of one snapshot (empty without overrides). */
+export function buildOwnNameIndex(overrides: readonly DecryptedExerciseNameOverride[] | undefined): OwnNameIndex {
+  const index = new Map<string, DecryptedExerciseNameOverride>();
+  for (const o of overrides ?? []) {
+    index.set(`${o.exerciseId}:${o.languageCode}`, o);
+  }
+  return index;
+}
+
+/**
+ * The effective language of an own name (D-17): `lang` when the tool receives it, otherwise
+ * the app language `default_language`; `null` when neither exists. Without any override it
+ * is `null` too, so a call without own names never reads the setting.
+ */
+export function ownNameLanguageFor(index: OwnNameIndex, snapshot: DecryptedSnapshot, lang: string | undefined): string | null {
+  if (index.size === 0) return null;
+  return lang ?? resolveAppLanguage(snapshot).languageCode;
+}
+
+/**
+ * THE own-name rule (protocol §1.7 "Which language" and "Tool outputs"): the own name of
+ * `exerciseId` in `effectiveLanguage` as marked free text plus that override's language, or
+ * `null` — without an effective language, without a live override in exactly that language,
+ * and for an override whose `name` is `null` (version 2, a description-only override, D-22:
+ * "Der Coach zeigt in diesem Fall keinen eigenen Namen"). The caller decides whether the
+ * exercise is eligible at all (curated catalog exercise, not `user_exercise:`).
+ */
+export function ownNameFor(
+  index: OwnNameIndex,
+  exerciseId: string,
+  effectiveLanguage: string | null,
+): { ownName: AthleteFreeText; language: string } | null {
+  if (effectiveLanguage === null) return null;
+  const override = index.get(`${exerciseId}:${effectiveLanguage}`);
+  if (override === undefined || override.name === null) return null;
+  const envelope = wrapFreeText(override.name);
+  if (!envelope) return null;
+  return { ownName: envelope, language: override.languageCode };
+}
 
 /** `forSetLog`'s result additionally tags HOW the exercise identity was found. */
 export type SetLogExerciseNameFields = ExerciseNameFields & {
@@ -135,24 +190,17 @@ export function createExerciseNameResolver(input: {
   // exercise's own exerciseId is still a real fact worth resolving.
   const templateExerciseById = new Map(snapshot.templateExercises.map((te) => [te.id, te]));
 
-  // Phase 156 (D-10, D-17): live overrides keyed "<exerciseId>:<languageCode>" (the mirror
-  // row's own clientLocalId form), and the effective language of an own name — `lang`,
-  // otherwise the app language. Built once per resolver, like every map above.
-  const overrideByKey = new Map<string, DecryptedExerciseNameOverride>();
-  for (const o of snapshot.exerciseNameOverrides ?? []) {
-    overrideByKey.set(`${o.exerciseId}:${o.languageCode}`, o);
-  }
-  const ownNameLanguage: string | null =
-    overrideByKey.size === 0 ? null : (lang ?? resolveAppLanguage(snapshot).languageCode);
+  // Phase 156 (D-10, D-17, D-22): the shared own-name index and the effective language of an
+  // own name — `lang`, otherwise the app language. Built once per resolver, like every map above.
+  const ownNameIndex = buildOwnNameIndex(snapshot.exerciseNameOverrides);
+  const ownNameLanguage = ownNameLanguageFor(ownNameIndex, snapshot, lang);
 
   /** The two own-name keys for a curated catalog exercise, or nothing (conditional spread). */
   function ownNameFields(ex: CatalogExercise): Pick<ExerciseNameFields, 'exerciseOwnName' | 'exerciseOwnNameLanguage'> {
-    if (ownNameLanguage === null || ex.key.startsWith(USER_EXERCISE_KEY_PREFIX)) return {};
-    const override = overrideByKey.get(`${ex.id}:${ownNameLanguage}`);
-    if (!override) return {};
-    const envelope = wrapFreeText(override.name);
-    if (!envelope) return {};
-    return { exerciseOwnName: envelope, exerciseOwnNameLanguage: override.languageCode };
+    if (ex.key.startsWith(USER_EXERCISE_KEY_PREFIX)) return {};
+    const own = ownNameFor(ownNameIndex, ex.id, ownNameLanguage);
+    if (own === null) return {};
+    return { exerciseOwnName: own.ownName, exerciseOwnNameLanguage: own.language };
   }
 
   /** `get_exercise_catalog.ts`'s exact `lang` -> translation -> `nameEn` fallback rule. */

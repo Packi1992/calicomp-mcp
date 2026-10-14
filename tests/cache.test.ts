@@ -1528,7 +1528,9 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
       const ctBuf = Buffer.from(broken.ct, 'base64');
       ctBuf[0] ^= 0xff;
       const tampered = JSON.stringify({ iv: broken.iv, ct: ctBuf.toString('base64') });
-      const versionTwo = encryptOverride(overridePayload({ v: 2, exerciseId: '15600000-0000-4000-8000-0000000000a3' }));
+      // Version 3 is unknown (§1.7 reads 1 and 2 since the gap round, D-22; this fixture was
+      // v: 2 before 156-29, when version 2 did not exist yet).
+      const unknownVersion = encryptOverride(overridePayload({ v: 3, exerciseId: '15600000-0000-4000-8000-0000000000a3' }));
       const emptyName = encryptOverride(overridePayload({ name: '', exerciseId: '15600000-0000-4000-8000-0000000000a4' }));
 
       mockFetchSnapshot.mockResolvedValueOnce(
@@ -1538,7 +1540,7 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
           exerciseNameOverrides: [
             overrideRow('row-eno-1', '15600000-0000-4000-8000-0000000000a1:de', readable),
             overrideRow('row-eno-2', '15600000-0000-4000-8000-0000000000a2:de', tampered),
-            overrideRow('row-eno-3', '15600000-0000-4000-8000-0000000000a3:de', versionTwo),
+            overrideRow('row-eno-3', '15600000-0000-4000-8000-0000000000a3:de', unknownVersion),
             overrideRow('row-eno-4', '15600000-0000-4000-8000-0000000000a4:de', emptyName),
           ],
         }),

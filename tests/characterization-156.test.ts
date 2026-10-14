@@ -457,7 +457,7 @@ const CATALOG_NAME_BY_KEY: Record<string, { en: string; de: string }> = {
 
 function expectOwnNames(
   outputs: Record<string, unknown>,
-  overridden: { key: string; name: string; language: string },
+  overridden: { key: string; name: string | null; language: string },
   lang: 'en' | 'de' | undefined,
 ): void {
   for (const [tool, output] of Object.entries(outputs)) {

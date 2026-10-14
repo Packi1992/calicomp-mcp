@@ -29,8 +29,12 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { GetExerciseCatalogSchema } from '../schemas.js';
 import { getSnapshot } from '../cache.js';
-import { resolveAppLanguage } from '../app-language.js';
-import { wrapFreeText } from '../foreign-types.js';
+import {
+  USER_EXERCISE_KEY_PREFIX,
+  buildOwnNameIndex,
+  ownNameFor,
+  ownNameLanguageFor,
+} from '../exercise-names.js';
 import type { AthleteFreeText, CatalogExercise, DecryptedSnapshot } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -50,27 +54,27 @@ export interface CatalogExerciseWithLocale extends CatalogExercise {
   ownNameLanguage?: string;
 }
 
-/** The catalog-key prefix of a projected user exercise — never eligible for an own name. */
-const USER_EXERCISE_KEY_PREFIX = 'user_exercise:';
-
 /**
- * The own names that apply to this call (Phase 156, D-17): exercise id -> own name and its
- * language, only for live overrides in the effective language. Empty without a snapshot,
- * without overrides, or without an effective language.
+ * The own names that apply to this call (Phase 156, D-17, D-22): exercise id -> own name and
+ * its language, chosen per catalog entry by the resolver's own rule `ownNameFor`
+ * (`exercise-names.ts`, IN-MCP-02) — one rule, two callers. Empty without a snapshot, without
+ * overrides, without an effective language, and for an override whose `name` is `null`
+ * (version 2, a description-only override: no own name).
  */
 function ownNamesFor(
+  catalog: CatalogExercise[],
   lang: string | undefined,
   snapshot: DecryptedSnapshot | undefined,
 ): Map<string, { ownName: AthleteFreeText; ownNameLanguage: string }> {
   const out = new Map<string, { ownName: AthleteFreeText; ownNameLanguage: string }>();
-  const overrides = snapshot?.exerciseNameOverrides ?? [];
-  if (snapshot === undefined || overrides.length === 0) return out;
-  const effectiveLanguage = lang ?? resolveAppLanguage(snapshot).languageCode;
+  if (snapshot === undefined) return out;
+  const index = buildOwnNameIndex(snapshot.exerciseNameOverrides);
+  const effectiveLanguage = ownNameLanguageFor(index, snapshot, lang);
   if (effectiveLanguage === null) return out;
-  for (const o of overrides) {
-    if (o.languageCode !== effectiveLanguage) continue;
-    const envelope = wrapFreeText(o.name);
-    if (envelope) out.set(o.exerciseId, { ownName: envelope, ownNameLanguage: o.languageCode });
+  for (const ex of catalog) {
+    if (ex.key.startsWith(USER_EXERCISE_KEY_PREFIX)) continue;
+    const own = ownNameFor(index, ex.id, effectiveLanguage);
+    if (own !== null) out.set(ex.id, { ownName: own.ownName, ownNameLanguage: own.language });
   }
   return out;
 }
@@ -120,7 +124,7 @@ export function getExerciseCatalog(
   }
 
   // Phase 156 (D-10, D-17): own names beside the catalog name, only where they apply.
-  const ownNames = ownNamesFor(args.lang, snapshot);
+  const ownNames = ownNamesFor(catalog, args.lang, snapshot);
   if (ownNames.size === 0) return entries;
   let changed = false;
   const withOwnNames = entries.map(ex => {

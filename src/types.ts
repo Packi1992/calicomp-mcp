@@ -500,15 +500,19 @@ export interface DecryptedPlannedForeignActivity {
 /**
  * A decoded own name of a catalog exercise (`exercise_name_override`, Phase 156, REN-01) —
  * the normal form of protocol §1.7 "Decoded rows" and at the same time the
- * `expectedDecoded` of the corpus section `exerciseNameOverrideCipher` (§6). `v` is
- * dropped; `description` is `null` when the description is not overridden (an empty
- * string decodes as `null`, D-01). `name` and `description` are athlete free text:
+ * `expectedDecoded` of the corpus sections `exerciseNameOverrideCipher` and
+ * `exerciseNameOverrideCipherV2` (§6). `v` is dropped; `description` is `null` when the
+ * description is not overridden (an empty string decodes as `null`, D-01). `name` and `description` are athlete free text:
  * never logged, and wrapped before they reach any tool output (156-08).
  */
 export interface DecryptedExerciseNameOverride {
   exerciseId: string;
   languageCode: string;
-  name: string;
+  /**
+   * The own name, or `null` = name not overridden (plaintext form version 2, D-22): the
+   * name stays the catalog name and no tool shows an own name for this override.
+   */
+  name: string | null;
   description: string | null;
   updatedAt: number;
 }

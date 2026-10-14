@@ -546,6 +546,22 @@ describe('shared coach-planning vector corpus', () => {
   // hostile name at NAME_MAX and the description at DESCRIPTION_MAX included.
   // -----------------------------------------------------------------------
 
+  /**
+   * An `exercise_name_override` wire row for a cipher vector. Since 156-29 the decoder
+   * checks `clientLocalId === "<exerciseId>:<languageCode>"` (§1.7 "Decoded rows", rule 5),
+   * so the row carries the key of the vector's own normal form, exactly as the app writes it.
+   */
+  function overrideRowFromVector(vector: {
+    name: string;
+    ciphertextJson: string;
+    expectedDecoded: Record<string, unknown>;
+  }): MiscSyncRow {
+    return {
+      ...miscRowFromVector(vector, 'exercise_name_override'),
+      clientLocalId: `${String(vector.expectedDecoded.exerciseId)}:${String(vector.expectedDecoded.languageCode)}`,
+    };
+  }
+
   describe('exerciseNameOverrideCipher vectors', () => {
     it('P156 exerciseNameOverrideCipher section is non-empty', () => {
       expect(corpus.exerciseNameOverrideCipher.length).toBeGreaterThan(0);
@@ -559,10 +575,7 @@ describe('shared coach-planning vector corpus', () => {
 
     it('P156 D-11 decryptExerciseNameOverride decodes every exerciseNameOverrideCipher vector to expectedDecoded', () => {
       for (const vector of corpus.exerciseNameOverrideCipher) {
-        const decoded = decryptExerciseNameOverride(
-          miscRowFromVector(vector, 'exercise_name_override'),
-          vector.keyB64,
-        );
+        const decoded = decryptExerciseNameOverride(overrideRowFromVector(vector), vector.keyB64);
         // toStrictEqual: same keys, same values, nothing extra — the normal form exactly.
         expect({ ...decoded }).toStrictEqual(vector.expectedDecoded);
         expect(Object.keys(decoded)).toEqual(Object.keys(vector.expectedDecoded));
@@ -575,14 +588,11 @@ describe('shared coach-planning vector corpus', () => {
       let descriptionAtLimitSeen = 0;
       let nullDescriptionSeen = 0;
       for (const vector of corpus.exerciseNameOverrideCipher) {
-        const decoded = decryptExerciseNameOverride(
-          miscRowFromVector(vector, 'exercise_name_override'),
-          vector.keyB64,
-        );
+        const decoded = decryptExerciseNameOverride(overrideRowFromVector(vector), vector.keyB64);
         const plaintext = vector.expectedPlaintext as Record<string, unknown>;
         const expectedName = plaintext.name as string;
         expect(decoded.name).toBe(expectedName);
-        expect(Buffer.from(decoded.name, 'utf8').equals(Buffer.from(expectedName, 'utf8'))).toBe(true);
+        expect(Buffer.from(decoded.name ?? '', 'utf8').equals(Buffer.from(expectedName, 'utf8'))).toBe(true);
         if (expectedName.includes('Ignore all')) hostileNameSeen += 1;
         // NAME_MAX = 255 UTF-16 code units (protocol §1.7) — the decoder never cuts.
         if (expectedName.length === 255) nameAtLimitSeen += 1;
@@ -605,6 +615,50 @@ describe('shared coach-planning vector corpus', () => {
       expect(nameAtLimitSeen).toBeGreaterThan(0);
       expect(descriptionAtLimitSeen).toBeGreaterThan(0);
       expect(nullDescriptionSeen).toBeGreaterThan(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // exerciseNameOverrideCipherV2 section (Phase 156 gap round, D-22): the plaintext form
+  // version 2 of §1.7 — a description-only override (`name: null`) and a version-2 row
+  // with a name — through the same real decode boundary `decryptMerge` uses.
+  // -----------------------------------------------------------------------
+
+  describe('exerciseNameOverrideCipherV2 vectors', () => {
+    it('P156 D-22 exerciseNameOverrideCipherV2 section holds both vectors', () => {
+      // A replay that read fewer vectors than the corpus carries would pass vacuously.
+      expect(corpus.exerciseNameOverrideCipherV2.map((v) => v.name)).toEqual([
+        'description-only-hostile-description-at-limit',
+        'v2-with-name-read-only',
+      ]);
+    });
+
+    it('P156 D-22 every exerciseNameOverrideCipherV2 vector decrypts to its exact plaintext string', () => {
+      for (const vector of corpus.exerciseNameOverrideCipherV2) {
+        expect(decrypt(vector.ciphertextJson, vector.keyB64)).toBe(vector.expectedPlaintextString);
+      }
+    });
+
+    it('P156 D-22 decryptExerciseNameOverride decodes every exerciseNameOverrideCipherV2 vector to expectedDecoded', () => {
+      let decodedCount = 0;
+      let nullNameSeen = 0;
+      for (const vector of corpus.exerciseNameOverrideCipherV2) {
+        const decoded = decryptExerciseNameOverride(overrideRowFromVector(vector), vector.keyB64);
+        // toStrictEqual: same keys, same values, nothing extra — the normal form exactly.
+        expect({ ...decoded }).toStrictEqual(vector.expectedDecoded);
+        expect(Object.keys(decoded)).toEqual(Object.keys(vector.expectedDecoded));
+        // The hostile description arrives byte for byte (it is never output by a tool).
+        const expectedDescription = vector.expectedDecoded.description;
+        if (expectedDescription !== null) {
+          expect(
+            Buffer.from(decoded.description ?? '', 'utf8').equals(Buffer.from(expectedDescription, 'utf8')),
+          ).toBe(true);
+        }
+        if (decoded.name === null) nullNameSeen += 1;
+        decodedCount += 1;
+      }
+      expect(decodedCount).toBe(2);
+      expect(nullNameSeen).toBe(1);
     });
   });
 
