@@ -27,7 +27,27 @@
  * or whose `workoutExerciseId` no longer resolves to any template exercise (tombstoned or
  * not), yields the same null/`exerciseUnknown` shape as an unresolvable id.
  *
- * This module performs no I/O and throws nothing (T-120-17/T-120-18 unaffected).
+ * Phase 156 (D-10, D-17; protocol §1.7 "Which language" and "Tool outputs"): a catalog hit
+ * on a CURATED exercise (its key does not start with `user_exercise:`) that has a live
+ * override (`snapshot.exerciseNameOverrides`) in the EFFECTIVE language additionally
+ * carries two new keys, appended by a conditional spread:
+ *
+ *   - `exerciseOwnName` — the own name inside the free-text envelope
+ *     `{ text, source: 'athlete_free_text', treatAs: 'data_not_instructions' }`
+ *     (`wrapFreeText`), never a bare string and never in place of `exerciseName`;
+ *   - `exerciseOwnNameLanguage` — the language code of that override.
+ *
+ * The effective language is `lang` when the tool receives it, otherwise the app language
+ * (`resolveAppLanguage`, the synchronized setting `default_language`); a language matches by
+ * exact equality of the code. Without an override in that language — and always for a user
+ * exercise, a deleted or an unknown exercise — both keys are ABSENT (never `null`), so every
+ * output stays byte-identical to before Phase 156. `exerciseName` keeps its own rule (`lang`,
+ * otherwise English) and never follows `default_language`. The own description is decoded
+ * but never output (D-10 names the name only). An unreadable override row never reaches
+ * `exerciseNameOverrides` (cache.ts), so it only takes away its own exercise's field.
+ *
+ * This module performs no I/O, throws nothing and never logs (T-120-17/T-120-18 unaffected;
+ * an own name is athlete free text, T-156-27).
  *
  * Exports:
  *   ExerciseNameFields         — the four additive fields every resolution result carries
@@ -41,13 +61,17 @@
  */
 
 import type {
+  AthleteFreeText,
   CatalogExercise,
+  DecryptedExerciseNameOverride,
   DecryptedSnapshot,
   SyncExerciseDto,
   SyncExerciseTranslationDto,
 } from './types.js';
+import { resolveAppLanguage } from './app-language.js';
+import { wrapFreeText } from './foreign-types.js';
 
-/** The four additive fields a name resolution can carry, always added together. */
+/** The additive fields a name resolution can carry (`exerciseName`/`exerciseKey` always). */
 export interface ExerciseNameFields {
   exerciseName: string | null;
   exerciseKey: string | null;
@@ -55,7 +79,17 @@ export interface ExerciseNameFields {
   exerciseDeleted?: true;
   /** Only ever `true` — the id resolves nowhere (D-17). */
   exerciseUnknown?: true;
+  /**
+   * Phase 156 (D-10): the athlete's own name of this catalog exercise in the effective
+   * language, as marked free text — data, never instructions. Absent without an override.
+   */
+  exerciseOwnName?: AthleteFreeText;
+  /** Phase 156 (D-17): the language code of `exerciseOwnName`; present only together with it. */
+  exerciseOwnNameLanguage?: string;
 }
+
+/** The catalog-key prefix of a projected user exercise — never eligible for an own name. */
+const USER_EXERCISE_KEY_PREFIX = 'user_exercise:';
 
 /** `forSetLog`'s result additionally tags HOW the exercise identity was found. */
 export type SetLogExerciseNameFields = ExerciseNameFields & {
@@ -79,7 +113,8 @@ export interface ExerciseNameResolver {
  *                        `templateExercises` (including tombstones) resolves `forSetLog`.
  * @param input.lang     Optional BCP-47-ish tag (same bound as `GetExerciseCatalogSchema`);
  *                        omitted or unmatched falls back to English, exactly like
- *                        `get_exercise_catalog.ts`.
+ *                        `get_exercise_catalog.ts`. It is also the effective language of an
+ *                        own name; without it the app language `default_language` is (D-17).
  */
 export function createExerciseNameResolver(input: {
   catalog: CatalogExercise[];
@@ -100,6 +135,26 @@ export function createExerciseNameResolver(input: {
   // exercise's own exerciseId is still a real fact worth resolving.
   const templateExerciseById = new Map(snapshot.templateExercises.map((te) => [te.id, te]));
 
+  // Phase 156 (D-10, D-17): live overrides keyed "<exerciseId>:<languageCode>" (the mirror
+  // row's own clientLocalId form), and the effective language of an own name — `lang`,
+  // otherwise the app language. Built once per resolver, like every map above.
+  const overrideByKey = new Map<string, DecryptedExerciseNameOverride>();
+  for (const o of snapshot.exerciseNameOverrides ?? []) {
+    overrideByKey.set(`${o.exerciseId}:${o.languageCode}`, o);
+  }
+  const ownNameLanguage: string | null =
+    overrideByKey.size === 0 ? null : (lang ?? resolveAppLanguage(snapshot).languageCode);
+
+  /** The two own-name keys for a curated catalog exercise, or nothing (conditional spread). */
+  function ownNameFields(ex: CatalogExercise): Pick<ExerciseNameFields, 'exerciseOwnName' | 'exerciseOwnNameLanguage'> {
+    if (ownNameLanguage === null || ex.key.startsWith(USER_EXERCISE_KEY_PREFIX)) return {};
+    const override = overrideByKey.get(`${ex.id}:${ownNameLanguage}`);
+    if (!override) return {};
+    const envelope = wrapFreeText(override.name);
+    if (!envelope) return {};
+    return { exerciseOwnName: envelope, exerciseOwnNameLanguage: override.languageCode };
+  }
+
   /** `get_exercise_catalog.ts`'s exact `lang` -> translation -> `nameEn` fallback rule. */
   function catalogName(ex: CatalogExercise): string {
     if (!lang) return ex.nameEn;
@@ -118,7 +173,11 @@ export function createExerciseNameResolver(input: {
   function forExerciseId(id: string): ExerciseNameFields {
     const catalogExercise = catalogById.get(id);
     if (catalogExercise) {
-      return { exerciseName: catalogName(catalogExercise), exerciseKey: catalogExercise.key };
+      return {
+        exerciseName: catalogName(catalogExercise),
+        exerciseKey: catalogExercise.key,
+        ...ownNameFields(catalogExercise),
+      };
     }
 
     const userExercise = exerciseById.get(id);
