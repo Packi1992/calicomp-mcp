@@ -613,3 +613,96 @@ describe('get_progress — exercise names (D-15/D-17)', () => {
     expect(body.series[0].exerciseDeleted).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Own names in the outputFile summary (Phase 156 gap round, WR-MCP-01, D-10, §1.7 "Tool outputs")
+// ---------------------------------------------------------------------------
+
+describe('get_progress — own names in the outputFile summary (WR-MCP-01)', () => {
+  beforeEach(() => {
+    vi.mocked(cacheModule.getSnapshot).mockReset();
+    vi.mocked(coachParametersModule.loadCoachParameters).mockReset();
+    vi.mocked(fileChannelModule.writeExportFile).mockReset();
+  });
+
+  /** The keys of an exercise series in the outputFile summary before Phase 156, in order. */
+  const SUMMARY_KEYS_WITHOUT_OWN_NAME = [
+    'exerciseId',
+    'exerciseName',
+    'exerciseKey',
+    'mode',
+    'usesWeight',
+    'metric',
+    'bestSetDirection',
+    'sessionTotalDirection',
+    'rule',
+  ];
+
+  async function callOutputFile(extra: Partial<DecryptedSnapshot>): Promise<Array<Record<string, unknown>>> {
+    const s1 = buildSession({ id: 's1', startTime: 1_700_000_000_000 });
+    const base = snapshotWithZone(TZ, {
+      sessions: [s1],
+      setLogs: [buildSetLog({ id: 'sl1', sessionId: 's1', createdAt: s1.startTime })],
+    });
+    const snapshot: DecryptedSnapshot = {
+      ...base,
+      ...extra,
+      settings: [...(base.settings ?? []), ...(extra.settings ?? [])],
+    };
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
+      params: COACH_PARAMETER_DEFAULTS,
+      source: 'defaults',
+    });
+    vi.mocked(fileChannelModule.writeExportFile).mockResolvedValue({
+      path: '/tmp/calicomp-mcp-exports/fake-uuid.json',
+      bytes: 555,
+      itemCount: 1,
+    });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetProgress(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const result = await handler({ kind: 'exercise', exerciseId: CATALOG_EXERCISE_ID_PUSHUP, outputFile: true });
+    expect(result.isError).toBeUndefined();
+    expect(fileChannelModule.writeExportFile).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(result.content[0].text) as { series: Array<Record<string, unknown>> };
+    return body.series;
+  }
+
+  it('P156 WR-MCP-01 the get_progress outputFile summary carries exerciseOwnName beside exerciseName', async () => {
+    const series = await callOutputFile({
+      settings: [{ key: 'default_language', type: 's', value: 'de' }],
+      exerciseNameOverrides: [
+        {
+          exerciseId: CATALOG_EXERCISE_ID_PUSHUP,
+          languageCode: 'de',
+          name: 'P156 Meine Liegestütze',
+          description: null,
+          updatedAt: 1_700_000_500_000,
+        },
+      ],
+    });
+
+    expect(series).toHaveLength(1);
+    expect(series[0].exerciseName).toBe('Push-Up');
+    expect(series[0].exerciseKey).toBe('push_up');
+    expect(series[0].exerciseOwnName).toEqual({
+      text: 'P156 Meine Liegestütze',
+      source: 'athlete_free_text',
+      treatAs: 'data_not_instructions',
+    });
+    expect(series[0].exerciseOwnNameLanguage).toBe('de');
+    expect(series[0]).not.toHaveProperty('points');
+  });
+
+  it('P156 WR-MCP-01 without an override the outputFile summary keeps its keys', async () => {
+    const series = await callOutputFile({ settings: [{ key: 'default_language', type: 's', value: 'de' }] });
+
+    expect(series).toHaveLength(1);
+    expect(Object.keys(series[0])).toEqual(SUMMARY_KEYS_WITHOUT_OWN_NAME);
+    expect(series[0]).not.toHaveProperty('exerciseOwnName');
+    expect(series[0]).not.toHaveProperty('exerciseOwnNameLanguage');
+  });
+});

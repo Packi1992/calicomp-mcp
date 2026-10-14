@@ -245,6 +245,13 @@ export function registerToolGetProgress(
                     exerciseKey: s.exerciseKey,
                     ...(s.exerciseDeleted ? { exerciseDeleted: s.exerciseDeleted } : {}),
                     ...(s.exerciseUnknown ? { exerciseUnknown: s.exerciseUnknown } : {}),
+                    // Phase 156 gap round (WR-MCP-01, D-10, protocol §1.7 "Tool outputs"): the
+                    // own name the resolver set in `namedSeries` reaches the summary too, in its
+                    // free-text envelope and only together with its language. Without a live
+                    // override neither key exists, so the summary stays byte-identical.
+                    ...(s.exerciseOwnName !== undefined && s.exerciseOwnNameLanguage !== undefined
+                      ? { exerciseOwnName: s.exerciseOwnName, exerciseOwnNameLanguage: s.exerciseOwnNameLanguage }
+                      : {}),
                     mode: s.mode,
                     usesWeight: s.usesWeight,
                     metric: s.metric,
