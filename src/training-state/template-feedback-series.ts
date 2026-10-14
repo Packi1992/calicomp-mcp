@@ -62,7 +62,7 @@ import type {
 } from '../types.js';
 import { classifySession, buildTemplateIndex, type TemplateStatus } from '../session-kind.js';
 import { toCalendarDay } from './time-zone.js';
-import type { ExerciseNameResolver } from '../exercise-names.js';
+import type { ExerciseNameFields, ExerciseNameResolver } from '../exercise-names.js';
 
 /** At most this many of a template's most recent completed sessions appear (D-27, T-137-37). */
 export const MAX_SERIES_SESSIONS = 8;
@@ -102,7 +102,18 @@ export interface TemplateFeedbackSeriesEntry {
   execution: SessionScaleFeedback;
   feel: SessionScaleFeedback;
   goalAttainment: GoalAttainmentResult | null;
-  missedExercises: Array<{ exerciseId: string; exerciseName: string | null; exerciseKey: string | null }>;
+  /**
+   * Named by the resolver (Phase 150). Phase 156 (D-10; protocol §1.7 "Tool outputs"): an
+   * entry of a catalog exercise with a live override in the effective language additionally
+   * carries `exerciseOwnName` (free-text envelope) and `exerciseOwnNameLanguage` — absent
+   * otherwise, so every other entry stays byte-identical.
+   */
+  missedExercises: Array<
+    { exerciseId: string; exerciseName: string | null; exerciseKey: string | null } & Pick<
+      ExerciseNameFields,
+      'exerciseOwnName' | 'exerciseOwnNameLanguage'
+    >
+  >;
   hasComment: boolean;
 }
 
@@ -288,8 +299,18 @@ export function computeTemplateFeedbackSeries(
       const goalAttainment = computeGoalAttainment(session, sessionSetLogs, snapshot);
       const missedExerciseIds = computeMissedExerciseIds(session, sessionSetLogs, snapshot);
       const missedExercises = missedExerciseIds.map((exerciseId) => {
-        const names = resolver ? resolver.forExerciseId(exerciseId) : { exerciseName: null, exerciseKey: null };
-        return { exerciseId, exerciseName: names.exerciseName, exerciseKey: names.exerciseKey };
+        const names: ExerciseNameFields = resolver
+          ? resolver.forExerciseId(exerciseId)
+          : { exerciseName: null, exerciseKey: null };
+        return {
+          exerciseId,
+          exerciseName: names.exerciseName,
+          exerciseKey: names.exerciseKey,
+          // Phase 156 (D-10): the own name only together with its language, by conditional spread.
+          ...(names.exerciseOwnName !== undefined && names.exerciseOwnNameLanguage !== undefined
+            ? { exerciseOwnName: names.exerciseOwnName, exerciseOwnNameLanguage: names.exerciseOwnNameLanguage }
+            : {}),
+        };
       });
 
       return {
