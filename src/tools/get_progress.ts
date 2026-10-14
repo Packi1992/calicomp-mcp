@@ -212,7 +212,9 @@ export function registerToolGetProgress(
         'proposals by exerciseId and exerciseKey, never by an own name. ' +
         'Every result carries unreadable: rows that ' +
         'could not be decrypted or decoded (entity, id, reason and plaintext routing fields); an ' +
-        'empty list means every encrypted row was read — including in the outputFile summary.',
+        'empty list means every encrypted row was read — including in the outputFile summary. ' +
+        'An entry with entity "exerciseNameOverride" only takes away that exercise\'s own name; ' +
+        'every other field is complete.',
       inputSchema: GetProgressSchema,
       annotations: { readOnlyHint: true },
     },

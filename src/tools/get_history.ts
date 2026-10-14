@@ -420,7 +420,9 @@ export function registerToolGetHistory(
         'Every ' +
         'result carries unreadable: rows that could not be decrypted or decoded (entity, ' +
         'id, reason and plaintext routing fields), independent of the date window; an ' +
-        'empty list means every encrypted row was read. Every session additionally ' +
+        'empty list means every encrypted row was read. An entry with entity ' +
+        '"exerciseNameOverride" only takes away that exercise\'s own name; every other field ' +
+        'is complete. Every session additionally ' +
         'carries feedback: execution and feel are each { value, state, setLaterAt } — ' +
         'value is 1-5 or null; state is one of never_asked, not_offered, disabled, ' +
         'skipped, timeout, answered, confirmed, changed (only answered/confirmed/changed ' +
