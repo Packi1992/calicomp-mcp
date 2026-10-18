@@ -155,6 +155,29 @@ The contract — field names, the day rule, the decoding rules and the verbatim 
 § 1.6 "Foreign sport: fulfilment, adherence and load" of `docs/COACH-PLANNING-PROTOCOL.md` in the
 CaliCompanion super-repo.
 
+## Completed series appointments in adherence (since 1.3.0)
+
+Before app 4.4.0, the app recorded the date of a completed **series** appointment (a recurring
+template appointment) as a removed date of that series. `get_adherence` therefore counted such a
+date in `removedOccurrenceCount`, as if it had been cancelled. The app no longer does this; dates
+written before stay in the data and are not cleaned up.
+
+Since 1.3.0, `get_adherence` explains these dates through **new keys** after the existing ones;
+`removedOccurrenceCount` keeps its meaning and its value:
+
+- `removedWithCompletedSessionCount`: the number of removed dates of a recurring template
+  appointment in the window on which a finished session of the same template lies. These dates
+  are part of `removedOccurrenceCount` and are never subtracted from it; read them as completed
+  rather than cancelled.
+- `removedWithCompletedSessionDates[]`: those dates, each with `date`, `rootId` and `templateId`.
+- `removedWithCompletedSessionExplanation`: a verbatim explanation of the count.
+
+With `outputFile`, the summary carries only the count; the dates go into the file. The short form
+of the adherence in `get_training_state` is unchanged.
+
+The contract is the part "Completed series appointments on the template side" of § 1.6 in
+`docs/COACH-PLANNING-PROTOCOL.md` in the CaliCompanion super-repo.
+
 ## Own names of catalog exercises (since 1.3.0)
 
 The athlete can rename a catalog exercise in the app. Such an **override** is personal and
