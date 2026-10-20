@@ -19,8 +19,8 @@
  * Adhärenz-Fenster, Einzeltermin). Ein Werkzeug, das Fremdes versehentlich als Session,
  * Termin oder Volumen zählte, würde hier einen alten Schlüssel ändern.
  *
- * Der Import aus `characterization-150.test.ts` führt dessen Tests in diesem Lauf ein
- * zweites Mal aus — harmlos, dieselben Pins.
+ * Fixture und Helfer kommen aus `characterization-150-fixture.ts` (seit Phase 160, G-MCP-03);
+ * die Fälle von `characterization-150.test.ts` laufen damit nur noch in ihrer eigenen Datei.
  *
  * Stufe 2 (Plan 155-09): die NEUEN Fremdsport-Ausgaben der vier Werkzeuge
  * (`get_adherence.foreignSport` samt D-07-Feldern, `get_planned_workouts.foreignOccurrences`/
@@ -71,7 +71,7 @@ import {
   CHAR_PROGRESS_ARGS_ONE,
   CHAR_PLANNED_WORKOUTS_ARGS,
   CHAR_NEW_PLAN_ARGS,
-} from './characterization-150.test.js';
+} from './characterization-150-fixture.js';
 
 // ---------------------------------------------------------------------------
 // Fixture: CHAR_SNAPSHOT plus Fremddaten (feste Ids, feste Zeitstempel).

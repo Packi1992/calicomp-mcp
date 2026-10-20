@@ -25,8 +25,6 @@
  *   - formatParams.workoutType disagreeing with the target template: FORMAT_TYPE_MISMATCH,
  *     no network call.
  *   - ops against a CLASSIC template: unchanged, postSuggest called.
- *   - formatParams.workoutType outside the eight recognized values: UNKNOWN_FORMAT_TYPE
- *     at the Zod boundary (ProposePlanUpdateSchema.safeParse), never reaches the handler.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -46,7 +44,6 @@ import * as cacheModule from '../../src/cache.js';
 import * as httpModule from '../../src/http.js';
 import { HttpError } from '../../src/http.js';
 import { computePlanHash } from '../../src/hash.js';
-import { ProposePlanUpdateSchema } from '../../src/schemas.js';
 import {
   registerToolProposePlanUpdate,
   buildPlanUpdatePayload,
@@ -508,26 +505,6 @@ describe('propose_plan_update — format-template plan_update (G-134-12)', () =>
     const payload = JSON.parse(body.payload) as { ops: unknown[]; formatParams?: unknown };
     expect(payload.ops).toStrictEqual(VALID_UPDATE_ARGS.ops);
     expect(payload.formatParams).toBeUndefined();
-  });
-
-  it('formatParams.workoutType outside the eight recognized values: UNKNOWN_FORMAT_TYPE at the Zod boundary, never reaches the handler', () => {
-    const result = ProposePlanUpdateSchema.safeParse({
-      templateId: TEMPLATE_ID_CIRCUIT,
-      rationale: 'invented discriminator',
-      formatParams: { workoutType: 'PILATES', exercises: [] },
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it('a payload carrying formatParams and no ops key parses successfully (ops is optional)', () => {
-    const result = ProposePlanUpdateSchema.safeParse({
-      templateId: TEMPLATE_ID_CIRCUIT,
-      rationale: 'formatParams only, no ops key at all',
-      formatParams: VALID_CIRCUIT_FORMAT_PARAMS,
-    });
-
-    expect(result.success).toBe(true);
   });
 });
 

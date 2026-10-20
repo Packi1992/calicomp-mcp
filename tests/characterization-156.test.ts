@@ -21,8 +21,8 @@
  * einen eigenen Namen versehentlich in `exerciseName` schriebe, hier einen alten Schlüssel
  * änderte.
  *
- * Der Import aus `characterization-150.test.ts` führt dessen Tests in diesem Lauf ein
- * zweites Mal aus — harmlos, dieselben Pins.
+ * Fixture und Helfer kommen aus `characterization-150-fixture.ts` (seit Phase 160, G-MCP-03);
+ * die Fälle von `characterization-150.test.ts` laufen damit nur noch in ihrer eigenen Datei.
  *
  * Seit 156-08 belegt der zweite Block (`P156 D-10 …`), dass jedes Werkzeug des
  * Namensauflösers bei einer übersteuerten Katalogübung `exerciseOwnName` und
@@ -78,7 +78,7 @@ import {
   CHAR_PROGRESS_ARGS_ONE,
   CHAR_PLANNED_WORKOUTS_ARGS,
   CHAR_NEW_PLAN_ARGS,
-} from './characterization-150.test.js';
+} from './characterization-150-fixture.js';
 
 // Teil-Mocks nur für die Handler von get_stats und get_suggestion (156-08): alles außer
 // getSnapshot bzw. fetchSuggestion bleibt die echte Implementierung.

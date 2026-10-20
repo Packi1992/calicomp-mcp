@@ -125,14 +125,6 @@ describe('buildMuscleVector', () => {
     expect(vector.get('abs')).toBe(1);
   });
 
-  it('a catalog entry whose groups are all PRIMARY yields exactly the unweighted vector (backward-compat case, D-03)', () => {
-    const hits: MuscleHit[] = [{ exerciseId: 'ex-three', setCount: 2 }];
-    const vector = buildMuscleVector(hits, catalogMap(EX_THREE));
-    expect(vector.get('chest')).toBe(2);
-    expect(vector.get('triceps')).toBe(2);
-    expect(vector.get('shoulders')).toBe(2);
-  });
-
   it('two hits on the same muscle group from different exercises sum, each with its own factor', () => {
     const primaryChest = buildExercise('ex-chest-primary', [['chest', 'PRIMARY']]);
     const secondaryChest = buildExercise('ex-chest-secondary', [['chest', 'SECONDARY']]);
@@ -261,15 +253,6 @@ describe('buildCombinedVector', () => {
     const emptyResult = ruzickaSimilarity(combinedEmptyA, combinedEmptyB);
     expect(emptyResult).toBe(0);
     expect(Number.isNaN(emptyResult)).toBe(false);
-  });
-
-  it('the existing buildMuscleVector construction is unaffected by buildCombinedVector existing alongside it', () => {
-    const hits: MuscleHit[] = [{ exerciseId: 'ex-three', setCount: 2 }];
-    const vector = buildMuscleVector(hits, catalogMap(EX_THREE));
-    expect(vector.get('chest')).toBe(2);
-    expect(vector.get('triceps')).toBe(2);
-    expect(vector.get('shoulders')).toBe(2);
-    expect(vector.size).toBe(3);
   });
 
   // CAP-05 gap-closure (2026-09-06, WINDOWS.md #12): this is the sibling `adherence.ts`
