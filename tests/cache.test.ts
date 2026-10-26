@@ -49,6 +49,10 @@ import {
 } from '../src/cache.js';
 import { assertEntitiesReadable, foreignSportAvailability } from '../src/read-guard.js';
 import { createExerciseNameResolver } from '../src/exercise-names.js';
+import { getTemplate } from '../src/tools/get_template.js';
+import { listTemplates } from '../src/tools/list_templates.js';
+import { getExerciseCatalog } from '../src/tools/get_exercise_catalog.js';
+import { OWN_TEST_KEY_B64, ownExercisePair, ownTranslationPair } from './own-exercise-fixture.js';
 import * as httpModule from '../src/http.js';
 import * as cryptoModule from '../src/crypto.js';
 
@@ -1825,5 +1829,64 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
     expect(isBlankOverrideText('\u200b')).toBe(true);
     expect('\u180e'.trim()).toBe('\u180e');
     expect(isBlankOverrideText('\u180e')).toBe(false);
+  });
+});
+
+// ── Own exercises, encrypted (Phase 164, CRYPT-01, SC 2, O-6) ────────────────
+//
+// The template and catalog tools name an own exercise the server holds only as ciphertext
+// byte for byte as they named the plaintext row: the same pull once in plaintext (reference)
+// and once encrypted, both through the REAL getSnapshot() → decryptMerge → catalog projection.
+describe('decrypt-merge: own exercises, encrypted (Phase 164)', () => {
+  it('P164 template and catalog tools name an encrypted own exercise like before', async () => {
+    const OWN = '16400000-0000-4000-8000-0000000000d1';
+    const TEMPLATE = '16400000-0000-4000-8000-0000000000f1';
+    const BLOCK = '16400000-0000-4000-8000-0000000000f2';
+    const times = { createdAt: 1_792_000_000_000, updatedAt: 1_792_000_000_100 };
+    const own = ownExercisePair({ id: OWN, name: 'Ringstütz tief', mode: 'TIME', usesWeight: true, description: 'Ellbogen eng.' }, times);
+    const ownDe = ownTranslationPair(
+      { id: '16400000-0000-4000-8000-0000000000e1', exerciseId: OWN, languageCode: 'de', name: 'Ringstütz, tief', description: 'Eng.' },
+      times,
+    );
+    const curated: CatalogExerciseWire = {
+      id: 'cccccccc-1640-4000-c000-000000000001', key: 'dip', nameEn: 'Dip', mode: 'REPS', usesWeight: false,
+      lastModifiedAt: 1, translations: [{ languageCode: 'de', name: 'Dip' }], muscleGroups: [],
+    };
+
+    async function toolsOf(exercises: SyncExerciseDto[], translations: SyncExerciseTranslationDto[]): Promise<string[]> {
+      __resetCache();
+      mockFetchCatalog.mockResolvedValueOnce([curated]);
+      mockFetchSnapshot.mockResolvedValueOnce(makePull({
+        exercises,
+        exerciseTranslations: translations,
+        templates: [{ id: TEMPLATE, name: 'Ringe', createdAt: times.createdAt, updatedAt: times.updatedAt, isFavoriteForWatch: false }],
+        blocks: [{ id: BLOCK, templateId: TEMPLATE, name: 'A', orderIndex: 0, createdAt: times.createdAt, updatedAt: times.updatedAt }],
+        templateExercises: [{
+          id: '16400000-0000-4000-8000-0000000000f3', templateId: TEMPLATE, blockId: BLOCK, exerciseId: OWN,
+          exerciseSource: 'CUSTOM', mode: 'TIME', targetTimeSeconds: 30, restTimeSeconds: 60, orderIndex: 0,
+          createdAt: times.createdAt, updatedAt: times.updatedAt,
+        }],
+      }));
+      const { snapshot, catalog } = await getSnapshot(PAT, OWN_TEST_KEY_B64, URL);
+      const out: string[] = [];
+      for (const lang of [undefined, 'de']) {
+        const resolver = createExerciseNameResolver({ catalog, snapshot, lang });
+        out.push(JSON.stringify(getTemplate({ templateId: TEMPLATE }, snapshot, resolver)));
+        out.push(JSON.stringify(getExerciseCatalog(lang === undefined ? {} : { lang }, catalog, snapshot)));
+      }
+      out.push(JSON.stringify(listTemplates(snapshot)));
+      return out;
+    }
+
+    const plain = await toolsOf([own.plaintext], [ownDe.plaintext]);
+    const cipher = await toolsOf([own.encrypted], [ownDe.encrypted]);
+
+    expect(cipher).toHaveLength(5);
+    for (let i = 0; i < plain.length; i += 1) expect(cipher[i], `output ${i}`).toBe(plain[i]);
+    // The reference names the own exercise — the comparison is not empty against empty.
+    expect(plain[0]).toContain('"exerciseName":"Ringstütz tief"');
+    expect(plain[2]).toContain('"exerciseName":"Ringstütz, tief"');
+    expect(plain[1]).toContain('"nameEn":"Ringstütz tief"');
+    expect(cipher.join('')).not.toContain('encryptedPayload');
   });
 });

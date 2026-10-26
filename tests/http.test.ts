@@ -27,6 +27,7 @@ import {
   postWithdraw,
   fetchCoachParameters,
   putCoachParameters,
+  fetchSnapshot,
   HttpError,
 } from '../src/http.js';
 
@@ -340,5 +341,29 @@ describe('putCoachParameters', () => {
     } catch (err) {
       expect((err as Error).message).not.toContain(CFG.pat);
     }
+  });
+});
+
+// Phase 164 (CRYPT-01, protocol 1.45 §1.3/§1.9, Recherche Pitfall 6): the data pull asks for the
+// ciphertext rows of own exercises. Without the parameter the server leaves every row with
+// ciphertext out (an older MCP never sees placeholder names); with it the MCP decrypts them.
+describe('fetchSnapshot (Phase 164)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('P164 the data pull asks for exerciseCipher=1', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { syncedAt: 1 }));
+    await fetchSnapshot(CFG.pat, CFG.serverUrl);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const calledUrl = fetchMock.mock.calls[0]?.[0] as string;
+    expect(calledUrl).toBe('https://example.test/api/mcp/data/pull?exerciseCipher=1');
   });
 });

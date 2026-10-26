@@ -25,6 +25,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 // Module mocks — hoisted before static imports by Vitest.
 vi.mock('../../src/cache.js');
+// Phase 164: the P164 test below loads the REAL cache module (`vi.importActual`) to run the
+// decryptMerge seam; its HTTP fetches must stay offline. No other test here reaches http.js.
+vi.mock('../../src/http.js');
 vi.mock('../../src/file-channel.js', async () => {
   const actual = await vi.importActual<typeof import('../../src/file-channel.js')>('../../src/file-channel.js');
   return {
@@ -35,6 +38,8 @@ vi.mock('../../src/file-channel.js', async () => {
 
 import * as cacheModule from '../../src/cache.js';
 import * as fileChannelModule from '../../src/file-channel.js';
+import * as httpModule from '../../src/http.js';
+import { OWN_TEST_KEY_B64, ownExercisePair, ownTranslationPair } from '../own-exercise-fixture.js';
 import { GetHistorySchema } from '../../src/schemas.js';
 import { getHistory, registerToolGetHistory } from '../../src/tools/get_history.js';
 import type { GetHistoryResult } from '../../src/tools/get_history.js';
@@ -50,6 +55,9 @@ import {
   TEMPLATE_ID_LEGS,
 } from '../fixture.js';
 import type {
+  SyncExerciseDto,
+  SyncExerciseTranslationDto,
+  SyncPullResponse,
   DecryptedSnapshot,
   DecryptedSession,
   DecryptedForeignActivity,
@@ -1156,5 +1164,74 @@ describe('get_history — foreign sport: window, order, limit, filter, availabil
     expect(description).toMatch(/exercise, templateId or sessionKind/);
     expect(description).toMatch(/60 seconds/);
     expect(description).toMatch(/get_adherence/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 164 (CRYPT-01, SC 2, O-6): the history names an own exercise the server holds only as
+// ciphertext exactly as it named the plaintext row — a live one and a deleted one (a tombstone
+// with ciphertext, §1.9 "Storage and placeholders"). Both pulls run through the REAL
+// getSnapshot() → decryptMerge → catalog projection (`vi.importActual`, HTTP mocked).
+// ---------------------------------------------------------------------------
+
+describe('get_history — own exercises, encrypted (Phase 164)', () => {
+  it('P164 history names an encrypted own exercise like before', async () => {
+    const realCache = await vi.importActual<typeof import('../../src/cache.js')>('../../src/cache.js');
+    const LIVE = '16400000-0000-4000-8000-0000000000d1';
+    const DELETED = '16400000-0000-4000-8000-0000000000d2';
+    const SESSION = '16400000-0000-4000-8000-0000000000aa';
+    const start = Date.UTC(2026, 9, 20, 8, 0, 0);
+    const times = { createdAt: start, updatedAt: start };
+    const live = ownExercisePair({ id: LIVE, name: 'Ringstütz tief', mode: 'TIME', usesWeight: true, description: 'Ellbogen eng.' }, times);
+    const deleted = ownExercisePair(
+      { id: DELETED, name: 'Alte Übung', mode: 'REPS', usesWeight: false, description: null },
+      { ...times, deletedAt: start + 1 },
+    );
+    const liveDe = ownTranslationPair(
+      { id: '16400000-0000-4000-8000-0000000000e1', exerciseId: LIVE, languageCode: 'de', name: 'Ringstütz, tief', description: null },
+      times,
+    );
+
+    async function historyOf(exercises: SyncExerciseDto[], translations: SyncExerciseTranslationDto[], lang?: string): Promise<GetHistoryResult> {
+      realCache.__resetCache();
+      vi.mocked(httpModule.fetchProfile).mockResolvedValueOnce({
+        userId: 'user-p164', email: 'athlete', displayName: 'Athlete', avatarUrl: '', isPremium: false, createdAt: 1,
+      });
+      vi.mocked(httpModule.fetchCatalog).mockResolvedValueOnce([]);
+      const pull: SyncPullResponse = {
+        syncedAt: start + 10_000,
+        exercises,
+        exerciseTranslations: translations,
+        templates: [], blocks: [], templateExercises: [],
+        sessions: [{ id: SESSION, startTime: start, endTime: start + 3_600_000, isManual: true, isCorrected: false, isQuickChallenge: false, ...times }],
+        setLogs: [
+          { id: '16400000-0000-4000-8000-0000000000ab', sessionId: SESSION, exerciseId: LIVE, exerciseSource: 'CUSTOM', completedTimeSeconds: 30, ...times },
+          { id: '16400000-0000-4000-8000-0000000000ac', sessionId: SESSION, exerciseId: DELETED, exerciseSource: 'CUSTOM', completedReps: 8, ...times },
+        ],
+        hrSamples: [],
+        trainingState: null,
+      };
+      vi.mocked(httpModule.fetchSnapshot).mockResolvedValueOnce(pull);
+      const { snapshot, catalog } = await realCache.getSnapshot('test-only-token', OWN_TEST_KEY_B64, 'https://test.example.com');
+      return getHistory(
+        { from: '2026-10-01', to: '2026-10-31', limit: 200 },
+        snapshot,
+        createExerciseNameResolver({ catalog, snapshot, lang }),
+      );
+    }
+
+    for (const lang of [undefined, 'de']) {
+      const plain = await historyOf([live.plaintext, deleted.plaintext], [liveDe.plaintext], lang);
+      const cipher = await historyOf([live.encrypted, deleted.encrypted], [liveDe.encrypted], lang);
+      expect(plain.setLogs).toHaveLength(2);
+      expect(JSON.stringify(cipher)).toBe(JSON.stringify(plain));
+      const liveLog = cipher.setLogs.find((sl) => sl.exerciseId === LIVE);
+      const deletedLog = cipher.setLogs.find((sl) => sl.exerciseId === DELETED);
+      expect(liveLog?.exerciseName).toBe(lang === 'de' ? 'Ringstütz, tief' : 'Ringstütz tief');
+      expect(liveLog?.exerciseKey).toBe(`user_exercise:${LIVE}`);
+      expect(deletedLog?.exerciseName).toBe('Alte Übung');
+      expect(deletedLog?.exerciseDeleted).toBe(true);
+      expect(cipher.setLogs.some((sl) => sl.exerciseUnknown === true)).toBe(false);
+    }
   });
 });

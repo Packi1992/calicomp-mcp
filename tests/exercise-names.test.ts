@@ -15,13 +15,27 @@
  *     `get_template` carries both fields through its existing spread.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Phase 164: the P164 tests below run the REAL getSnapshot() → decryptMerge path; only the three
+// HTTP fetches are mocked. Every older test in this file is pure and never touches http.js.
+vi.mock('../src/http.js');
+
 import { createExerciseNameResolver } from '../src/exercise-names.js';
 import { getTemplate } from '../src/tools/get_template.js';
 import { getExerciseCatalog } from '../src/tools/get_exercise_catalog.js';
-import { decryptExerciseNameOverride } from '../src/cache.js';
+import { decryptExerciseNameOverride, getSnapshot, __resetCache } from '../src/cache.js';
+import * as httpModule from '../src/http.js';
+import { OWN_TEST_KEY_B64, ownExercisePair, ownTranslationPair } from './own-exercise-fixture.js';
 import { loadCoachPlanningVectors } from './shared-vectors.js';
-import type { CatalogExercise, DecryptedExerciseNameOverride, DecryptedSnapshot } from '../src/types.js';
+import type {
+  CatalogExercise,
+  DecryptedExerciseNameOverride,
+  DecryptedSnapshot,
+  SyncExerciseDto,
+  SyncExerciseTranslationDto,
+  SyncPullResponse,
+} from '../src/types.js';
 
 const CATALOG_ID = 'aaaaaaaa-1111-4000-a000-000000000001';
 const LIVE_USER_ID = 'bbbbbbbb-2222-4000-b000-000000000001';
@@ -563,5 +577,117 @@ describe('own names — description-only override (Phase 156 gap round, D-22)', 
       expect(JSON.stringify(result)).not.toContain(ownDescription!.slice(0, 40));
       expect(JSON.stringify(catalogResult)).not.toContain(ownDescription!.slice(0, 40));
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 164 (CRYPT-01, SC 2, O-6): own exercises held only as ciphertext on the server are
+// named byte for byte as before. Both pulls run through the REAL getSnapshot() → decryptMerge
+// → catalog projection; the plaintext pull is the reference the encrypted pull must match.
+// ---------------------------------------------------------------------------
+
+describe('own exercises, encrypted (Phase 164, O-6)', () => {
+  async function snapshotOf(
+    exercises: SyncExerciseDto[],
+    exerciseTranslations: SyncExerciseTranslationDto[],
+    keyB64: string = OWN_TEST_KEY_B64,
+  ): Promise<{ snapshot: DecryptedSnapshot; catalog: CatalogExercise[] }> {
+    __resetCache();
+    vi.mocked(httpModule.fetchProfile).mockResolvedValueOnce({
+      userId: 'user-p164', email: 'athlete', displayName: 'Athlete', avatarUrl: '', isPremium: false, createdAt: 1,
+    });
+    vi.mocked(httpModule.fetchCatalog).mockResolvedValueOnce([]);
+    const pull: SyncPullResponse = {
+      syncedAt: 1_792_000_001_000, exercises, exerciseTranslations, templates: [], blocks: [],
+      templateExercises: [], sessions: [], setLogs: [], hrSamples: [], trainingState: null,
+    };
+    vi.mocked(httpModule.fetchSnapshot).mockResolvedValueOnce(pull);
+    const { snapshot, catalog } = await getSnapshot('test-only-token', keyB64, 'https://test.example.com');
+    return { snapshot, catalog };
+  }
+
+  it('P164 an encrypted own exercise is named exactly like its plaintext twin', async () => {
+    const LIVE = '16400000-0000-4000-8000-0000000000d1';
+    const DELETED = '16400000-0000-4000-8000-0000000000d2';
+    const live = ownExercisePair(
+      { id: LIVE, name: 'Ringstütz tief', mode: 'TIME', usesWeight: true, description: 'Ellbogen eng.' },
+      { createdAt: 1_792_000_000_000, updatedAt: 1_792_000_000_100 },
+    );
+    const deleted = ownExercisePair(
+      { id: DELETED, name: 'Alte Übung', mode: 'REPS', usesWeight: false, description: null },
+      { createdAt: 1_792_000_000_000, updatedAt: 1_792_000_000_200, deletedAt: 1_792_000_000_200 },
+    );
+    const liveEn = ownTranslationPair(
+      { id: '16400000-0000-4000-8000-0000000000e1', exerciseId: LIVE, languageCode: 'en', name: 'Deep ring support', description: null },
+      { createdAt: 1_792_000_000_000, updatedAt: 1_792_000_000_100 },
+    );
+    const deletedEn = ownTranslationPair(
+      { id: '16400000-0000-4000-8000-0000000000e2', exerciseId: DELETED, languageCode: 'en', name: 'Old exercise', description: 'Gone.' },
+      { createdAt: 1_792_000_000_000, updatedAt: 1_792_000_000_100 },
+    );
+
+    const plain = await snapshotOf([live.plaintext, deleted.plaintext], [liveEn.plaintext, deletedEn.plaintext]);
+    const cipher = await snapshotOf([live.encrypted, deleted.encrypted], [liveEn.encrypted, deletedEn.encrypted]);
+
+    let compared = 0;
+    for (const lang of [undefined, 'en', 'de']) {
+      const plainResolver = createExerciseNameResolver({ catalog: plain.catalog, snapshot: plain.snapshot, lang });
+      const cipherResolver = createExerciseNameResolver({ catalog: cipher.catalog, snapshot: cipher.snapshot, lang });
+      for (const id of [LIVE, DELETED]) {
+        const expected = plainResolver.forExerciseId(id);
+        const actual = cipherResolver.forExerciseId(id);
+        expect(actual, `${id} ${lang}`).toStrictEqual(expected);
+        expect(JSON.stringify(actual)).toBe(JSON.stringify(expected));
+        compared += 1;
+      }
+    }
+    expect(compared).toBe(6);
+    // The reference itself names both exercises — the comparison above is not null against null.
+    const reference = createExerciseNameResolver({ catalog: plain.catalog, snapshot: plain.snapshot, lang: 'en' });
+    expect(reference.forExerciseId(LIVE)).toEqual({ exerciseName: 'Deep ring support', exerciseKey: `user_exercise:${LIVE}` });
+    expect(reference.forExerciseId(DELETED)).toEqual({
+      exerciseName: 'Old exercise', exerciseKey: `user_exercise:${DELETED}`, exerciseDeleted: true,
+    });
+    // The catalog tool lists the live own exercise identically.
+    expect(JSON.stringify(getExerciseCatalog({ lang: 'en' }, cipher.catalog, cipher.snapshot))).toBe(
+      JSON.stringify(getExerciseCatalog({ lang: 'en' }, plain.catalog, plain.snapshot)),
+    );
+  });
+
+  it('P164 the hostile corpus name passes through unchanged', async () => {
+    const corpus = loadCoachPlanningVectors();
+    const hostile = corpus.ownExerciseCipher.find((v) => v.name === 'hostile-name-at-name-limit');
+    const hostileTr = corpus.ownExerciseTranslationCipher.find((v) => v.name === 'translation-hostile-name-at-name-limit');
+    if (!hostile || !('expectedDecoded' in hostile) || !hostileTr) throw new Error('corpus lacks the hostile vectors');
+    expect(hostileTr.expectedDecoded.exerciseId).toBe(hostile.rowId);
+
+    const row: SyncExerciseDto = {
+      id: hostile.rowId, name: '', mode: 'REPS', usesWeight: false, encryptedPayload: hostile.ciphertextJson,
+      createdAt: 1_792_000_000_000, updatedAt: hostile.expectedDecoded.updatedAt,
+    };
+    const trRow: SyncExerciseTranslationDto = {
+      id: hostileTr.rowId, exerciseId: hostileTr.expectedDecoded.exerciseId,
+      languageCode: hostileTr.expectedDecoded.languageCode, name: '', encryptedPayload: hostileTr.ciphertextJson,
+      createdAt: 1_792_000_000_000, updatedAt: 1_792_000_000_000,
+    };
+    const { snapshot, catalog } = await snapshotOf([row], [trRow], hostile.keyB64);
+
+    const name = hostile.expectedDecoded.name;
+    const trName = hostileTr.expectedDecoded.name;
+    expect(name.length).toBe(255);
+    const byteEqual = (a: string | null, b: string): boolean =>
+      a !== null && Buffer.from(a, 'utf8').equals(Buffer.from(b, 'utf8'));
+
+    const plainName = createExerciseNameResolver({ catalog, snapshot }).forExerciseId(hostile.rowId).exerciseName;
+    expect(byteEqual(plainName, name)).toBe(true);
+    const enName = createExerciseNameResolver({ catalog, snapshot, lang: hostileTr.expectedDecoded.languageCode })
+      .forExerciseId(hostile.rowId).exerciseName;
+    expect(byteEqual(enName, trName)).toBe(true);
+
+    // The catalog tool carries the same bytes as a plain string, no envelope in 164 (O-6).
+    const entry = getExerciseCatalog({}, catalog, snapshot).find((ex) => ex.id === hostile.rowId);
+    expect(typeof entry?.nameEn).toBe('string');
+    expect(byteEqual(entry?.nameEn ?? null, name)).toBe(true);
+    expect(JSON.parse(JSON.stringify(entry)).nameEn).toBe(name);
   });
 });
