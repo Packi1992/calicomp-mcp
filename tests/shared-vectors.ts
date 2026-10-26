@@ -328,6 +328,127 @@ const ExerciseNameOverrideDecodeVectorSchema = z.object({
 });
 
 /**
+ * Phase 164 (CRYPT-01, D-25): the normal form of a decoded own exercise (protocol §1.9
+ * "Decoded rows") — the plaintext object without `v`, in the same key order. `.strict()` on
+ * purpose: Zod's default object parse would STRIP an extra key a corpus edit added, and the
+ * `toStrictEqual` replays would then compare against a shape the corpus no longer has.
+ */
+const OwnExerciseDecodedSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    mode: z.enum(['REPS', 'TIME', 'MAX']),
+    usesWeight: z.boolean(),
+    description: z.string().nullable(),
+    updatedAt: z.number().int(),
+    muscleGroups: z.array(
+      z.object({ id: z.string(), level: z.enum(['PRIMARY', 'SECONDARY', 'STABILIZER']).nullable() }).strict(),
+    ),
+    equipment: z.array(z.object({ id: z.string(), optional: z.boolean() }).strict()),
+    capabilities: z.array(
+      z.object({ id: z.string(), level: z.enum(['HAUPTREIZ', 'MITTRAINIERT', 'GERING']).nullable() }).strict(),
+    ),
+  })
+  .strict();
+
+/** Phase 164: the normal form of a decoded translation of an own exercise (§1.9). */
+const OwnExerciseTranslationDecodedSchema = z
+  .object({
+    id: z.string(),
+    exerciseId: z.string(),
+    languageCode: z.string(),
+    name: z.string(),
+    description: z.string().nullable(),
+  })
+  .strict();
+
+/** The three reasons of §1.9 "Decoded rows" (rule 2 only reachable through a ciphertext). */
+const OwnExerciseReasonSchema = z.enum(['malformed_payload', 'decrypt_failed', 'unknown_version']);
+
+/**
+ * Phase 164 (CRYPT-01): `ownExerciseCipher` — app-written ciphertexts of own exercises under
+ * the fixed corpus test key (bytes 0x00..0x1F, never a real key). A vector either decrypts to
+ * `expectedPlaintextString` and decodes to `expectedDecoded`, or names the `expectedReason`
+ * of the first failing rule (the tampered vector, `decrypt_failed`).
+ */
+const OwnExerciseCipherVectorSchema = z.union([
+  z
+    .object({
+      name: z.string().min(1),
+      keyB64: z.string().min(1),
+      rowId: z.string().min(1),
+      ciphertextJson: z.string().min(1),
+      expectedPlaintextString: z.string().min(1),
+      expectedDecoded: OwnExerciseDecodedSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.string().min(1),
+      keyB64: z.string().min(1),
+      rowId: z.string().min(1),
+      ciphertextJson: z.string().min(1),
+      expectedReason: OwnExerciseReasonSchema,
+    })
+    .strict(),
+]);
+
+/**
+ * Phase 164 (CRYPT-01): `ownExerciseTranslationCipher` — the translation twin of
+ * `ownExerciseCipher`. The row's plaintext `exerciseId` and `languageCode` are those of
+ * `expectedDecoded` (§1.9: both equal the row's own fields).
+ */
+const OwnExerciseTranslationCipherVectorSchema = z
+  .object({
+    name: z.string().min(1),
+    keyB64: z.string().min(1),
+    rowId: z.string().min(1),
+    ciphertextJson: z.string().min(1),
+    expectedPlaintextString: z.string().min(1),
+    expectedDecoded: OwnExerciseTranslationDecodedSchema,
+  })
+  .strict();
+
+/**
+ * Phase 164 (CRYPT-01): `ownExerciseDecode` — the decoding rules of §1.9 "Decoded rows" at the
+ * plaintext level (no encryption). A vector of kind `translation` names the row's own
+ * `rowExerciseId` and `rowLanguageCode`; each vector expects either `decoded` or `reason`.
+ */
+const OwnExerciseDecodeVectorSchema = z
+  .object({
+    name: z.string().min(1),
+    kind: z.enum(['exercise', 'translation']),
+    rowId: z.string().min(1),
+    rowExerciseId: z.string().min(1).optional(),
+    rowLanguageCode: z.string().min(1).optional(),
+    plaintext: z.string(),
+    decoded: z.union([OwnExerciseDecodedSchema, OwnExerciseTranslationDecodedSchema]).optional(),
+    reason: OwnExerciseReasonSchema.optional(),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    if ((v.decoded === undefined) === (v.reason === undefined)) {
+      ctx.addIssue({ code: 'custom', message: `${v.name}: exactly one of decoded and reason` });
+    }
+    if (v.kind === 'translation' && (v.rowExerciseId === undefined || v.rowLanguageCode === undefined)) {
+      ctx.addIssue({ code: 'custom', message: `${v.name}: a translation vector names rowExerciseId and rowLanguageCode` });
+    }
+  });
+
+/**
+ * Phase 164 (protocol §1.10 "The key check"): `keyCheck` — the HMAC-SHA256 of the label
+ * `calicomp:key-check:v1` under a key, lower-case hex. Test keys only (corpus key, all 0xFF,
+ * all 0x00).
+ */
+const KeyCheckVectorSchema = z
+  .object({
+    name: z.string().min(1),
+    keyB64: z.string().min(1),
+    keyCheck: z.string().regex(/^[0-9a-f]{64}$/, 'Must be a 64-char lowercase hex digest'),
+  })
+  .strict();
+
+/**
  * Phase 155 (E-15): the three predefined foreign types — key, deterministic id and the
  * English and German name. `src/foreign-types.ts`'s `FOREIGN_BUILTIN_TYPES` must equal this
  * section exactly (`tests/shared-vectors.test.ts`), the app's own table is checked against
@@ -642,6 +763,12 @@ export const CoachPlanningVectorsSchema = z.object({
   // parse drops them and the replays in shared-vectors.test.ts measure nothing.
   exerciseNameOverrideCipherV2: z.array(ExerciseNameOverrideCipherV2VectorSchema).min(1),
   exerciseNameOverrideDecode: z.array(ExerciseNameOverrideDecodeVectorSchema).min(1),
+  // Phase 164 (CRYPT-01): listed for the same reason as every section above — an unlisted
+  // section would be silently dropped by the parse and its replay would measure nothing.
+  ownExerciseCipher: z.array(OwnExerciseCipherVectorSchema).min(1),
+  ownExerciseTranslationCipher: z.array(OwnExerciseTranslationCipherVectorSchema).min(1),
+  ownExerciseDecode: z.array(OwnExerciseDecodeVectorSchema).min(1),
+  keyCheck: z.array(KeyCheckVectorSchema).min(1),
   plannedUpdate: z.array(PlannedUpdateVectorSchema).min(1),
   streak: z.array(StreakVectorSchema).min(1),
   muscleBalance: z.array(MuscleBalanceVectorSchema).min(1),

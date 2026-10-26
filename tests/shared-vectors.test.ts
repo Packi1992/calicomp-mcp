@@ -29,6 +29,13 @@ import {
   renderSeriesFields,
 } from '../src/recurrence.js';
 import { decrypt } from '../src/crypto.js';
+import { createHmac } from 'node:crypto';
+import {
+  decodeOwnExercisePlaintext,
+  decodeOwnExerciseTranslationPlaintext,
+  decryptOwnExercise,
+  decryptOwnExerciseTranslation,
+} from '../src/own-exercise-cipher.js';
 import {
   decryptPlannedWorkout,
   decryptSession,
@@ -714,6 +721,191 @@ describe('shared coach-planning vector corpus', () => {
       expect(readableSeen + unreadableSeen).toBe(54);
       expect(readableSeen).toBeGreaterThan(0);
       expect(unreadableSeen).toBeGreaterThan(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Own exercises, encrypted (Phase 164, CRYPT-01, D-25; protocol 1.45 §1.9): the four corpus
+  // sections `ownExerciseCipher`, `ownExerciseTranslationCipher`, `ownExerciseDecode` and
+  // `keyCheck`, replayed through the REAL decoders of `src/own-exercise-cipher.ts` that
+  // `decryptMerge` uses. The Kotlin twin (plan 164-07) replays the same vectors, so both
+  // languages decide every row the same way. Expected outcomes come from the corpus and are
+  // never adjusted to the code.
+  // -----------------------------------------------------------------------
+
+  describe('own exercise vectors (Phase 164)', () => {
+    /** An exercise row as `GET /api/mcp/data/pull?exerciseCipher=1` sends it: placeholders in the content fields (§1.9). */
+    function ownExerciseRow(rowId: string, ciphertextJson: string): {
+      id: string; name: string; mode: string; usesWeight: boolean; encryptedPayload: string; createdAt: number; updatedAt: number;
+    } {
+      return { id: rowId, name: '', mode: 'REPS', usesWeight: false, encryptedPayload: ciphertextJson, createdAt: 0, updatedAt: 0 };
+    }
+
+    /** The message of a decode error names the entity, the row id and the cause only, never payload content. */
+    const OWN_EXERCISE_ERROR_MESSAGE =
+      /^(exercise|exercise_translation) row [0-9a-f-]+ (has a malformed payload|has an unknown schema version|could not be decrypted|arrived with an empty encryptedPayload)$/;
+
+    it('P164 own exercise sections hold all vectors', () => {
+      // A replay that read fewer vectors than the corpus carries would pass vacuously.
+      expect(corpus.ownExerciseCipher).toHaveLength(6);
+      expect(corpus.ownExerciseTranslationCipher).toHaveLength(3);
+      expect(corpus.ownExerciseDecode).toHaveLength(30);
+      expect(corpus.keyCheck).toHaveLength(3);
+    });
+
+    it('P164 every ownExerciseCipher vector decrypts to its exact plaintext and decodes to expectedDecoded', () => {
+      let decodedCount = 0;
+      let hostileSeen = 0;
+      let nameAtLimitSeen = 0;
+      let descriptionAtLimitSeen = 0;
+      let nullDescriptionSeen = 0;
+      for (const vector of corpus.ownExerciseCipher) {
+        if (!('expectedDecoded' in vector)) continue;
+        expect(decrypt(vector.ciphertextJson, vector.keyB64), vector.name).toBe(vector.expectedPlaintextString);
+        const decoded = decryptOwnExercise(ownExerciseRow(vector.rowId, vector.ciphertextJson), vector.keyB64);
+        // toStrictEqual: same keys, same values, nothing extra — the normal form exactly.
+        expect({ ...decoded }, vector.name).toStrictEqual(vector.expectedDecoded);
+        expect(Object.keys(decoded), vector.name).toEqual(Object.keys(vector.expectedDecoded));
+        // Byte for byte: the reader never trims, cuts or interprets a name (O-6).
+        expect(Buffer.from(decoded.name, 'utf8').equals(Buffer.from(vector.expectedDecoded.name, 'utf8'))).toBe(true);
+        if (vector.expectedDecoded.name.includes('Ignore all')) hostileSeen += 1;
+        if (vector.expectedDecoded.name.length === 255) nameAtLimitSeen += 1;
+        if (vector.expectedDecoded.description === null) nullDescriptionSeen += 1;
+        else if (vector.expectedDecoded.description.length === 1000) descriptionAtLimitSeen += 1;
+        decodedCount += 1;
+      }
+      expect(decodedCount).toBe(5);
+      // The corpus must actually carry each edge, or this test proves nothing.
+      expect(hostileSeen).toBeGreaterThan(0);
+      expect(nameAtLimitSeen).toBeGreaterThan(0);
+      expect(descriptionAtLimitSeen).toBeGreaterThan(0);
+      expect(nullDescriptionSeen).toBeGreaterThan(0);
+    });
+
+    it('P164 a tampered ownExerciseCipher vector is decrypt_failed', () => {
+      let reasonCount = 0;
+      for (const vector of corpus.ownExerciseCipher) {
+        if (!('expectedReason' in vector)) continue;
+        let caught: unknown;
+        try {
+          decryptOwnExercise(ownExerciseRow(vector.rowId, vector.ciphertextJson), vector.keyB64);
+        } catch (err) {
+          caught = err;
+        }
+        expect(caught, vector.name).toBeInstanceOf(RowDecodeError);
+        expect((caught as RowDecodeError).reason, vector.name).toBe(vector.expectedReason);
+        expect((caught as RowDecodeError).message, vector.name).toMatch(OWN_EXERCISE_ERROR_MESSAGE);
+        reasonCount += 1;
+      }
+      expect(reasonCount).toBe(1);
+      expect(corpus.ownExerciseCipher.some((v) => 'expectedReason' in v && v.expectedReason === 'decrypt_failed')).toBe(true);
+    });
+
+    it('P164 an empty encryptedPayload is malformed_payload (rule 1, no corpus vector)', () => {
+      // The corpus carries no vector for rule 1 (an empty payload has no ciphertext to pin), so
+      // this replay checks it directly — the app's decoder checks the same rule in its own test.
+      const key = corpus.ownExerciseCipher[0].keyB64;
+      const rowId = corpus.ownExerciseCipher[0].rowId;
+      for (const decodeEmpty of [
+        () => decryptOwnExercise({ id: rowId, encryptedPayload: '' }, key),
+        () =>
+          decryptOwnExerciseTranslation(
+            { id: rowId, exerciseId: rowId, languageCode: 'en', encryptedPayload: '' },
+            key,
+          ),
+      ]) {
+        let caught: unknown;
+        try {
+          decodeEmpty();
+        } catch (err) {
+          caught = err;
+        }
+        expect(caught).toBeInstanceOf(RowDecodeError);
+        expect((caught as RowDecodeError).reason).toBe('malformed_payload');
+        expect((caught as RowDecodeError).message).toMatch(OWN_EXERCISE_ERROR_MESSAGE);
+      }
+    });
+
+    it('P164 every ownExerciseTranslationCipher vector decodes to expectedDecoded', () => {
+      let decodedCount = 0;
+      let hostileSeen = 0;
+      let nullDescriptionSeen = 0;
+      for (const vector of corpus.ownExerciseTranslationCipher) {
+        expect(decrypt(vector.ciphertextJson, vector.keyB64), vector.name).toBe(vector.expectedPlaintextString);
+        const row = {
+          id: vector.rowId,
+          exerciseId: vector.expectedDecoded.exerciseId,
+          languageCode: vector.expectedDecoded.languageCode,
+          name: '',
+          encryptedPayload: vector.ciphertextJson,
+        };
+        const decoded = decryptOwnExerciseTranslation(row, vector.keyB64);
+        expect({ ...decoded }, vector.name).toStrictEqual(vector.expectedDecoded);
+        expect(Object.keys(decoded), vector.name).toEqual(Object.keys(vector.expectedDecoded));
+        expect(Buffer.from(decoded.name, 'utf8').equals(Buffer.from(vector.expectedDecoded.name, 'utf8'))).toBe(true);
+        if (vector.expectedDecoded.name.includes('Ignore')) hostileSeen += 1;
+        if (vector.expectedDecoded.description === null) nullDescriptionSeen += 1;
+        decodedCount += 1;
+      }
+      expect(decodedCount).toBe(3);
+      expect(hostileSeen).toBeGreaterThan(0);
+      expect(nullDescriptionSeen).toBeGreaterThan(0);
+    });
+
+    it('P164 every ownExerciseDecode vector yields its decoded form or its reason', () => {
+      let readableSeen = 0;
+      let unreadableSeen = 0;
+      let translationSeen = 0;
+      for (const vector of corpus.ownExerciseDecode) {
+        const decode = (): unknown =>
+          vector.kind === 'exercise'
+            ? decodeOwnExercisePlaintext(vector.plaintext, vector.rowId)
+            : decodeOwnExerciseTranslationPlaintext(vector.plaintext, {
+                id: vector.rowId,
+                exerciseId: vector.rowExerciseId as string,
+                languageCode: vector.rowLanguageCode as string,
+              });
+        if (vector.kind === 'translation') translationSeen += 1;
+        if (vector.decoded !== undefined) {
+          const decoded = decode() as Record<string, unknown>;
+          // toStrictEqual: same keys, same values, nothing extra — byte for byte, never trimmed.
+          expect({ ...decoded }, vector.name).toStrictEqual(vector.decoded);
+          expect(Object.keys(decoded), vector.name).toEqual(Object.keys(vector.decoded));
+          readableSeen += 1;
+        } else {
+          let caught: unknown;
+          try {
+            decode();
+          } catch (err) {
+            caught = err;
+          }
+          expect(caught, vector.name).toBeInstanceOf(RowDecodeError);
+          expect((caught as RowDecodeError).reason, vector.name).toBe(vector.reason);
+          // The message names the row id and the cause only, never content from the payload.
+          expect((caught as RowDecodeError).message, vector.name).toBe(
+            `${vector.kind === 'exercise' ? 'exercise' : 'exercise_translation'} row ${vector.rowId} has ` +
+              (vector.reason === 'unknown_version' ? 'an unknown schema version' : 'a malformed payload'),
+          );
+          unreadableSeen += 1;
+        }
+      }
+      expect(readableSeen + unreadableSeen).toBe(30);
+      expect(readableSeen).toBe(4);
+      expect(translationSeen).toBe(5);
+    });
+
+    it('P164 every keyCheck vector equals the HMAC of its key', () => {
+      // §1.10 "The key check": HMAC-SHA256 under the raw key over the UTF-8 label, lower-case hex.
+      // Computed here directly (no production function needed in the MCP, plan 164-19).
+      for (const vector of corpus.keyCheck) {
+        const mac = createHmac('sha256', Buffer.from(vector.keyB64, 'base64'))
+          .update('calicomp:key-check:v1', 'utf8')
+          .digest('hex');
+        expect(mac, vector.name).toBe(vector.keyCheck);
+      }
+      expect(corpus.keyCheck.map((v) => v.keyCheck)).toContain(
+        'e34cf841f37e34b33e1d5e2f88088008392e5d04a3970d62cb28cee62ba93a45',
+      );
     });
   });
 
