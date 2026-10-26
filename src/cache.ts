@@ -659,8 +659,8 @@ function decryptForeignPayload(row: MiscSyncRow, keyB64: string, wireKind: strin
   return plaintext;
 }
 
-/** A non-empty string, else `undefined` — the test for a required id field. */
-function requiredString(value: unknown): string | undefined {
+/** A non-empty string, else `undefined` — the test for a required id field. Exported for `own-exercise-cipher.ts` (Phase 164). */
+export function requiredString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
@@ -803,8 +803,8 @@ export function isBlankOverrideText(value: string): boolean {
   return BLANK_OVERRIDE_TEXT.test(value);
 }
 
-/** A canonical lower-case UUID — the only readable `exerciseId` (§1.7 "Decoded rows", rule 5). */
-const CANONICAL_LOWER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** A canonical lower-case UUID — the only readable `exerciseId` (§1.7 "Decoded rows", rule 5); since Phase 164 also every id of §1.9. */
+export const CANONICAL_LOWER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
  * Decode the decrypted plaintext of one `exercise_name_override` row into its §1.7 normal
