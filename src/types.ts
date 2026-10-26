@@ -15,22 +15,42 @@
 // Wire DTOs (as returned by /api/mcp/data/pull before decryption)
 // ---------------------------------------------------------------------------
 
+/**
+ * An own exercise on the wire. Phase 164 (CRYPT-01, protocol 1.45 §1.9): with
+ * `?exerciseCipher=1` a row of a migrated account carries `encryptedPayload` and only
+ * placeholders in `name`/`mode`/`usesWeight`/`description` (`""`, `"REPS"`, `false`, absent).
+ * `cache.ts`'s `decryptMerge` reads such a row only from the ciphertext and hands every tool
+ * the plaintext shape without `encryptedPayload` — a snapshot row never carries it.
+ */
 export interface SyncExerciseDto {
   id: string;
   name: string;
   mode: string;                // "REPS" | "TIME" | "MAX"
   usesWeight: boolean;
   description?: string;
+  /** Phase 164: the opaque ciphertext of the row (§1.9); absent on a plaintext row. */
+  encryptedPayload?: string;
   createdAt: number;
   updatedAt: number;
   deletedAt?: number;
 }
 
+/**
+ * A translation of an own exercise on the wire. `id`, `createdAt` and `updatedAt` have always
+ * been sent by the server (`SyncDtos.kt`) and are optional here only because older fixtures
+ * omit them. Phase 164 (§1.9): a row with `encryptedPayload` carries placeholders in `name` and
+ * `description`; `exerciseId` and `languageCode` stay plaintext.
+ */
 export interface SyncExerciseTranslationDto {
+  id?: string;
   exerciseId: string;
   languageCode: string;
   name: string;
   description?: string;
+  /** Phase 164: the opaque ciphertext of the row (§1.9); absent on a plaintext row. */
+  encryptedPayload?: string;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface SyncTemplateDto {
@@ -549,6 +569,15 @@ export interface DecryptedSnapshot {
    * this list; it is counted in the `DecodeReport` and degrades only its own exercise (D-10).
    */
   exerciseNameOverrides?: DecryptedExerciseNameOverride[];
+  /**
+   * Phase 164 (CRYPT-01, D-25; protocol 1.45 §1.9 "Links ride in the payload"): the decoded
+   * muscle-group, equipment and capability links of every own exercise that arrived as
+   * ciphertext, keyed by the exercise id, beside `exercises` (the plaintext row shape has no
+   * place for them). OPTIONAL: left out when no own exercise arrived as ciphertext (a plaintext
+   * account, a server before 1.45), so every existing snapshot fixture stays valid. The catalog
+   * projection (`projectUserExerciseToCatalog`) maps them onto catalog keys.
+   */
+  ownExerciseLinks?: Record<string, import('./own-exercise-cipher.js').OwnExerciseLinks>;
 }
 
 // ---------------------------------------------------------------------------
@@ -567,9 +596,12 @@ export interface DecryptedSnapshot {
 // the row (`templateId`, `isQuickChallenge`) are all `classifySession` needs.
 // ---------------------------------------------------------------------------
 
-/** The nine row kinds `decryptMerge` can fail to decode (three since Phase 155, the last
- *  since Phase 156). `exerciseNameOverride` belongs to no readability check of any tool:
- *  an unreadable override only takes away its own exercise's own name (D-10). */
+/** The eleven row kinds `decryptMerge` can fail to decode (three since Phase 155, one since
+ *  Phase 156, the last two since Phase 164). `exerciseNameOverride` belongs to no readability
+ *  check of any tool: an unreadable override only takes away its own exercise's own name (D-10).
+ *  `exercise` and `exerciseTranslation` (own exercises with ciphertext, protocol 1.45 §1.9) belong
+ *  to none either: an unreadable own exercise is left out of the snapshot and degrades only
+ *  itself — a tool then names it `exerciseUnknown`, never with a placeholder name. */
 export type UnreadableEntity =
   | 'session'
   | 'setLog'
@@ -579,7 +611,9 @@ export type UnreadableEntity =
   | 'foreignActivityType'
   | 'foreignActivity'
   | 'plannedForeignActivity'
-  | 'exerciseNameOverride';
+  | 'exerciseNameOverride'
+  | 'exercise'
+  | 'exerciseTranslation';
 
 /**
  * Why a row could not be decoded. `unknown_version` only ever applies to
@@ -632,6 +666,21 @@ export interface DecodeReport {
   unreadable: UnreadableRow[];
   encryptedCount: Record<UnreadableEntity, number>;
   failedCount: Record<UnreadableEntity, number>;
+  /**
+   * Phase 164 (D-25, protocol 1.45 §1.9 "Links ride in the payload"): the links of own
+   * exercises the catalog projection left out — a link id the catalog the MCP holds does not
+   * know (never invented), and a capability link without level (no grade to weigh, D-04).
+   * Counts only, never an id or a name. Present only when an own exercise arrived as ciphertext.
+   */
+  ownExerciseLinksLeftOut?: OwnExerciseLinksLeftOut;
+}
+
+/** Phase 164: counts of own-exercise links the catalog projection left out (see `DecodeReport`). */
+export interface OwnExerciseLinksLeftOut {
+  unknownMuscleGroup: number;
+  unknownEquipment: number;
+  unknownCapability: number;
+  capabilityWithoutLevel: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -752,9 +801,10 @@ export interface CatalogExercise {
    * `'CUSTOM'` for a user's own exercise projected into the merged catalog from
    * `snapshot.exercises` (see `projectUserExerciseToCatalog` in `cache.ts`). Required, not
    * optional, so the type checker finds every construction site — the same reasoning that
-   * made `capabilities` required after the CAP-05 gap. A `'CUSTOM'` entry carries no muscle,
-   * equipment or capability rating (see that field's own doc); the coach uses `origin` to
-   * tell an unrated exercise apart from a rated one with zero values.
+   * made `capabilities` required after the CAP-05 gap. A `'CUSTOM'` entry carries the muscle,
+   * equipment and capability links the athlete set, once its row arrived as ciphertext (Phase
+   * 164, D-25); a plaintext row carries none and stays unrated. The coach uses `origin` to tell
+   * an own exercise apart from a curated one.
    */
   origin: 'CATALOG' | 'CUSTOM';
 }

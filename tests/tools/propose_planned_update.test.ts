@@ -328,8 +328,8 @@ describe('propose_planned_update — registered MCP handler', () => {
         // plannedWorkout.encryptedCount > failedCount so assertEntitiesReadable (D-11)
         // does not fire first — this test isolates assertCalendarReadable's own message.
         unreadable: [{ entity: 'plannedWorkout', id: 'row-broken', reason: 'unknown_version' }],
-        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 2, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0 },
-        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0 },
+        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 2, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 },
+        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 },
       },
     });
 

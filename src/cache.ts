@@ -48,6 +48,15 @@
  *   the own name of its one exercise in its one language, never a tool. Two readable rows
  *   on the same key leave only the newer one in the snapshot (WR-MCP-03).
  *
+ * Own exercises, encrypted (Phase 164, CRYPT-01, D-25, O-6; protocol 1.45 §1.9):
+ *   `exercises` and `exerciseTranslations` decode per row with a dual path like sessions:
+ *   a row without `encryptedPayload` passes unchanged, a row with it is read only from the
+ *   ciphertext (`own-exercise-cipher.ts`) and handed on in exactly the plaintext row shape, so
+ *   every tool names it byte for byte as before. An unreadable row is reported under
+ *   `exercise`/`exerciseTranslation` and left out — never shown with its placeholder name —
+ *   and belongs to no readability check. The decoded links ride beside the rows in
+ *   `snapshot.ownExerciseLinks` and reach the catalog through `projectUserExerciseToCatalog`.
+ *
  * Per-row decode fault tolerance (Phase 150, D-08/D-10/D-11/D-12):
  *   Sessions, set-logs, HR samples, planned workouts and settings ALL decode per row —
  *   a single bad row (`RowDecodeError` below) never aborts `decryptMerge`. Failures land
@@ -65,6 +74,12 @@
 import { decrypt } from './crypto.js';
 import { fetchSnapshot, fetchProfile, fetchCatalog } from './http.js';
 import { classifySession } from './session-kind.js';
+import { CANONICAL_LOWER_UUID, RowDecodeError, isBlankOverrideText, requiredString } from './row-decode.js';
+// Phase 164 (plan 164-19): moved to row-decode.ts unchanged; re-exported so every importer of
+// cache.js keeps working.
+export { CANONICAL_LOWER_UUID, RowDecodeError, isBlankOverrideText, requiredString };
+import { decryptOwnExercise, decryptOwnExerciseTranslation } from './own-exercise-cipher.js';
+import type { OwnExerciseLinks } from './own-exercise-cipher.js';
 import type {
   SyncPullResponse,
   SyncSessionDto,
@@ -90,6 +105,10 @@ import type {
   CatalogExercise,
   CatalogExerciseWire,
   CatalogTranslation,
+  CatalogMuscleGroup,
+  CatalogEquipment,
+  CatalogCapabilityAxis,
+  OwnExerciseLinksLeftOut,
   UserProfileResponse,
   DecodeReport,
   UnreadableReason,
@@ -127,19 +146,6 @@ export type SnapshotCache = {
 // Per-row decode fault tolerance (Phase 150, D-08/D-09/D-10/D-11/D-12)
 // ---------------------------------------------------------------------------
 
-/**
- * Thrown by a `decrypt*` helper for exactly one row instead of aborting the whole
- * `decryptMerge` call. Carries the classification `read-guard.ts` and `decryptMerge`
- * need — never plaintext, ciphertext or key material (T-120-17); the `message` names
- * only the entity, the row id and the cause.
- */
-export class RowDecodeError extends Error {
-  constructor(message: string, public readonly reason: UnreadableReason) {
-    super(message);
-    this.name = 'RowDecodeError';
-  }
-}
-
 /** A fresh `DecodeReport` with every entity's counters at zero and no unreadable rows. */
 function newDecodeReport(): DecodeReport {
   return {
@@ -147,12 +153,12 @@ function newDecodeReport(): DecodeReport {
     encryptedCount: {
       session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
       foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
-      exerciseNameOverride: 0,
+      exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0,
     },
     failedCount: {
       session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
       foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
-      exerciseNameOverride: 0,
+      exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0,
     },
   };
 }
@@ -659,11 +665,6 @@ function decryptForeignPayload(row: MiscSyncRow, keyB64: string, wireKind: strin
   return plaintext;
 }
 
-/** A non-empty string, else `undefined` — the test for a required id field. Exported for `own-exercise-cipher.ts` (Phase 164). */
-export function requiredString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
 /** A string optional: the string itself, anything else (missing, `null`, a number) `null`. */
 function optionalString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
@@ -779,32 +780,6 @@ export function decryptPlannedForeignActivity(row: MiscSyncRow, keyB64: string):
 // ---------------------------------------------------------------------------
 // Own names of catalog exercises (Phase 156, REN-01; protocol §1.7 "Decoded rows")
 // ---------------------------------------------------------------------------
-
-/**
- * The set W of protocol §1.7 "Blank text" as ONE character class over UTF-16 code units
- * (no `u` flag: the class tests code units, exactly the unit §1.7 names):
- * U+0009–U+000D, U+001C–U+0020, U+00A0, U+1680, U+2000–U+200D, U+2028, U+2029, U+202F,
- * U+205F, U+2060, U+3000, U+FEFF.
- *
- * Deliberately NOT `String.prototype.trim()`: JavaScript's trim cuts U+FEFF but not U+001F
- * (Kotlin's `isBlank()` does the opposite), and neither cuts U+200B although it looks just as
- * empty. Both sides therefore test against this written-out list; the corpus pins it at the
- * vectors `name-blank-unit-separator` (U+001F), `name-blank-zero-width` (U+200B U+FEFF),
- * `name-blank-bom`, `name-blank-all-of-w` and `name-invisible-outside-w` (U+180E, readable).
- */
-const BLANK_OVERRIDE_TEXT = /^[\u0009-\u000D\u001C-\u0020\u00A0\u1680\u2000-\u200D\u2028\u2029\u202F\u205F\u2060\u3000\uFEFF]*$/;
-
-/**
- * Whether `value` is blank in the sense of protocol §1.7 "Blank text": empty, or only code
- * units of the set W (`BLANK_OVERRIDE_TEXT`). Pure; never trims — blankness decides readable
- * or unreadable, never the value (a visible name keeps code units of W at its edges).
- */
-export function isBlankOverrideText(value: string): boolean {
-  return BLANK_OVERRIDE_TEXT.test(value);
-}
-
-/** A canonical lower-case UUID — the only readable `exerciseId` (§1.7 "Decoded rows", rule 5); since Phase 164 also every id of §1.9. */
-export const CANONICAL_LOWER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
  * Decode the decrypted plaintext of one `exercise_name_override` row into its §1.7 normal
@@ -1084,6 +1059,129 @@ function decodeForeignRows<T>(
   return decoded;
 }
 
+/** Content fields of an own-exercise row: placeholders on a row with ciphertext (§1.9). */
+const OWN_EXERCISE_CONTENT_KEYS: ReadonlySet<string> = new Set(['name', 'mode', 'usesWeight', 'description', 'encryptedPayload']);
+/** Content fields of a translation row: placeholders on a row with ciphertext (§1.9). */
+const OWN_TRANSLATION_CONTENT_KEYS: ReadonlySet<string> = new Set(['name', 'description', 'encryptedPayload']);
+
+/** Copy every wire key of `row` not in `skip` onto `out`, in wire order (keys already on `out` keep their place). */
+function copyRoutingFields(out: Record<string, unknown>, row: object, skip: ReadonlySet<string>): void {
+  for (const [key, value] of Object.entries(row)) {
+    if (!skip.has(key)) out[key] = value;
+  }
+}
+
+/** The routing timestamps of a wire row for its `UnreadableRow` (never content). */
+function routingTimes(row: { createdAt?: number; updatedAt?: number }): { createdAt?: number; updatedAt?: number } {
+  return {
+    ...(typeof row.createdAt === 'number' ? { createdAt: row.createdAt } : {}),
+    ...(typeof row.updatedAt === 'number' ? { updatedAt: row.updatedAt } : {}),
+  };
+}
+
+/**
+ * Decode the own exercises of one pull (Phase 164, CRYPT-01, D-25, O-6; protocol 1.45 §1.9).
+ *
+ * - A row WITHOUT `encryptedPayload` (`undefined` or `null`) passes unchanged: an account no
+ *   4.5 app has migrated yet, or a server before 1.45.
+ * - A row WITH it is read only from the ciphertext (`decryptOwnExercise`) and handed on in
+ *   exactly the plaintext row shape the server sends for such an exercise — `id, name, mode,
+ *   usesWeight, description?, createdAt, updatedAt, deletedAt?` in that order, `description`
+ *   absent when it is `null`, `encryptedPayload` gone — so every tool names it byte for byte as
+ *   before (O-6). `id`, `createdAt`, `updatedAt` and `deletedAt` stay the row's own plaintext
+ *   fields (§1.9 "What stays plaintext"); the payload's own `updatedAt` decides nothing.
+ * - Its decoded links go into `links`, keyed by the exercise id (D-25).
+ * - A row that fails any rule of §1.9 "Decoded rows" — an empty payload included — is left out
+ *   and reported under `exercise` with id, reason and routing timestamps only. It never
+ *   appears with its placeholder name.
+ *
+ * `encryptedCount.exercise` counts the rows that carry ciphertext (a decrypt was attempted);
+ * an empty payload is no ciphertext, but is counted in `failedCount`. Never logs.
+ */
+function decodeOwnExercises(
+  rows: SyncExerciseDto[],
+  keyB64: string,
+  report: DecodeReport,
+): { exercises: SyncExerciseDto[]; links: Record<string, OwnExerciseLinks> } {
+  const exercises: SyncExerciseDto[] = [];
+  const links: Record<string, OwnExerciseLinks> = {};
+  for (const row of rows) {
+    if (row.encryptedPayload === undefined || row.encryptedPayload === null) {
+      exercises.push(row);
+      continue;
+    }
+    if (row.encryptedPayload) report.encryptedCount.exercise += 1;
+    try {
+      const decoded = decryptOwnExercise(row, keyB64);
+      const out: Record<string, unknown> = {
+        id: row.id,
+        name: decoded.name,
+        mode: decoded.mode,
+        usesWeight: decoded.usesWeight,
+        ...(decoded.description !== null ? { description: decoded.description } : {}),
+      };
+      copyRoutingFields(out, row, OWN_EXERCISE_CONTENT_KEYS);
+      exercises.push(out as unknown as SyncExerciseDto);
+      links[row.id] = {
+        muscleGroups: decoded.muscleGroups,
+        equipment: decoded.equipment,
+        capabilities: decoded.capabilities,
+      };
+    } catch (err) {
+      const reason: UnreadableReason = err instanceof RowDecodeError ? err.reason : 'decrypt_failed';
+      report.failedCount.exercise += 1;
+      report.unreadable.push({ entity: 'exercise', id: row.id, reason, ...routingTimes(row) });
+    }
+  }
+  return { exercises, links };
+}
+
+/**
+ * Decode the translations of own exercises of one pull (Phase 164; protocol 1.45 §1.9) — the
+ * same dual path as `decodeOwnExercises`: a plaintext row passes unchanged, a row with
+ * ciphertext comes back in the plaintext shape `id?, exerciseId, languageCode, name,
+ * description?, createdAt, updatedAt` (`exerciseId` and `languageCode` stay the row's own
+ * plaintext fields and must equal the payload's), and an unreadable one is left out and
+ * reported under `exerciseTranslation`. Never logs.
+ */
+function decodeOwnExerciseTranslations(
+  rows: SyncExerciseTranslationDto[],
+  keyB64: string,
+  report: DecodeReport,
+): SyncExerciseTranslationDto[] {
+  const translations: SyncExerciseTranslationDto[] = [];
+  for (const row of rows) {
+    if (row.encryptedPayload === undefined || row.encryptedPayload === null) {
+      translations.push(row);
+      continue;
+    }
+    if (row.encryptedPayload) report.encryptedCount.exerciseTranslation += 1;
+    try {
+      const decoded = decryptOwnExerciseTranslation(row, keyB64);
+      const out: Record<string, unknown> = {
+        ...(row.id !== undefined ? { id: row.id } : {}),
+        exerciseId: row.exerciseId,
+        languageCode: row.languageCode,
+        name: decoded.name,
+        ...(decoded.description !== null ? { description: decoded.description } : {}),
+      };
+      copyRoutingFields(out, row, OWN_TRANSLATION_CONTENT_KEYS);
+      translations.push(out as unknown as SyncExerciseTranslationDto);
+    } catch (err) {
+      const reason: UnreadableReason = err instanceof RowDecodeError ? err.reason : 'decrypt_failed';
+      report.failedCount.exerciseTranslation += 1;
+      report.unreadable.push({
+        entity: 'exerciseTranslation',
+        // A row without id (a server before 1.45) cannot carry ciphertext; '' only for the type.
+        id: row.id ?? '',
+        reason,
+        ...routingTimes(row),
+      });
+    }
+  }
+  return translations;
+}
+
 /**
  * Re-insert the Kotlin-default wire value for a block whose `rounds` key the wire omitted
  * (G-134-37, planhash-wire-defaults-parity.md). Exported — NOT file-private — for two
@@ -1172,10 +1270,14 @@ function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: Decryp
     hrSamples = removeRowsOfUnreadableSessions(hrSamples, unreadableSessionIds, decodeReport, 'affectedHrSampleCount');
   }
 
+  // Phase 164 (§1.9): own exercises and their translations, ciphertext decoded per row.
+  const ownExercises = decodeOwnExercises(raw.exercises ?? [], keyB64, decodeReport);
+  const exerciseTranslations = decodeOwnExerciseTranslations(raw.exerciseTranslations ?? [], keyB64, decodeReport);
+
   const snapshot: DecryptedSnapshot = {
     syncedAt:             raw.syncedAt,
-    exercises:            raw.exercises ?? [],
-    exerciseTranslations: raw.exerciseTranslations ?? [],
+    exercises:            ownExercises.exercises,
+    exerciseTranslations,
     templates:            raw.templates ?? [],
     blocks:               (raw.blocks ?? []).map(normalizeWireBlock),
     templateExercises:    (raw.templateExercises ?? []).map(normalizeWireTemplateExercise),
@@ -1218,6 +1320,9 @@ function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: Decryp
     ...(raw.exerciseNameOverrides != null
       ? { exerciseNameOverrides: decodeExerciseNameOverrides(raw.exerciseNameOverrides, keyB64, decodeReport) }
       : {}),
+    // Phase 164 (D-25): only when an own exercise arrived as ciphertext, so a plaintext pull
+    // yields exactly the snapshot it yielded before.
+    ...(Object.keys(ownExercises.links).length > 0 ? { ownExerciseLinks: ownExercises.links } : {}),
   };
 
   return { snapshot, decodeReport };
@@ -1252,6 +1357,35 @@ export function normalizeCatalog(wireCatalog: CatalogExerciseWire[]): CatalogExe
 }
 
 /**
+ * The catalog data an own exercise's links are resolved against (Phase 164, D-25): every
+ * muscle group, equipment and capability axis the curated catalog the MCP holds carries, by id.
+ * Built once per fetch from `normalizeCatalog`'s output; the first occurrence of an id wins.
+ */
+export interface CatalogLinkIndex {
+  muscleGroups: ReadonlyMap<string, CatalogMuscleGroup>;
+  equipment: ReadonlyMap<string, CatalogEquipment>;
+  capabilities: ReadonlyMap<string, CatalogCapabilityAxis>;
+}
+
+/** Build the `CatalogLinkIndex` of a curated catalog (Phase 164, D-25). Pure. */
+export function buildCatalogLinkIndex(curated: CatalogExercise[]): CatalogLinkIndex {
+  const muscleGroups = new Map<string, CatalogMuscleGroup>();
+  const equipment = new Map<string, CatalogEquipment>();
+  const capabilities = new Map<string, CatalogCapabilityAxis>();
+  for (const ex of curated) {
+    for (const mg of ex.muscleGroups) if (!muscleGroups.has(mg.id)) muscleGroups.set(mg.id, mg);
+    for (const eq of ex.equipment) if (!equipment.has(eq.equipmentId)) equipment.set(eq.equipmentId, eq);
+    for (const cap of ex.capabilities) if (!capabilities.has(cap.id)) capabilities.set(cap.id, cap);
+  }
+  return { muscleGroups, equipment, capabilities };
+}
+
+/** A fresh, all-zero `OwnExerciseLinksLeftOut`. */
+export function newOwnExerciseLinksLeftOut(): OwnExerciseLinksLeftOut {
+  return { unknownMuscleGroup: 0, unknownEquipment: 0, unknownCapability: 0, capabilityWithoutLevel: 0 };
+}
+
+/**
  * Project a single user-created exercise (`snapshot.exercises`, `isPredefined = 0` server-side)
  * onto the same `CatalogExercise` shape the curated catalog uses, so every existing and future
  * reader of `data.catalog` resolves it without a second lookup path (141-18, G-141-2-SCOPE).
@@ -1260,12 +1394,21 @@ export function normalizeCatalog(wireCatalog: CatalogExerciseWire[]): CatalogExe
  * belongs beside `normalizeCatalog` as part of the one seam: this is the only place in the
  * codebase allowed to turn a `SyncExerciseDto` into a `CatalogExercise`.
  *
- * Deliberately NOT a decode boundary for muscle/equipment/capability data: a user exercise
- * carries none of that server-side, so `muscleGroups`/`equipment`/`capabilities` are always `[]`
- * and `isSkill` is always `false` here — an empty list is the truth (unrated), never a
- * placeholder standing in for data this function forgot to fetch. Inventing a muscle group,
- * equipment link or capability axis for a user exercise would poison every weighted evaluation
- * downstream (T-141-80) and is prohibited even implicitly.
+ * Links (Phase 164, CRYPT-01, D-25; protocol 1.45 §1.9 "Links ride in the payload"): an own
+ * exercise that arrived as ciphertext carries the muscle-group, equipment and capability links
+ * the athlete set, decoded by `decryptMerge` into `snapshot.ownExerciseLinks` and passed here as
+ * `links`. Each link id is resolved against `linkIndex` — the catalog data the MCP already
+ * holds — and taken over with the catalog's own `key` and translations, in payload order:
+ *   - a muscle group with its `level`, a missing level read as `PRIMARY` (the server's and the
+ *     app's rule for a muscle link without level, D-03);
+ *   - an equipment with its `optional` flag as `isOptional`;
+ *   - a capability with its `level`; a capability link WITHOUT level is left out and counted
+ *     (`capabilityWithoutLevel`), because the axis has no default grade (D-04) and the app
+ *     weighs only graded links.
+ * An id the index does not know is left out and counted in `leftOut` — never invented. An
+ * invented muscle group, equipment link or capability axis would poison every weighted
+ * evaluation downstream (T-141-80). A plaintext row (no `links`) stays unrated: all three
+ * lists `[]`, exactly as before Phase 164. `isSkill` is always `false` (not part of §1.9 v1).
  *
  * `key` uses a `user_exercise:<id>` prefix, deliberately carrying a colon — every curated
  * catalog key is lowercase-with-underscore and never contains one (see `data/exercises.sql`),
@@ -1278,6 +1421,9 @@ export function normalizeCatalog(wireCatalog: CatalogExerciseWire[]): CatalogExe
 export function projectUserExerciseToCatalog(
   ex: SyncExerciseDto,
   allTranslations: SyncExerciseTranslationDto[],
+  links?: OwnExerciseLinks,
+  linkIndex?: CatalogLinkIndex,
+  leftOut?: OwnExerciseLinksLeftOut,
 ): CatalogExercise {
   const translations: CatalogTranslation[] = allTranslations
     .filter((t) => t.exerciseId === ex.id)
@@ -1286,6 +1432,27 @@ export function projectUserExerciseToCatalog(
       name:         t.name,
       description:  t.description,
     }));
+
+  const counts = leftOut ?? newOwnExerciseLinksLeftOut();
+  const muscleGroups: CatalogMuscleGroup[] = [];
+  const equipment: CatalogEquipment[] = [];
+  const capabilities: CatalogCapabilityAxis[] = [];
+  for (const link of links?.muscleGroups ?? []) {
+    const mg = linkIndex?.muscleGroups.get(link.id);
+    if (mg === undefined) { counts.unknownMuscleGroup += 1; continue; }
+    muscleGroups.push({ id: mg.id, key: mg.key, translations: mg.translations, involvementLevel: link.level ?? 'PRIMARY' });
+  }
+  for (const link of links?.equipment ?? []) {
+    const eq = linkIndex?.equipment.get(link.id);
+    if (eq === undefined) { counts.unknownEquipment += 1; continue; }
+    equipment.push({ equipmentId: eq.equipmentId, key: eq.key, nameEn: eq.nameEn, isOptional: link.optional });
+  }
+  for (const link of links?.capabilities ?? []) {
+    const cap = linkIndex?.capabilities.get(link.id);
+    if (cap === undefined) { counts.unknownCapability += 1; continue; }
+    if (link.level === null) { counts.capabilityWithoutLevel += 1; continue; }
+    capabilities.push({ id: cap.id, key: cap.key, translations: cap.translations, capabilityLevel: link.level });
+  }
 
   return {
     id:             ex.id,
@@ -1296,12 +1463,10 @@ export function projectUserExerciseToCatalog(
     description:    ex.description,
     lastModifiedAt: ex.updatedAt,
     translations,
-    // Never invented — an unrated exercise contributes nothing to a weighted evaluation, and a
-    // fabricated non-empty value here would look like a real measurement (T-141-80).
-    muscleGroups: [],
-    equipment:    [],
+    muscleGroups,
+    equipment,
     isSkill:      false,
-    capabilities: [],
+    capabilities,
     origin:       'CUSTOM',
   };
 }
@@ -1330,10 +1495,17 @@ async function doFetch(
   // knows is dropped — the curated catalog carries the ratings, so on an id collision it wins
   // (T-141-82). A soft-deleted user exercise (`deletedAt` set) is dropped too (T-141-83).
   const curatedIds = new Set(curatedCatalog.map((ex) => ex.id));
+  // Phase 164 (D-25): the links of own exercises that arrived as ciphertext, resolved against
+  // the curated catalog; what the catalog does not know is left out and counted in the report.
+  const linkIndex = buildCatalogLinkIndex(curatedCatalog);
+  const leftOut = newOwnExerciseLinksLeftOut();
   const projectedUserExercises = snapshot.exercises
     .filter((ex) => !ex.deletedAt && !curatedIds.has(ex.id))
-    .map((ex) => projectUserExerciseToCatalog(ex, snapshot.exerciseTranslations));
+    .map((ex) =>
+      projectUserExerciseToCatalog(ex, snapshot.exerciseTranslations, snapshot.ownExerciseLinks?.[ex.id], linkIndex, leftOut),
+    );
   const catalog = [...curatedCatalog, ...projectedUserExercises];
+  if (snapshot.ownExerciseLinks !== undefined) decodeReport.ownExerciseLinksLeftOut = leftOut;
 
   return { snapshot, catalog, profile, fetchedAt: Date.now(), decodeReport };
 }

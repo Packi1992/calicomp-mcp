@@ -2,7 +2,7 @@
  * Authenticated HTTP fetch wrappers for CalisthenicsServer endpoints.
  *
  * Nine functions:
- *   fetchSnapshot        — GET  /api/mcp/data/pull                       (Bearer PAT)
+ *   fetchSnapshot        — GET  /api/mcp/data/pull?exerciseCipher=1      (Bearer PAT)
  *   fetchProfile         — GET  /api/mcp/profile                         (Bearer PAT)
  *   fetchCatalog         — GET  /api/exercises                            (unauthenticated)
  *   postSuggest          — POST /api/mcp/suggest                          (Bearer PAT) — Phase 121 propose-only write
@@ -86,7 +86,11 @@ async function assertOk(res: Response, path: string): Promise<void> {
 /** Per-request timeout (WR-05) — bounds every fetch in this module. */
 const REQUEST_TIMEOUT_MS = 30_000;
 
-const DATA_PULL_PATH      = '/api/mcp/data/pull';
+// Phase 164 (CRYPT-01, protocol 1.45 §1.3/§1.9, Recherche Pitfall 6): `exerciseCipher=1` asks
+// the server for the ciphertext rows of own exercises too; `cache.ts`'s `decryptMerge` decrypts
+// them. Without the parameter (MCP 1.3.0) the server leaves every row with ciphertext out, so an
+// older MCP loses those names (`exerciseUnknown`) but never sees a placeholder name.
+const DATA_PULL_PATH      = '/api/mcp/data/pull?exerciseCipher=1';
 const PROFILE_PATH        = '/api/mcp/profile';
 const CATALOG_PATH        = '/api/exercises';
 const SUGGEST_PATH        = '/api/mcp/suggest';

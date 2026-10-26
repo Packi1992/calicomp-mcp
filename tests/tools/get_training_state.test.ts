@@ -644,7 +644,7 @@ describe('get_training_state — registered MCP handler', () => {
   // Phase 150 (D-32/D-11/D-09-ermessen) — per-row decode fault tolerance
   // -------------------------------------------------------------------------
 
-  const EMPTY_COUNTS = { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0 };
+  const EMPTY_COUNTS = { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 };
 
   const REPORT_ONE_BROKEN_PLANNED: DecodeReport = {
     unreadable: [{ entity: 'plannedWorkout', id: 'pw-broken', reason: 'decrypt_failed' }],
@@ -1004,7 +1004,7 @@ describe('get_training_state — app language (D-18)', () => {
 // ---------------------------------------------------------------------------
 
 describe('get_training_state — own-name result types and an unreadable language setting (WR-MCP-04/05)', () => {
-  const COUNTS_ZERO = { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0 };
+  const COUNTS_ZERO = { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 };
 
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockReset();

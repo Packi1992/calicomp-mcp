@@ -21,7 +21,7 @@ function emptyCounts(): Record<UnreadableEntity, number> {
   return {
     session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
     foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
-    exerciseNameOverride: 0,
+    exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0,
   };
 }
 

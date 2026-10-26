@@ -27,7 +27,7 @@
  */
 
 import { decrypt } from './crypto.js';
-import { CANONICAL_LOWER_UUID, RowDecodeError, isBlankOverrideText, requiredString } from './cache.js';
+import { CANONICAL_LOWER_UUID, RowDecodeError, isBlankOverrideText, requiredString } from './row-decode.js';
 
 /** §1.9: `NAME_MAX` in UTF-16 code units, the width of `user_exercises.name`. */
 export const OWN_EXERCISE_NAME_MAX = 255;

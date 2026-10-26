@@ -309,8 +309,8 @@ describe('get_planned_workouts — registered MCP handler', () => {
       ...mockCacheFor(snapshot),
       decodeReport: {
         unreadable: [{ entity: 'plannedWorkout', id: 'row-broken', reason: 'decrypt_failed' }],
-        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0 },
-        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0 },
+        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 },
+        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 },
       },
     });
 
@@ -554,8 +554,8 @@ describe('get_planned_workouts — foreign appointments (Phase 155)', () => {
       ...mockCacheFor(snapshot),
       decodeReport: {
         unreadable: [{ entity: 'plannedForeignActivity', id: 'fr-broken', reason: 'malformed_payload' }],
-        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 2, exerciseNameOverride: 0 },
-        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 1, exerciseNameOverride: 0 },
+        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 2, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 },
+        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 1, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 },
       },
     });
 

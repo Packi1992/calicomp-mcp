@@ -23,13 +23,14 @@ export const EMPTY_DECODE_REPORT: DecodeReport = {
     session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
     foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
     // Phase 156 (D-10): counted, but read by no guard below — an unreadable own name of a
-    // catalog exercise never fails a tool.
-    exerciseNameOverride: 0,
+    // catalog exercise never fails a tool. Phase 164 (§1.9): the same for own exercises and
+    // their translations — an unreadable one degrades only itself (`exerciseUnknown`).
+    exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0,
   },
   failedCount: {
     session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
     foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
-    exerciseNameOverride: 0,
+    exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0,
   },
 };
 
