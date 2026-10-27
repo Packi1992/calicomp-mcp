@@ -228,7 +228,8 @@ export function decodeOwnExercisePlaintext(plaintextJson: string, rowId: string)
   const description = readDescription(p);
   if (description === undefined) throw bad();
   const updatedAt = p.updatedAt;
-  if (typeof updatedAt !== 'number' || !Number.isInteger(updatedAt)) throw bad();
+  // Plan 164-33 (IN-D01, protocol 1.46 §1.9 Decoded rows): only ±(2^53 - 1); the app refuses a larger value the same way.
+  if (typeof updatedAt !== 'number' || !Number.isSafeInteger(updatedAt)) throw bad();
 
   const muscleGroups = readLinkList(p.muscleGroups, muscleLink);
   const equipment = readLinkList(p.equipment, equipmentLink);

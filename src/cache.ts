@@ -697,13 +697,23 @@ function timestampOr(value: unknown, fallback: number): number {
  * (`tests/shared-vectors.test.ts`) must run through this exact function. Never logs —
  * `note` is athlete free text.
  */
+/**
+ * Plan 164-33 (IN-D01): the largest `durationMinutes` the app reads. Its decoder holds the value in a Kotlin `Int`
+ * (`ForeignActivitySyncHandler.ForeignActivitySnapshot`), so a larger number does not decode there; the input stops at
+ * 1439 minutes (`ForeignActivityValidation.DURATION_MAX_MINUTES`), the reader only at the `Int` bound.
+ */
+const INT32_MAX = 2147483647;
+
 export function decryptForeignActivity(row: MiscSyncRow, keyB64: string): DecryptedForeignActivity {
   const p = decryptForeignPayload(row, keyB64, 'foreign_activity');
   const id = requiredString(p.id);
   const typeId = requiredString(p.typeId);
   const performedOn = typeof p.performedOn === 'string' && FOREIGN_LOCAL_DATE.test(p.performedOn) ? p.performedOn : undefined;
   const durationMinutes =
-    typeof p.durationMinutes === 'number' && Number.isInteger(p.durationMinutes) && p.durationMinutes > 0
+    typeof p.durationMinutes === 'number' &&
+    Number.isSafeInteger(p.durationMinutes) &&
+    p.durationMinutes > 0 &&
+    p.durationMinutes <= INT32_MAX
       ? p.durationMinutes
       : undefined;
   if (id === undefined || typeId === undefined || performedOn === undefined || durationMinutes === undefined) {
@@ -837,7 +847,8 @@ export function decodeExerciseNameOverridePlaintext(
   if (typeof languageCode !== 'string' || languageCode.length === 0) throw malformed();
   if (`${exerciseId}:${languageCode}` !== row.clientLocalId) throw malformed();
   const updatedAt = p.updatedAt;
-  if (typeof updatedAt !== 'number' || !Number.isInteger(updatedAt)) throw malformed();
+  // Plan 164-33 (IN-D01, protocol 1.46 §1.7 Decoded rows): only ±(2^53 - 1); the app refuses a larger value the same way.
+  if (typeof updatedAt !== 'number' || !Number.isSafeInteger(updatedAt)) throw malformed();
 
   const rawName = p.name;
   let name: string | null;

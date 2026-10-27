@@ -718,7 +718,7 @@ describe('shared coach-planning vector corpus', () => {
           unreadableSeen += 1;
         }
       }
-      expect(readableSeen + unreadableSeen).toBe(54);
+      expect(readableSeen + unreadableSeen).toBe(57);
       expect(readableSeen).toBeGreaterThan(0);
       expect(unreadableSeen).toBeGreaterThan(0);
     });
@@ -889,8 +889,8 @@ describe('shared coach-planning vector corpus', () => {
           unreadableSeen += 1;
         }
       }
-      expect(readableSeen + unreadableSeen).toBe(30);
-      expect(readableSeen).toBe(4);
+      expect(readableSeen + unreadableSeen).toBe(33);
+      expect(readableSeen).toBe(5);
       expect(translationSeen).toBe(5);
     });
 
