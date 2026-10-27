@@ -681,10 +681,10 @@ describe('shared coach-planning vector corpus', () => {
   // -----------------------------------------------------------------------
 
   describe('exerciseNameOverrideDecode vectors', () => {
-    it('P156 WR-MCP-03 exerciseNameOverrideDecode section holds all 54 vectors', () => {
+    it('P164 exerciseNameOverrideDecode section holds all 57 vectors', () => {
       // A replay that read fewer vectors than the corpus carries would pass vacuously.
-      expect(corpus.exerciseNameOverrideDecode).toHaveLength(54);
-      expect(new Set(corpus.exerciseNameOverrideDecode.map((v) => v.name)).size).toBe(54);
+      expect(corpus.exerciseNameOverrideDecode).toHaveLength(57);
+      expect(new Set(corpus.exerciseNameOverrideDecode.map((v) => v.name)).size).toBe(57);
     });
 
     it('P156 WR-MCP-03 every exerciseNameOverrideDecode vector decodes to its expected outcome', () => {
@@ -749,7 +749,7 @@ describe('shared coach-planning vector corpus', () => {
       // A replay that read fewer vectors than the corpus carries would pass vacuously.
       expect(corpus.ownExerciseCipher).toHaveLength(6);
       expect(corpus.ownExerciseTranslationCipher).toHaveLength(3);
-      expect(corpus.ownExerciseDecode).toHaveLength(30);
+      expect(corpus.ownExerciseDecode).toHaveLength(33);
       expect(corpus.keyCheck).toHaveLength(3);
     });
 
