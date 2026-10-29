@@ -575,5 +575,14 @@
       "why": "Rule P: the point of the deleted session of 2026-01-04 goes; both live template sessions keep theirs."
     }
   ],
-  "additions": []
+  "additions": [
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/capabilityBalance",
+      "rule": "STAT-03",
+      "plan": "166-06",
+      "why": "Genuine addition (D-04 in the version E-15): the capability balance of the app capability heatmap in three windows, raw and weighted over the population of rule P; no existing field carried these counts, so it is a new key after foreignSport, not a parallel field."
+    }
+  ]
 }

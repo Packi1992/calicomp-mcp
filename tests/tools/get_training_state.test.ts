@@ -35,6 +35,7 @@ import type {
 } from '../../src/tools/get_training_state.js';
 import { computeConsistency } from '../../src/training-state/consistency.js';
 import { computeMuscleBalance } from '../../src/training-state/muscle-balance.js';
+import { computeCapabilityBalance } from '../../src/training-state/capability-balance.js';
 import { computeTemplateFeedbackSeries } from '../../src/training-state/template-feedback-series.js';
 import { TRAINING_TIMEZONE_SETTING_KEY, TimeZoneUnavailableError } from '../../src/training-state/time-zone.js';
 import { mockSnapshot, mockCatalog, CATALOG_EXERCISE_ID_PUSHUP } from '../fixture.js';
@@ -45,6 +46,8 @@ import {
   CHAR166_NOW_MS,
   CHAR166_TRAINING_STATE_ARGS,
   CHAR166_TRAINING_STATE_DATA,
+  CHAR166_SNAPSHOT,
+  CHAR166_CATALOG,
 } from '../characterization-166-fixture.js';
 import { loadDeltaFile, loadPinFile } from '../characterization-166-deltas.js';
 import type {
@@ -66,6 +69,13 @@ function snapshotWithZone(zone: string | null, extra: Partial<DecryptedSnapshot>
   };
 }
 
+/**
+ * The genuine additions of Phase 166 (protocol 1.48 §1.11 "Existing fields that change
+ * meaning", D-04 in the version E-15): they stand after `foreignSport`, in this order.
+ * GEAENDERT in 166-06: before 166 `foreignSport` was the last key.
+ */
+const PHASE_166_ADDITIONS = ['capabilityBalance'];
+
 const EXPECTED_KEYS = [
   'timeZoneId',
   // Phase 156 (D-18): snapshotWithZone carries no default_language, so the reason is present too.
@@ -82,6 +92,7 @@ const EXPECTED_KEYS = [
   'narrative',
   'templateFeedbackSeries',
   'foreignSport',
+  ...PHASE_166_ADDITIONS,
 ].sort();
 
 describe('getTrainingState', () => {
@@ -318,7 +329,8 @@ describe('getTrainingState — Phase 155 foreign sport (D-16)', () => {
     const withData = getTrainingState({}, { ...baseData, snapshot: withForeign(plain) }, NOW_MS);
 
     const keys = Object.keys(withData);
-    expect(keys.slice(-2)).toEqual(['templateFeedbackSeries', 'foreignSport']);
+    // Since 166 only the genuine additions of protocol §1.11 follow foreignSport (GEAENDERT in 166-06).
+    expect(keys.slice(-2 - PHASE_166_ADDITIONS.length)).toEqual(['templateFeedbackSeries', 'foreignSport', ...PHASE_166_ADDITIONS]);
     expect(withData.narrative).toBe(without.narrative);
     const { foreignSport: _a, ...oldWith } = withData;
     const { foreignSport: _b, ...oldWithout } = without;
@@ -943,19 +955,20 @@ describe('get_training_state — app language (D-18)', () => {
     expect(withDe).not.toHaveProperty('appLanguageUnavailableReason');
     const deKeys = Object.keys(withDe);
     expect(deKeys.slice(0, 3)).toEqual(['timeZoneId', 'appLanguage', 'asOfDate']);
-    expect(deKeys[deKeys.length - 1]).toBe('foreignSport');
+    // Since 166 the genuine additions of protocol §1.11 follow foreignSport (GEAENDERT in 166-06).
+    expect(deKeys.slice(-1 - PHASE_166_ADDITIONS.length)).toEqual(['foreignSport', ...PHASE_166_ADDITIONS]);
 
     const notSynced = getTrainingState({}, { ...baseData, snapshot: snapshotWithAppLanguage(undefined) }, NOW_MS);
     expect(notSynced.appLanguage).toBeNull();
     expect(notSynced.appLanguageUnavailableReason).toBe('setting_not_synced');
     const notSyncedKeys = Object.keys(notSynced);
     expect(notSyncedKeys.slice(0, 4)).toEqual(['timeZoneId', 'appLanguage', 'appLanguageUnavailableReason', 'asOfDate']);
-    expect(notSyncedKeys[notSyncedKeys.length - 1]).toBe('foreignSport');
+    expect(notSyncedKeys.slice(-1 - PHASE_166_ADDITIONS.length)).toEqual(['foreignSport', ...PHASE_166_ADDITIONS]);
 
     const unrecognized = getTrainingState({}, { ...baseData, snapshot: snapshotWithAppLanguage('Deutsch') }, NOW_MS);
     expect(unrecognized.appLanguage).toBeNull();
     expect(unrecognized.appLanguageUnavailableReason).toBe('setting_unrecognized');
-    expect(Object.keys(unrecognized)[Object.keys(unrecognized).length - 1]).toBe('foreignSport');
+    expect(Object.keys(unrecognized).slice(-1 - PHASE_166_ADDITIONS.length)).toEqual(['foreignSport', ...PHASE_166_ADDITIONS]);
 
     // Every other key is the same with and without the app language (D-10: old keys unchanged).
     const strip = (r: Record<string, unknown>) => {
@@ -1175,5 +1188,31 @@ describe('get_training_state — Phase 166 counting rules', () => {
     const pinned = loadPinFile('characterization-166.json').getTrainingState as { narrative: string };
     expect(result.narrative).toBe(pinned.narrative);
     expect(loadDeltaFile().deltas.filter((d) => d.pinKey === 'getTrainingState' && d.path.startsWith('/narrative'))).toEqual([]);
+  });
+
+  it('P166 capabilityBalance is appended after narrative', () => {
+    // STAT-03: a genuine addition, after narrative and after foreignSport; the narrative keeps
+    // its pin. Expected by hand from protocol §1.11 "Capability balance" over the population
+    // of Rule P on the characterization fixture of 166 (now 2026-03-10T12:00Z): power =
+    // push (MITTRAINIERT) + mixed (GERING), mobility = stretch (HAUPTREIZ) + mixed
+    // (HAUPTREIZ), flexibility = stretch (MITTRAINIERT). Last 7 days: 8 push, 2 mixed, 2
+    // stretch sets; 30 days and all time add the old push and the old stretch set.
+    const result = getTrainingState(CHAR166_TRAINING_STATE_ARGS, CHAR166_TRAINING_STATE_DATA, CHAR166_NOW_MS);
+    const keys = Object.keys(result);
+    expect(keys.indexOf('capabilityBalance')).toBeGreaterThan(keys.indexOf('narrative'));
+    expect(keys.indexOf('capabilityBalance')).toBe(keys.indexOf('foreignSport') + 1);
+    const { capabilityBalance } = result as unknown as { capabilityBalance: ReturnType<typeof computeCapabilityBalance> };
+    expect(capabilityBalance).toEqual(computeCapabilityBalance(CHAR166_SNAPSHOT, CHAR166_CATALOG, CHAR166_NOW_MS));
+    expect(capabilityBalance?.last7Days).toEqual({
+      setCounts: { power: 10, mobility: 4, flexibility: 2 },
+      weighted: { power: 4.5, mobility: 4, flexibility: 1 },
+    });
+    expect(capabilityBalance?.last30Days).toEqual({
+      setCounts: { power: 11, mobility: 5, flexibility: 3 },
+      weighted: { power: 5, mobility: 5, flexibility: 1.5 },
+    });
+    expect(capabilityBalance?.allTime).toEqual(capabilityBalance?.last30Days);
+    const pinned = loadPinFile('characterization-166.json').getTrainingState as { narrative: string };
+    expect(result.narrative).toBe(pinned.narrative);
   });
 });

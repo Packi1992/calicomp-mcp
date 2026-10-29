@@ -129,16 +129,20 @@ if (!process.env.CHAR_166_PIN_GENERATE) {
     it('P166 an undeclared change or addition fails the pin check', () => {
       // Self-contained: the base is the pin with its declared deltas applied, so this control
       // measures the check, not the code under test.
+      // The base carries the declared deltas but no declared addition (166-06: the declared
+      // additions of getTrainingState are not part of the pin, so a file with them would
+      // reject the base as "does not carry"); the controls below measure the check alone.
+      const deltasOnly: DeltaFile = { deltas: loadDeltaFile().deltas, additions: [] };
       const pinned = pins.getTrainingState as Record<string, unknown>;
-      const expected = applyDeclaredDeltas(PIN_166, 'getTrainingState', pinned) as Record<string, unknown>;
-      expect(() => expectPinsWithDeltas(structuredClone(expected), PIN_166, 'getTrainingState', pinned)).not.toThrow();
+      const expected = applyDeclaredDeltas(PIN_166, 'getTrainingState', pinned, deltasOnly) as Record<string, unknown>;
+      expect(() => expectPinsWithDeltas(structuredClone(expected), PIN_166, 'getTrainingState', pinned, deltasOnly)).not.toThrow();
 
       const changedNumber = structuredClone(expected) as { consistency: { trainingWeekCount: number } };
       changedNumber.consistency.trainingWeekCount += 1;
-      expect(() => expectPinsWithDeltas(changedNumber, PIN_166, 'getTrainingState', pinned)).toThrow(/value changed/);
+      expect(() => expectPinsWithDeltas(changedNumber, PIN_166, 'getTrainingState', pinned, deltasOnly)).toThrow(/value changed/);
 
       const addedKey = { ...structuredClone(expected), strengthMuscleBalance: {} };
-      expect(() => expectPinsWithDeltas(addedKey, PIN_166, 'getTrainingState', pinned)).toThrow(/neither pinned nor declared/);
+      expect(() => expectPinsWithDeltas(addedKey, PIN_166, 'getTrainingState', pinned, deltasOnly)).toThrow(/neither pinned nor declared/);
 
       const wrongBefore: DeltaFile = {
         deltas: [

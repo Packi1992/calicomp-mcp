@@ -9,6 +9,10 @@
  * real Kotlin `CapabilityInvolvementWeighting` is proven separately by the shared
  * `capabilityBalance` corpus section (docs/coach-planning-vectors.json,
  * tests/shared-vectors.test.ts).
+ *
+ * Phase 166 (plan 166-06, STAT-03): `computeCapabilityBalance`, the field
+ * `get_training_state.capabilityBalance` — three windows over the population of Rule P, raw
+ * set counts per axis and the weighting the corpus section `capabilityBalance` proves.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -19,8 +23,10 @@ import {
   weightFor,
   weightedCounts,
   capabilitySetCountsInPeriod,
+  computeCapabilityBalance,
   type CapabilityLevelSetCount,
 } from '../../src/training-state/capability-balance.js';
+import { loadCoachPlanningVectors } from '../shared-vectors.js';
 import { normalizeCatalog } from '../../src/cache.js';
 import type {
   DecryptedSnapshot,
@@ -305,5 +311,106 @@ describe('capabilitySetCountsInPeriod', () => {
 
     expect(() => capabilitySetCountsInPeriod(snapshot, [normalized], 0)).not.toThrow();
     expect(capabilitySetCountsInPeriod(snapshot, [normalized], 0)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeCapabilityBalance (Phase 166, plan 166-06; STAT-03, protocol 1.48 §1.11
+// "Capability balance"). Expected numbers derived by hand from the protocol text.
+// ---------------------------------------------------------------------------
+
+describe('computeCapabilityBalance', () => {
+  const NOW = Date.parse('2026-05-20T12:00:00Z');
+  const DAY = 24 * 60 * 60 * 1000;
+
+  it('P166 capabilityBalance has three windows weighted like the capabilityBalance corpus', () => {
+    // Every non-rejecting corpus vector, rebuilt as training: one exercise per level row, rated
+    // with that row's axis and level, and `setCount` sets in a finished session of yesterday.
+    const corpus = loadCoachPlanningVectors().capabilityBalance.filter((v) => v.expectRejection !== true);
+    expect(corpus.length).toBeGreaterThanOrEqual(5);
+    for (const vector of corpus) {
+      const rows = vector.levelCounts as CapabilityLevelSetCount[];
+      const catalog = rows.map((row, i) =>
+        buildExercise(`cb-${vector.name}-${i}`, [{ key: row.capabilityAxisKey, level: row.capabilityLevel as 'HAUPTREIZ' }]),
+      );
+      const session = buildSession({ id: `cb-${vector.name}-s`, startTime: NOW - DAY });
+      const setLogs = rows.flatMap((row, i) =>
+        Array.from({ length: row.setCount }, (_, n) =>
+          buildSetLog({ id: `cb-${vector.name}-${i}-${n}`, sessionId: session.id, exerciseId: catalog[i].id, createdAt: NOW - DAY + n }),
+        ),
+      );
+      const balance = computeCapabilityBalance(buildSnapshot({ sessions: [session], setLogs }), catalog, NOW);
+      const rawExpected: Record<string, number> = {};
+      for (const row of rows) rawExpected[row.capabilityAxisKey] = (rawExpected[row.capabilityAxisKey] ?? 0) + row.setCount;
+      for (const window of [balance.last7Days, balance.last30Days, balance.allTime]) {
+        expect(window.setCounts, vector.name).toEqual(rawExpected);
+        expect(Object.keys(window.weighted).sort(), vector.name).toEqual(Object.keys(vector.expectedWeighted ?? {}).sort());
+        for (const [key, value] of Object.entries(vector.expectedWeighted ?? {})) {
+          expect(window.weighted[key], `${vector.name}/${key}`).toBeCloseTo(value as number, 9);
+        }
+      }
+    }
+
+    // The windows: 7 days, 30 days, all time, cut on the set (createdAt), one set once per axis.
+    const EX_PAIR = buildExercise('cb-pair', [
+      { key: 'balance', level: 'HAUPTREIZ' },
+      { key: 'coordination', level: 'GERING' },
+    ]);
+    const s3 = buildSession({ id: 'cb-s3', startTime: NOW - 3 * DAY });
+    const s10 = buildSession({ id: 'cb-s10', startTime: NOW - 10 * DAY });
+    const s60 = buildSession({ id: 'cb-s60', startTime: NOW - 60 * DAY });
+    const balance = computeCapabilityBalance(
+      buildSnapshot({
+        sessions: [s3, s10, s60],
+        setLogs: [
+          buildSetLog({ id: 'cb-w3', sessionId: s3.id, exerciseId: EX_PAIR.id, createdAt: NOW - 3 * DAY }),
+          buildSetLog({ id: 'cb-w10', sessionId: s10.id, exerciseId: EX_PAIR.id, createdAt: NOW - 10 * DAY }),
+          buildSetLog({ id: 'cb-w60', sessionId: s60.id, exerciseId: EX_TWO_AXES.id, createdAt: NOW - 60 * DAY }),
+        ],
+      }),
+      [EX_PAIR, EX_TWO_AXES],
+      NOW,
+    );
+    expect(Object.keys(balance)).toEqual(['last7Days', 'last30Days', 'allTime']);
+    expect(balance.last7Days).toEqual({ setCounts: { balance: 1, coordination: 1 }, weighted: { balance: 1, coordination: 0.25 } });
+    expect(balance.last30Days).toEqual({ setCounts: { balance: 2, coordination: 2 }, weighted: { balance: 2, coordination: 0.5 } });
+    expect(balance.allTime).toEqual({
+      setCounts: { balance: 2, coordination: 2, mobility: 1, flexibility: 1 },
+      weighted: { balance: 2, coordination: 0.5, mobility: 0.5, flexibility: 0.25 },
+    });
+  });
+
+  it('P166 capabilityBalance counts finished sessions only and ignores unrated links', () => {
+    const EX_UNRATED: CatalogExercise = {
+      ...buildExercise('cb-unrated', [{ key: 'balance', level: 'HAUPTREIZ' }]),
+      capabilities: [
+        { id: 'cb-unrated-cap-0', key: 'balance', translations: [], capabilityLevel: 'HAUPTREIZ' },
+        // An unrated link (no level) takes no part and must not make weightFor throw.
+        { id: 'cb-unrated-cap-1', key: 'power', translations: [], capabilityLevel: null as unknown as 'GERING' },
+      ],
+    };
+    const finished = buildSession({ id: 'cb-fin', startTime: NOW - DAY });
+    const unfinished = buildSession({ id: 'cb-unfin', startTime: NOW - DAY, endTime: undefined });
+    const deleted = buildSession({ id: 'cb-del', startTime: NOW - DAY, deletedAt: NOW - DAY + 1000 });
+    const te = buildTemplateExercise({ id: 'cb-te', templateId: 'cb-tpl', exerciseId: EX_BALANCE.id });
+    const snapshot = buildSnapshot({
+      sessions: [finished, unfinished, deleted],
+      templateExercises: [te],
+      setLogs: [
+        buildSetLog({ id: 'cb-ok', sessionId: finished.id, exerciseId: EX_BALANCE.id, createdAt: NOW - DAY }),
+        buildSetLog({ id: 'cb-wid', sessionId: finished.id, workoutExerciseId: te.id, createdAt: NOW - DAY + 1 }),
+        buildSetLog({ id: 'cb-unrated', sessionId: finished.id, exerciseId: EX_UNRATED.id, createdAt: NOW - DAY + 2 }),
+        buildSetLog({ id: 'cb-set-deleted', sessionId: finished.id, exerciseId: EX_BALANCE.id, createdAt: NOW - DAY + 3, deletedAt: NOW }),
+        buildSetLog({ id: 'cb-in-unfinished', sessionId: unfinished.id, exerciseId: EX_BALANCE.id, createdAt: NOW - DAY }),
+        buildSetLog({ id: 'cb-in-deleted', sessionId: deleted.id, exerciseId: EX_BALANCE.id, createdAt: NOW - DAY }),
+        buildSetLog({ id: 'cb-not-in-catalog', sessionId: finished.id, exerciseId: 'cb-unknown', createdAt: NOW - DAY }),
+      ],
+    });
+    const balance = computeCapabilityBalance(snapshot, [EX_BALANCE, EX_UNRATED], NOW);
+    // cb-ok, cb-wid (over workoutExerciseId) and the rated link of cb-unrated: 3 balance sets;
+    // no power key at all (unrated), nothing from the deleted set, the never finished and the
+    // deleted session, or the exercise outside the catalog.
+    expect(balance.allTime).toEqual({ setCounts: { balance: 3 }, weighted: { balance: 3 } });
+    expect(balance.last7Days).toEqual(balance.allTime);
   });
 });

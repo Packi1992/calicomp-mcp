@@ -196,3 +196,25 @@ export function capabilitySetCountsInPeriod(
 
   return rows;
 }
+
+// ---------------------------------------------------------------------------
+// get_training_state.capabilityBalance (Phase 166, plan 166-06; STAT-03) — stub
+// ---------------------------------------------------------------------------
+
+export interface CapabilityBalanceWindow {
+  setCounts: Record<string, number>;
+  weighted: Record<string, number>;
+}
+
+/** Stub without behavior (red commit of plan 166-06); the implementation follows. */
+export function computeCapabilityBalance(
+  snapshot: DecryptedSnapshot,
+  catalog: CatalogExercise[],
+  nowMs: number,
+): { last7Days: CapabilityBalanceWindow; last30Days: CapabilityBalanceWindow; allTime: CapabilityBalanceWindow } {
+  void snapshot;
+  void catalog;
+  void nowMs;
+  const empty = (): CapabilityBalanceWindow => ({ setCounts: {}, weighted: {} });
+  return { last7Days: empty(), last30Days: empty(), allTime: empty() };
+}
