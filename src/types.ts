@@ -949,7 +949,27 @@ export type PlanOp =
       restTimeSeconds?: number;
       roundTargets?: RoundTargetInput[];
     }
-  | { op: 'reorder'; blockId: string | null; order: string[] };
+  | { op: 'reorder'; blockId: string | null; order: string[] }
+  // Phase 166 (plan 166-08, MCP-05, D-12): protocol §2.6 "Block ops: updateBlock and addBlock".
+  | { op: 'updateBlock'; blockId: string; rounds: number }
+  | { op: 'addBlock'; rounds: number; orderIndex: number; exercises: BlockExerciseInput[] };
+
+/**
+ * One exercise of a block a proposal creates: `addBlock.exercises[]` (plan_update) and
+ * `blocks[].exercises[]` / `standalone[]` (new_plan) share this form (`NewPlanExerciseInputSchema`,
+ * protocol §2.6 "Field Reference"); `orderIndex` is block-local inside a block.
+ */
+export interface BlockExerciseInput {
+  exercise: ExerciseRef;
+  mode: 'REPS' | 'TIME' | 'MAX';
+  targetReps?: number;
+  targetTimeSeconds?: number;
+  restTimeSeconds: number;
+  sets: number;
+  targetWeight?: number;
+  orderIndex: number;
+  roundTargets?: RoundTargetInput[];
+}
 
 /** A brand-new exercise defined inline within a proposal (never a direct catalog write). */
 export interface NewExerciseDef {

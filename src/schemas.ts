@@ -314,6 +314,42 @@ export const RoundTargetInputSchema = z.object({
   targetWeight: z.number().min(0).optional(),
 });
 
+/** Protocol §2.6 "Block ops": `rounds` of `updateBlock` and `addBlock` (assumption A3, 166-RESEARCH.md). */
+export const BLOCK_ROUNDS_MIN = 1;
+export const BLOCK_ROUNDS_MAX = 100;
+
+/**
+ * The shape of one exercise entry inside a `new_plan` proposal — used both for a block's
+ * own `exercises[]` (block-local `orderIndex`) and for a top-level `standalone[]` entry
+ * (shared top-level `orderIndex` space with `blocks[]`, docs/COACH-PLANNING-PROTOCOL.md §2.6,
+ * D-24). Extracted as its own named schema (Phase 150, D-22) so both call sites reference
+ * the identical field set instead of two copies drifting apart.
+ */
+export const NewPlanExerciseInputSchema = z.object({
+  exercise: ExerciseRefSchema,
+  mode: z.enum(['REPS', 'TIME', 'MAX']),
+  targetReps: z.number().int().min(0).optional(),
+  targetTimeSeconds: z.number().int().min(0).optional(),
+  restTimeSeconds: z.number().int().min(0).describe(
+    'Rest after this exercise\'s set(s). A unilateral pair is two consecutive entries: the ' +
+      'first carries only the side-switch rest (about 5-10s: 5s for a pure side switch such as ' +
+      'side plank or typewriter, up to 10s when regripping or changing equipment such as clean ' +
+      'and press), the second the exercise\'s normal rest.',
+  ),
+  sets: z.number().int().min(1).describe(
+    'Number of times this exercise repeats back to back (expandSets). A standalone entry with ' +
+      'several sets runs them back to back, so a side pair with 3 sets each runs L, L, L, R, R, R ' +
+      '— alternating sides across sets needs a block instead, with rounds equal to the set count.',
+  ),
+  targetWeight: z.number().min(0).optional(),
+  orderIndex: z.number().int().min(0).describe(
+    'Position within its own order space: block-local when this entry is inside a block\'s ' +
+      'exercises[], or the shared top-level space (together with blocks[]) when this entry sits ' +
+      'in standalone[].',
+  ),
+  roundTargets: z.array(RoundTargetInputSchema).max(50).optional(),
+});
+
 /**
  * A single structural change to an existing template, referencing exercises by
  * UUID/tempId only (D-03 op vocabulary).
@@ -365,6 +401,35 @@ export const PlanOpSchema = z.discriminatedUnion('op', [
     op: z.literal('reorder'),
     blockId: UUID_STRING.nullable(),
     order: z.array(UUID_STRING).min(1).max(200),  // full ordered list of workoutExerciseIds in this block/standalone group
+  }),
+  // Phase 166 (plan 166-08, MCP-05, D-12): protocol §2.6 "Block ops: updateBlock and addBlock"
+  // (app 4.5 and later). The bound 1..100 on `rounds` is the chosen value of assumption A3; the
+  // app refuses a payload outside it as malformed, so both enforcement points agree.
+  z.object({
+    op: z.literal('updateBlock'),
+    blockId: UUID_STRING.describe(
+      'Id of a live block of this proposal\'s template (the blockId get_template shows). A block ' +
+        'of another template is never changed: the app writes nothing and reports the id.',
+    ),
+    rounds: z.number().int().min(BLOCK_ROUNDS_MIN).max(BLOCK_ROUNDS_MAX).describe(
+      'New number of rounds of the block, a whole number from 1 to 100.',
+    ),
+  }),
+  z.object({
+    op: z.literal('addBlock'),
+    rounds: z.number().int().min(BLOCK_ROUNDS_MIN).max(BLOCK_ROUNDS_MAX).describe(
+      'Number of rounds of the new block, a whole number from 1 to 100. The new block has no name.',
+    ),
+    orderIndex: z.number().int().min(0).describe(
+      'Position of the new block in the shared top-level space of blocks and standalone ' +
+        'exercises. Existing top-level siblings at or after this index move down by one; an ' +
+        'index past the end appends.',
+    ),
+    exercises: z.array(NewPlanExerciseInputSchema).min(1).max(50).describe(
+      'The exercises of the new block, 1 to 50 entries in the form of a new_plan block entry. ' +
+        'Each orderIndex here is block-local. A source:"new" ref must name a tempId declared in ' +
+        'newExercises[] of the same proposal.',
+    ),
   }),
 ]);
 
@@ -714,10 +779,19 @@ export const ProposePlanUpdateSchema = z
   })
   .refine(
     (d) => {
+      // Phase 166 (plan 166-08, Pitfall 11, T-166-24): the refs of `addBlock.exercises[]` are
+      // collected too, so a dangling tempId inside a new block is refused here, never sent.
       const definedTempIds = new Set((d.newExercises ?? []).map((e) => e.tempId));
-      const referencedTempIds = (d.ops ?? [])
-        .filter((op) => op.op === 'addExercise' && op.exercise.source === 'new')
-        .map((op) => (op as { exercise: { tempId: string } }).exercise.tempId);
+      const referencedTempIds: string[] = [];
+      for (const op of d.ops ?? []) {
+        if (op.op === 'addExercise' && op.exercise.source === 'new') {
+          referencedTempIds.push(op.exercise.tempId);
+        } else if (op.op === 'addBlock') {
+          for (const entry of op.exercises) {
+            if (entry.exercise.source === 'new') referencedTempIds.push(entry.exercise.tempId);
+          }
+        }
+      }
       return referencedTempIds.every((id) => definedTempIds.has(id));
     },
     { message: 'Every addExercise op with source:"new" must reference a tempId defined in newExercises[]' },
@@ -760,38 +834,6 @@ export const ProposePlanUpdateSchema = z
       }
     }
   });
-
-/**
- * The shape of one exercise entry inside a `new_plan` proposal — used both for a block's
- * own `exercises[]` (block-local `orderIndex`) and for a top-level `standalone[]` entry
- * (shared top-level `orderIndex` space with `blocks[]`, docs/COACH-PLANNING-PROTOCOL.md §2.6,
- * D-24). Extracted as its own named schema (Phase 150, D-22) so both call sites reference
- * the identical field set instead of two copies drifting apart.
- */
-export const NewPlanExerciseInputSchema = z.object({
-  exercise: ExerciseRefSchema,
-  mode: z.enum(['REPS', 'TIME', 'MAX']),
-  targetReps: z.number().int().min(0).optional(),
-  targetTimeSeconds: z.number().int().min(0).optional(),
-  restTimeSeconds: z.number().int().min(0).describe(
-    'Rest after this exercise\'s set(s). A unilateral pair is two consecutive entries: the ' +
-      'first carries only the side-switch rest (about 5-10s: 5s for a pure side switch such as ' +
-      'side plank or typewriter, up to 10s when regripping or changing equipment such as clean ' +
-      'and press), the second the exercise\'s normal rest.',
-  ),
-  sets: z.number().int().min(1).describe(
-    'Number of times this exercise repeats back to back (expandSets). A standalone entry with ' +
-      'several sets runs them back to back, so a side pair with 3 sets each runs L, L, L, R, R, R ' +
-      '— alternating sides across sets needs a block instead, with rounds equal to the set count.',
-  ),
-  targetWeight: z.number().min(0).optional(),
-  orderIndex: z.number().int().min(0).describe(
-    'Position within its own order space: block-local when this entry is inside a block\'s ' +
-      'exercises[], or the shared top-level space (together with blocks[]) when this entry sits ' +
-      'in standalone[].',
-  ),
-  roundTargets: z.array(RoundTargetInputSchema).max(50).optional(),
-});
 
 /**
  * propose_new_plan — a full new-plan structure (not an op-list seeded from empty;

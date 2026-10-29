@@ -153,8 +153,9 @@ function rewriteFormatParamsRefs(
  *   2. Walk every op; rewrite any `addExercise` op's `{ source: 'new', tempId }` ref
  *      whose tempId matched into `{ source: 'catalog', exerciseId: matchedUuid }`. Refs
  *      with an unmatched tempId, or already `source: 'catalog'`, pass through unchanged.
- *      Non-`addExercise` ops (removeExercise/updateSetsReps/reorder) pass through unchanged
- *      — they never carry an `ExerciseRef`.
+ *      The same rewrite runs over every entry of an `addBlock` op's `exercises[]` (Phase 166,
+ *      D-12). The other ops (removeExercise/updateSetsReps/reorder/updateBlock) pass through
+ *      unchanged; they never carry an `ExerciseRef`.
  *   3. If `args.formatParams` is present, apply the identical rewrite to every entry
  *      in its own entry list (`rewriteFormatParamsRefs`).
  *   4. Return `{ templateId, ops: <rewritten>, newExercises: <remaining novel entries>,
@@ -195,6 +196,12 @@ export function buildPlanUpdatePayload(
   const ops: PlanOp[] = (args.ops ?? []).map((op) => {
     if (op.op === 'addExercise') {
       return { ...op, exercise: rewriteRef(op.exercise) };
+    }
+    // Phase 166 (plan 166-08, D-12): a new block's exercises carry ExerciseRefs too; a tempId
+    // the dedupe resolved to a catalog exercise is rewritten here, or the dropped
+    // newExercises[] entry would leave a dangling ref inside the block.
+    if (op.op === 'addBlock') {
+      return { ...op, exercises: op.exercises.map((entry) => ({ ...entry, exercise: rewriteRef(entry.exercise) })) };
     }
     return op;
   });
@@ -295,7 +302,16 @@ export function registerToolProposePlanUpdate(
         'exercises) when blockId is null; existing siblings at or after that index move down by ' +
         'one, and several addExercise ops apply one after another (app 4.4.0 and later). reorder ' +
         'renumbers the listed workoutExerciseIds 0..n-1 without checking which block they belong ' +
-        'to — list only the exercises of one level.',
+        'to — list only the exercises of one level. ' +
+        'updateBlock changes the rounds of an existing block of this template (blockId from ' +
+        'get_template, rounds a whole number from 1 to 100). addBlock creates a new block with ' +
+        'rounds from 1 to 100 at orderIndex in the shared top-level space of blocks and standalone ' +
+        'exercises; existing top-level siblings at or after that index move down by one, the ' +
+        'orderIndex of each of its exercises is block-local, and a source:"new" ref inside it must ' +
+        'name a tempId declared in newExercises[]. Every op that names a block or a workout ' +
+        'exercise acts only on a row of this template; the app skips a row of another template ' +
+        'and reports its id. Block ops are ops[] entries for CLASSIC templates only, never for a ' +
+        'format template (app 4.5 and later).',
       inputSchema: ProposePlanUpdateSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
