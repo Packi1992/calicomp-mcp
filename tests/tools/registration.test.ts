@@ -297,6 +297,67 @@ function registeredToolsWithModules(tools: RegisteredToolMap): Array<{ name: str
 }
 
 // ---------------------------------------------------------------------------
+// Phase 166-09 (MCP-09, Pitfall 13, D-04 in the version E-15): hold sizes, new and changed fields.
+// ---------------------------------------------------------------------------
+
+/**
+ * The rule for hold sizes (todo `benchmark-haltegroessen-brauchen-max-modus.md`): TIME is a
+ * target (countdown), MAX a measurement (count-up). Every proposal tool with a `mode` field
+ * carries it verbatim.
+ */
+const PROPOSAL_HOLD_RULE =
+  'The mode of an exercise decides how a timed set runs: TIME counts down from ' +
+  'targetTimeSeconds and ends the set at zero, so TIME is a target, and a set that ran out ' +
+  'stores that target; MAX counts up until the athlete stops, so MAX is a measurement. Propose ' +
+  'a maximal hold, for example a benchmark hold or any hold whose capacity you want to measure, ' +
+  'with MAX, never with TIME; use TIME only where the time is a target not to exceed, such as a ' +
+  'plank in a finisher or a stretch.';
+
+/** The proposal tools whose input carries a `mode` (propose_exercise_update has none). */
+const PROPOSAL_TOOLS_WITH_MODE = ['propose_plan_update', 'propose_new_plan', 'propose_new_exercise'] as const;
+
+/** The read rule for hold times in every tool that outputs or counts them. */
+const READ_HOLD_RULE =
+  'Hold times: a set trained in mode TIME counts down from its target, and a TIME set that ran ' +
+  'out stores its target as completedTimeSeconds (since phase 165 the app records a time or ' +
+  'repetitions by the mode the set was trained in), so it shows the target and not a measured ' +
+  'capacity; only a set trained in MAX is a measured hold time.';
+
+const READ_TOOLS_WITH_HOLD_TIMES = ['get_history', 'get_progress', 'get_training_state', 'get_stats'] as const;
+
+/**
+ * Every new output or proposal field of phase 166 per tool (protocol §1.11, §2.6, §2.7; the
+ * export directory of D-21; the named top-level exerciseId of an exercise_update in
+ * get_suggestion, plan 166-08).
+ */
+const NEW_FIELDS_166: Record<string, readonly string[]> = {
+  get_training_state: ['capabilityBalance', 'dataQuality', 'suspectSetCount', 'byReason', 'newest'],
+  get_history: ['suspect', 'reps_on_time_station', 'zero_set', 'measured_time_missing', 'CALICOMP_EXPORT_DIR'],
+  get_progress: ['CALICOMP_EXPORT_DIR'],
+  get_adherence: ['CALICOMP_EXPORT_DIR'],
+  propose_plan_update: ['updateBlock', 'addBlock', 'translations', 'muscleGroups', 'capabilities', 'equipment'],
+  propose_new_plan: ['translations', 'muscleGroups', 'capabilities', 'equipment'],
+  propose_new_exercise: ['translations', 'muscleGroups', 'capabilities', 'equipment'],
+  propose_exercise_update: ['translations', 'muscleGroups', 'capabilities'],
+  get_suggestion: ['exercise_update'],
+};
+
+/**
+ * Every existing field whose meaning changes in phase 166 (protocol §1.11 "Existing fields that
+ * change meaning", §1.6 "Several candidates for one occurrence" and "Removed occurrences", D-04 in
+ * the version E-15): the field and the rule as a substring of its tool text.
+ */
+const CHANGED_MEANING_166: ReadonlyArray<{ tool: string; field: string; rule: string }> = [
+  { tool: 'get_training_state', field: 'muscleBalance', rule: 'muscleBalance; since phase 166 it counts no exercise whose rated capability axes are only mobility or flexibility' },
+  { tool: 'get_training_state', field: 'personalRecords', rule: 'personalRecords; since phase 166 split by the mode the set was trained in, rule M' },
+  { tool: 'get_stats', field: 'by: "exercise"', rule: 'Since Phase 166 every count of all three branches follows Rule P' },
+  { tool: 'get_stats', field: 'by: "muscle"', rule: 'counts every exercise that trains the muscle, including stretch-only exercises' },
+  { tool: 'get_stats', field: 'by: "capabilities"', rule: 'only finished sessions, and a set without exerciseId is resolved over its workoutExerciseId' },
+  { tool: 'get_adherence', field: 'matched pairs', rule: 'Since phase 166, when several finished sessions of the same template are candidates for one planned occurrence, the session with more live sets wins' },
+  { tool: 'get_adherence', field: 'removedWithCompletedSessionCount', rule: 'since phase 166 it runs over every live recurring template root of the snapshot' },
+];
+
+// ---------------------------------------------------------------------------
 // Registration tests
 // ---------------------------------------------------------------------------
 
@@ -636,6 +697,56 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     // The pre-164 sentence is gone (GR-MCP-06 class: stale texts).
     expect(description).not.toContain('carries no muscle-group, equipment or capability-axis rating');
     expect(description).not.toContain('never contributes to a weighted evaluation');
+  });
+
+  it('P166 proposal tools describe TIME as a target and MAX as a measurement for holds', () => {
+    const tools = buildRegisteredServer();
+    expect(PROPOSAL_HOLD_RULE).not.toMatch(/[–—]/);
+    for (const name of PROPOSAL_TOOLS_WITH_MODE) {
+      expect(tools[name]?.description, `${name} should carry the hold rule`).toContain(PROPOSAL_HOLD_RULE);
+    }
+    // A format entry has no MAX (FormatExerciseEntry: REPS or TIME), so the plan_update text says
+    // where a hold to measure belongs.
+    expect(tools.propose_plan_update.description).toContain(
+      'formatParams entries know only REPS and TIME, so a hold to measure belongs in a CLASSIC template',
+    );
+  });
+
+  it('P166 reading tools say a TIME set that ran out stores its target', () => {
+    const tools = buildRegisteredServer();
+    expect(READ_HOLD_RULE).toContain('a TIME set that ran out stores its target');
+    expect(READ_HOLD_RULE).not.toMatch(/[–—]/);
+    for (const name of READ_TOOLS_WITH_HOLD_TIMES) {
+      expect(tools[name]?.description, `${name} should carry the read rule for hold times`).toContain(READ_HOLD_RULE);
+    }
+  });
+
+  it('P166 every new output field of phase 166 is named in its tool description', () => {
+    const tools = buildRegisteredServer();
+    let checked = 0;
+    for (const [name, fields] of Object.entries(NEW_FIELDS_166)) {
+      const description = tools[name]?.description;
+      expect(description, `${name} should be registered with a description`).toBeDefined();
+      for (const field of fields) {
+        expect(description, `${name} description should name the new field ${field}`).toContain(field);
+        checked += 1;
+      }
+    }
+    expect(checked, 'NICHT GEMESSEN: the list of new fields is shorter than the phase delivered').toBeGreaterThanOrEqual(30);
+  });
+
+  it('P166 every field whose meaning changed in phase 166 names its rule in its tool description', () => {
+    const tools = buildRegisteredServer();
+    for (const { tool, field, rule } of CHANGED_MEANING_166) {
+      const description = tools[tool]?.description ?? '';
+      expect(description, `${tool} description should name the field ${field}`).toContain(field);
+      expect(description, `${tool} description should name the rule of ${field} since phase 166`).toContain(rule);
+    }
+    expect(CHANGED_MEANING_166.length, 'NICHT GEMESSEN: fewer changed fields than protocol §1.11 and §1.6 name').toBeGreaterThanOrEqual(6);
+    // Every tool of the table "Existing fields that change meaning" (§1.11) and of §1.6 is covered.
+    expect([...new Set(CHANGED_MEANING_166.map((c) => c.tool))].sort()).toStrictEqual(
+      ['get_adherence', 'get_stats', 'get_training_state'],
+    );
   });
 
   it.each(['get_template', 'get_suggestion', 'get_exercise_catalog'] as const)(
