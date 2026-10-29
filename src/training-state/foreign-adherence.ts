@@ -29,7 +29,10 @@
  *   FOREIGN_ADHERENCE_EXPLANATION — verbatim from §1.6 "Verbatim explanations"
  *   assignForeignFulfilment       — the pure day rule over expanded occurrences (corpus replay)
  *   foreignFulfilmentRatio        — fulfilled / (fulfilled + missed), or null (D-12)
- *   expandForeignRoots            — expand foreign roots into occurrences + removed dates
+ *   expandForeignRoots            — expand foreign roots into occurrences + removed dates; the
+ *                                   removed dates over every live foreign root, unlike the template
+ *                                   side (IN-01, D-08, protocol § 1.6 "Removed occurrences: why the
+ *                                   two sides count differently")
  *   computeForeignAdherence       — the `get_adherence.foreignSport` block
  *
  * Pure, no I/O, never logs (T-120-18): notes and own type names are athlete free text.
@@ -257,7 +260,7 @@ export function foreignFulfilmentRatio(fulfilledCount: number, missedCount: numb
  * Phase 155), so a weekly series whose only date in the window is cancelled reports 1 here and 0
  * there. The difference is wanted and stays (Phase 166, D-08, review finding IN-01 of
  * `155-REVIEW.md`): the template count is a measuring figure of the adherence, the foreign count
- * the more complete one. See protocol §1.6 "Removed occurrences: why the two sides count
+ * the more complete one. See protocol § 1.6 "Removed occurrences: why the two sides count
  * differently". Occurrences come back in occurrence order `(date, scheduledTime null last, rootId)`,
  * `removed` in `(date, rootId)` order.
  *
