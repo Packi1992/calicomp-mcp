@@ -203,7 +203,13 @@ export function registerToolProposeNewPlan(
         'equipment such as clean and press), the second gets the normal rest. A standalone entry ' +
         'with several sets runs them back to back, so a side pair with 3 sets each runs L, L, L, ' +
         'R, R, R; alternating sides across several sets only works as a block with as many rounds ' +
-        'as sets.',
+        'as sets. ' +
+        'The mode of an exercise decides how a timed set runs: TIME counts down from ' +
+        'targetTimeSeconds and ends the set at zero, so TIME is a target, and a set that ran out ' +
+        'stores that target; MAX counts up until the athlete stops, so MAX is a measurement. Propose ' +
+        'a maximal hold, for example a benchmark hold or any hold whose capacity you want to measure, ' +
+        'with MAX, never with TIME; use TIME only where the time is a target not to exceed, such as a ' +
+        'plank in a finisher or a stretch.',
       inputSchema: ProposeNewPlanSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },

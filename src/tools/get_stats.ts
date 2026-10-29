@@ -606,7 +606,11 @@ export function registerToolGetStats(
         'that could not be decrypted or decoded (entity, id, reason and plaintext routing ' +
         'fields); an empty list means every encrypted row was read. An entry with entity ' +
         '"exerciseNameOverride" only takes away that exercise\'s own name; it affects no other ' +
-        'field.',
+        'field. ' +
+        'Hold times: a set trained in mode TIME counts down from its target, and a TIME set that ran ' +
+        'out stores its target as completedTimeSeconds (since phase 165 the app records a time or ' +
+        'repetitions by the mode the set was trained in), so it shows the target and not a measured ' +
+        'capacity; only a set trained in MAX is a measured hold time.',
       inputSchema: GetStatsSchema,
       annotations: { readOnlyHint: true },
     },

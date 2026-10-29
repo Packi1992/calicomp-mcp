@@ -315,7 +315,15 @@ export function registerToolProposePlanUpdate(
         'name a tempId declared in newExercises[]. Every op that names a block or a workout ' +
         'exercise acts only on a row of this template; the app skips a row of another template ' +
         'and reports its id. Block ops are ops[] entries for CLASSIC templates only, never for a ' +
-        'format template (app 4.5 and later).',
+        'format template (app 4.5 and later). ' +
+        'The mode of an exercise decides how a timed set runs: TIME counts down from ' +
+        'targetTimeSeconds and ends the set at zero, so TIME is a target, and a set that ran out ' +
+        'stores that target; MAX counts up until the athlete stops, so MAX is a measurement. Propose ' +
+        'a maximal hold, for example a benchmark hold or any hold whose capacity you want to measure, ' +
+        'with MAX, never with TIME; use TIME only where the time is a target not to exceed, such as a ' +
+        'plank in a finisher or a stretch.' +
+        ' formatParams entries know only REPS and TIME, so a hold to measure belongs in a CLASSIC ' +
+        'template.',
       inputSchema: ProposePlanUpdateSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },

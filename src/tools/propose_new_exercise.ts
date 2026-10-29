@@ -154,7 +154,13 @@ export function registerToolProposeNewExercise(
         'get_exercise_catalog shows; an unknown capability or equipment key is refused with an error ' +
         'that names it. Leave out a field you do not want to set; never send an empty list. The ' +
         'duplicate check compares the name and every translation name with the catalog names of ' +
-        'every language. The athlete can change every field when accepting in the app.',
+        'every language. The athlete can change every field when accepting in the app. ' +
+        'The mode of an exercise decides how a timed set runs: TIME counts down from ' +
+        'targetTimeSeconds and ends the set at zero, so TIME is a target, and a set that ran out ' +
+        'stores that target; MAX counts up until the athlete stops, so MAX is a measurement. Propose ' +
+        'a maximal hold, for example a benchmark hold or any hold whose capacity you want to measure, ' +
+        'with MAX, never with TIME; use TIME only where the time is a target not to exceed, such as a ' +
+        'plank in a finisher or a stretch.',
       inputSchema: ProposeNewExerciseSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },

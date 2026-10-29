@@ -213,6 +213,10 @@ export function registerToolGetAdherence(
         'missed occurrences, and an explanation sentence describing what removedOccurrenceCount ' +
         'does and does NOT mean (verbatim: "' + ADHERENCE_EXPLANATION + '"). Set `outputFile: true` ' +
         'to write the full pair/missed lists to a local file instead of returning them inline. ' +
+        'With outputFile the file goes into the directory the athlete set in CALICOMP_EXPORT_DIR ' +
+        '(since phase 166; no tool argument chooses the directory or the file name), otherwise into ' +
+        'a directory under the system temp directory, where files older than 24 hours are deleted ' +
+        'at every start. ' +
         'Every result carries unreadable: rows that could not be decrypted or decoded (entity, ' +
         'id, reason and plaintext routing fields), independent of the date window; an empty ' +
         'list means every encrypted row was read. An entry with entity "exerciseNameOverride" ' +
@@ -223,12 +227,23 @@ export function registerToolGetAdherence(
         'decoded, this tool fails instead of returning a partial or misleading answer. This tool ' +
         'lists no exerciseId: every occurrence carries templateName; read the exercises of a ' +
         'template, with names, through get_template. ' +
+        'Since phase 166, when several finished sessions of the same template are candidates ' +
+        'for one planned occurrence, the session with more live sets wins, then the longer ' +
+        'session, then the earlier tie-break (date, rootId, sessionId); the other sessions stay ' +
+        'in unplannedSessionIds unless another occurrence takes them. matchedCount and ' +
+        'adherenceRatio keep their definition, but a pair read before phase 166 can name another ' +
+        'session. ' +
         'removedWithCompletedSessionCount (with removedWithCompletedSessionDates and ' +
         'removedWithCompletedSessionExplanation) counts the removed dates of a recurring ' +
         'template appointment on which a finished session of the same template lies: older app ' +
         'versions wrote a completed series date as removed, so read these dates as completed ' +
         'rather than cancelled; removedOccurrenceCount itself is unchanged and still includes ' +
-        'them. ' +
+        'them. For removedWithCompletedSessionCount and its dates, since phase 166 it runs over ' +
+        'every live recurring template root of the snapshot, also a series without a live ' +
+        'occurrence in the window, so it can be larger than a value read before phase 166; ' +
+        'removedOccurrenceCount keeps its narrower root set (roots with a live occurrence in the ' +
+        'window), unlike foreignSport.removedOccurrenceCount, which counts every live foreign ' +
+        'root. ' +
         'Foreign sport (running, bouldering, cycling and the athlete\'s own types): ' +
         'plannedCount, matchedCount, uncertainCount, missedCount and removedOccurrenceCount count ' +
         'template trainings only; planned foreign sport appointments are reported separately ' +

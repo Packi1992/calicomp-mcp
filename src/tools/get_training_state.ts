@@ -647,7 +647,11 @@ export function registerToolGetTrainingState(
         'measured_time_missing; a set with two reasons counts in both) and newest, at most 20 ' +
         'entries { setLogId, date, reasons }, newest first; get_history carries the same marks ' +
         'per set as suspect. It is only a hint: no tool changes or deletes a set, and the ' +
-        'athlete decides in the app whether to correct one.',
+        'athlete decides in the app whether to correct one. ' +
+        'Hold times: a set trained in mode TIME counts down from its target, and a TIME set that ran ' +
+        'out stores its target as completedTimeSeconds (since phase 165 the app records a time or ' +
+        'repetitions by the mode the set was trained in), so it shows the target and not a measured ' +
+        'capacity; only a set trained in MAX is a measured hold time.',
       inputSchema: GetTrainingStateSchema,
       annotations: { readOnlyHint: true },
     },

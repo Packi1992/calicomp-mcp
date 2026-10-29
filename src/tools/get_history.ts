@@ -430,7 +430,12 @@ export function registerToolGetHistory(
         'limit) are always reported, so a small limit never silently hides a bigger match ' +
         'set. Set `outputFile: true` to write the full result to a local file instead of ' +
         'returning it inline — the tool result then reports only the file path, byte size ' +
-        'and item count, plus matchingSessions/truncated. Every set-log carries ' +
+        'and item count, plus matchingSessions/truncated. ' +
+        'With outputFile the file goes into the directory the athlete set in CALICOMP_EXPORT_DIR ' +
+        '(since phase 166; no tool argument chooses the directory or the file name), otherwise into ' +
+        'a directory under the system temp directory, where files older than 24 hours are deleted ' +
+        'at every start. ' +
+        'Every set-log carries ' +
         'exerciseName and exerciseKey next to its exerciseId (optional lang, default ' +
         'English); a set-log with no exerciseId of its own is named through its ' +
         'workoutExerciseId instead, tagged exerciseNameSource: "workoutExerciseId". ' +
@@ -505,7 +510,11 @@ export function registerToolGetHistory(
         '{ reason, explanation } with reason reps_on_time_station, zero_set or ' +
         'measured_time_missing; a set-log without a finding has no suspect key. It is only a ' +
         'hint: this tool changes nothing, and the athlete decides in the app whether to correct ' +
-        'the set.',
+        'the set. ' +
+        'Hold times: a set trained in mode TIME counts down from its target, and a TIME set that ran ' +
+        'out stores its target as completedTimeSeconds (since phase 165 the app records a time or ' +
+        'repetitions by the mode the set was trained in), so it shows the target and not a measured ' +
+        'capacity; only a set trained in MAX is a measured hold time.',
       inputSchema: GetHistorySchema,
       annotations: { readOnlyHint: true },
     },

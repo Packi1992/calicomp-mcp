@@ -274,6 +274,81 @@ The file holds decrypted training data in plaintext. With `CALICOMP_EXPORT_DIR` 
 your directory after the conversation; it is written only when a tool call says `outputFile: true`.
 Keep that directory out of any repository you publish.
 
+## New in phase 166 (unreleased, after 1.3.0)
+
+Phase 166 makes the app and the MCP count the same sets by the same rules (§ 1.11 "Counting rules
+shared by the app and the MCP" of `docs/COACH-PLANNING-PROTOCOL.md`, version 1.48, and § 1.6 in
+version 1.49). This version is not on npm yet.
+
+### Existing fields that change meaning
+
+A corrected number changes the **existing** field in place: there is no parallel field, and the
+name, the place and the form of every field stay as they are; only the sets it counts change. The
+tool texts name the rule of each field below.
+
+| Tool | Existing field | Before 166 | Since 166 |
+|---|---|---|---|
+| `get_training_state` | `muscleBalance` | every set of finished sessions, also of exercises whose rated capability axes are only `mobility` or `flexibility` | Rule S over Rule P: such stretch-only exercises are left out, the same number as the app's strength heatmap |
+| `get_training_state` | `personalRecords` | the hold list by the catalog mode only, the repetition list without any mode | Rule M: by the mode the set was trained in (`maxHoldSeconds` only from sets that record a time, `maxReps` only from the others) |
+| `get_stats` | `by: "exercise"`, `by: "muscle"`: every field of the aggregate and `weightedSetCount` | no deletion marks, no `endTime`, no resolution over `workoutExerciseId` | Rule P with finished sessions; `by: "muscle"` still counts stretch-only exercises (no Rule S) |
+| `get_stats` | `by: "capabilities"`: `axes[]` with `setCount`, `weightedSetCount`, `sessionCount`, `contributingExerciseIds`, `lastSessionDate` | the same three gaps | Rule P with finished sessions |
+| `get_adherence` | `matches[]` and `unplannedSessionIds` | of several sessions of the same template on the same day as an occurrence, the one with the smaller `sessionId` won | the session with more live sets wins, then the longer one, then the old tie-break; `matchedCount` and `adherenceRatio` keep their definition |
+| `get_adherence` | `removedWithCompletedSessionCount` and `removedWithCompletedSessionDates[]` | only over the roots with a live occurrence in the window | over every live recurring template root of the snapshot |
+
+`removedOccurrenceCount` keeps its definition. On the template side it counts only roots with a
+live occurrence in the window, on the foreign side (`foreignSport.removedOccurrenceCount`) every
+live foreign root; the difference is deliberate and stays.
+
+**Comparing across the change.** The comparison at the measuring point 2026-11-16 computes both
+periods with the MCP from phase 166 on: the MCP changes no session data, only how it counts, so
+the earlier period counted again by the new rules is comparable with the later one. A number an
+MCP before phase 166 returned, also one noted down earlier, is not comparable with one counted
+after it.
+
+### New fields
+
+| Tool | New keys |
+|---|---|
+| `get_training_state` | `capabilityBalance` (windows `last7Days`, `last30Days`, `allTime`, each `{ setCounts, weighted }`, stretching included on purpose) and `dataQuality` (`suspectSetCount`, `byReason`, at most 20 `newest`), both after the existing keys |
+| `get_history` | `suspect` on a set-log that is probably an entry error: a list of `{ reason, explanation }` with `reps_on_time_station`, `zero_set` or `measured_time_missing`; absent on a set without a finding |
+| `get_suggestion` | for an `exercise_update` proposal, the top-level `exerciseId` of the resolved copy is named like every other exercise reference |
+
+The marks are hints only: no tool changes or deletes a set, the athlete decides in the app.
+
+### New proposals
+
+- **Block ops.** `propose_plan_update` takes the ops `updateBlock` (the rounds of an existing block,
+  1 to 100) and `addBlock` (a new block with its exercises in the shared top-level `orderIndex`
+  space), for CLASSIC templates only (app 4.5 and later). Every op acts only on rows of the
+  proposal's template.
+- **New exercises with links.** `propose_new_exercise` and `newExercises[]` of both plan tools take
+  the optional fields `translations`, `muscleGroups`, `capabilities` and `equipment`, keys as
+  `get_exercise_catalog` shows them; an unknown capability or equipment key is refused with an
+  error that names it. None of the fields is required.
+- **Changing an exercise.** The new tool `propose_exercise_update` (proposal type
+  `exercise_update`) proposes `translations`, `muscleGroups` and `capabilities` for an own
+  exercise, and only `translations` for a catalog exercise, as the athlete's personal name and
+  description; the shared catalog never changes. It is live once the server has been deployed with
+  the type.
+- **Hold sizes.** The proposal tools now say how `mode` behaves: `TIME` counts down and is a
+  target (a set that ran out stores that target), `MAX` counts up and is a measurement. A maximal
+  hold, such as a benchmark hold, is proposed with `MAX`. The reading tools say the same about the
+  stored hold times.
+
+Nothing is applied by the MCP: the athlete accepts, edits or rejects every proposal in the app.
+
+### Export directory
+
+`outputFile: true` writes into the directory set in `CALICOMP_EXPORT_DIR`; see
+[Export directory for outputFile](#export-directory-for-outputfile-unreleased-after-130).
+
+### Tool texts against behaviour
+
+No tool claims any longer to read no encrypted data: every tool that loads the snapshot loads it
+decrypted, and `get_template`, `get_suggestion` and `get_exercise_catalog` say which of their
+fields come from encrypted data and when an own name or an own exercise can be missing. A test
+over the import chain of every tool module keeps that claim out.
+
 ## Building
 
 ```bash

@@ -110,6 +110,14 @@ export interface SyncTemplateExerciseDto {
   // G-134-37: Kotlin default `"CATALOG"` — same encodeDefaults=false story as `rounds` above.
   // `BackupSyncService.kt` additionally hardcodes every pushed row's exerciseSource to
   // "CATALOG", so in practice this key is ALWAYS absent on the wire, never merely sometimes.
+  /**
+   * `exerciseSource` is no provenance (protocol 1.48 §1.3, Phase 166, D-07, STAT-04). The app
+   * pushes `"CATALOG"` on every template exercise, an own exercise with a UUID id included, and
+   * nothing reads the field to decide anything. The provenance of an exercise is `origin` in
+   * `get_exercise_catalog` (`"CUSTOM"` for an own exercise) or the key prefix `user_exercise:`
+   * of the MCP's catalog projection. The field stays unchanged because it is an input of the
+   * planHash (`hash.ts`, `PlanHash.kt`); changing its value would break every open proposal.
+   */
   exerciseSource?: string;     // "CATALOG" | "CUSTOM"
   mode: string;
   targetReps?: number;
@@ -152,6 +160,14 @@ export interface SyncSetLogDto {
   id: string;
   sessionId: string;
   exerciseId?: string;
+  /**
+   * `exerciseSource` is no provenance (protocol 1.48 §1.3, Phase 166, D-07, STAT-04). The app
+   * writes `"CATALOG"` on a set log as soon as its `exerciseId` is set, otherwise `null`, an own
+   * exercise included; nothing reads the field to decide anything. The provenance of an exercise
+   * is `origin` in `get_exercise_catalog` (`"CUSTOM"` for an own exercise) or the key prefix
+   * `user_exercise:` of the MCP's catalog projection. The field stays unchanged, like its twin on
+   * the template exercise, which is an input of the planHash (`hash.ts`, `PlanHash.kt`).
+   */
   exerciseSource?: string;
   workoutExerciseId?: string;
   completedReps?: number;      // null when encryptedPayload != null

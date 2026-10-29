@@ -202,7 +202,12 @@ export function registerToolGetProgress(
         'format templates if `templateId` is omitted. `points` overrides how many recent points ' +
         'each series returns (3-30) for this one call. A call with no matching data returns an ' +
         'empty series, never an error. Set `outputFile: true` to write the full point series to a ' +
-        'local file instead of returning it inline. Under `kind: "exercise"`, each series carries ' +
+        'local file instead of returning it inline. ' +
+        'With outputFile the file goes into the directory the athlete set in CALICOMP_EXPORT_DIR ' +
+        '(since phase 166; no tool argument chooses the directory or the file name), otherwise into ' +
+        'a directory under the system temp directory, where files older than 24 hours are deleted ' +
+        'at every start. ' +
+        'Under `kind: "exercise"`, each series carries ' +
         'exerciseName and exerciseKey next to its exerciseId (optional lang, default English) — ' +
         'including in the outputFile summary. ' +
         'For a catalog exercise the athlete has renamed, exerciseOwnName and ' +
@@ -215,7 +220,11 @@ export function registerToolGetProgress(
         'could not be decrypted or decoded (entity, id, reason and plaintext routing fields); an ' +
         'empty list means every encrypted row was read — including in the outputFile summary. ' +
         'An entry with entity "exerciseNameOverride" only takes away that exercise\'s own name; ' +
-        'it affects no other field.',
+        'it affects no other field. ' +
+        'Hold times: a set trained in mode TIME counts down from its target, and a TIME set that ran ' +
+        'out stores its target as completedTimeSeconds (since phase 165 the app records a time or ' +
+        'repetitions by the mode the set was trained in), so it shows the target and not a measured ' +
+        'capacity; only a set trained in MAX is a measured hold time.',
       inputSchema: GetProgressSchema,
       annotations: { readOnlyHint: true },
     },
