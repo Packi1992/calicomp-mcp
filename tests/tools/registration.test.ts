@@ -342,19 +342,22 @@ const OWN_NAME_APP_LANGUAGE_SENTENCE =
   'of that language.';
 
 const NEW_FIELDS_166: Record<string, readonly string[]> = {
-  get_training_state: ['capabilityBalance', 'dataQuality', 'suspectSetCount', 'byReason', 'newest', 'carries key'],
-  get_history: ['suspect', 'reps_on_time_station', 'zero_set', 'measured_time_missing', 'CALICOMP_EXPORT_DIR', 'droppedValues', 'not_hh_mm', 'carries key'],
+  get_training_state: ['capabilityBalance', 'dataQuality', 'suspectSetCount', 'byReason', 'newest', 'carries key', 'exerciseNameFreeText'],
+  get_history: ['suspect', 'reps_on_time_station', 'zero_set', 'measured_time_missing', 'CALICOMP_EXPORT_DIR', 'droppedValues', 'not_hh_mm', 'carries key', 'exerciseNameFreeText'],
   // Plan 166-10 (155-IN-06): a foreign time that is not HH:mm is dropped and named.
   get_planned_workouts: ['droppedValues', 'not_hh_mm'],
-  get_progress: ['CALICOMP_EXPORT_DIR', 'carries key'],
+  get_progress: ['CALICOMP_EXPORT_DIR', 'carries key', 'exerciseNameFreeText'],
   // Plan 166-10 (156-GR-MCP-03): an unreadable override entry carries its routing key.
-  get_stats: ['carries key'],
+  get_stats: ['carries key', 'exerciseNameFreeText'],
+  // Plan 166-10 (156-IN-MCP-06): the name of an own exercise in the free-text envelope.
+  get_template: ['exerciseNameFreeText'],
+  get_exercise_catalog: ['nameFreeText'],
   get_adherence: ['CALICOMP_EXPORT_DIR'],
   propose_plan_update: ['updateBlock', 'addBlock', 'translations', 'muscleGroups', 'capabilities', 'equipment'],
   propose_new_plan: ['translations', 'muscleGroups', 'capabilities', 'equipment'],
   propose_new_exercise: ['translations', 'muscleGroups', 'capabilities', 'equipment'],
   propose_exercise_update: ['translations', 'muscleGroups', 'capabilities'],
-  get_suggestion: ['exercise_update'],
+  get_suggestion: ['exercise_update', 'exerciseNameFreeText'],
 };
 
 /**
