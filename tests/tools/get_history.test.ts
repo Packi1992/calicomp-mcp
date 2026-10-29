@@ -46,7 +46,12 @@ import {
   CHAR166_SNAPSHOT,
   CHAR166_CATALOG,
   CHAR166_HISTORY_ARGS,
+  CHAR166_EX_PUSH,
+  CHAR166_TPL_MAIN,
 } from '../characterization-166-fixture.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import type { GetHistoryResult } from '../../src/tools/get_history.js';
 import { createExerciseNameResolver } from '../../src/exercise-names.js';
 import {
@@ -1305,5 +1310,78 @@ describe('get_history — suspect marks (Phase 166, STAT-05)', () => {
     await handler({ ...CHAR166_HISTORY_ARGS, outputFile: true });
     const [written] = vi.mocked(fileChannelModule.writeExportFile).mock.calls[0];
     check((written as { setLogs: Array<Record<string, unknown>> }).setLogs);
+  });
+
+  it('P166 166-17-FUND-01 get_history marks the zero set of a never finished session at a time station', () => {
+    // Protocol 1.51 §1.11 "Suspect sets": an invented zero set alone in a session that was never
+    // finished, at a TIME station of a repetition exercise without targetReps (D-17), with its
+    // zero in completedReps and no time. It records a time (Rule M), so zero_set reads the other
+    // value because the time is absent.
+    const sessionId = 'p166-fund01-s-open';
+    const teId = 'p166-fund01-te-time';
+    const setId = 'p166-fund01-sl-zero';
+    const startTime = Date.parse('2026-03-20T08:00:00Z');
+    const snap: DecryptedSnapshot = {
+      ...CHAR166_SNAPSHOT,
+      templateExercises: [
+        ...CHAR166_SNAPSHOT.templateExercises,
+        {
+          id: teId,
+          templateId: CHAR166_TPL_MAIN,
+          exerciseId: CHAR166_EX_PUSH,
+          exerciseSource: 'CATALOG',
+          mode: 'TIME',
+          targetTimeSeconds: 30,
+          restTimeSeconds: 60,
+          sets: 3,
+          orderIndex: 9,
+          createdAt: Date.parse('2026-01-01T00:00:00Z'),
+          updatedAt: Date.parse('2026-01-01T00:00:00Z'),
+        },
+      ],
+      sessions: [
+        ...CHAR166_SNAPSHOT.sessions,
+        {
+          id: sessionId,
+          templateId: CHAR166_TPL_MAIN,
+          startTime,
+          isManual: false,
+          isCorrected: false,
+          isQuickChallenge: false,
+          createdAt: startTime,
+          updatedAt: startTime,
+        } as DecryptedSession,
+      ],
+      setLogs: [
+        ...CHAR166_SNAPSHOT.setLogs,
+        {
+          id: setId,
+          sessionId,
+          exerciseId: CHAR166_EX_PUSH,
+          workoutExerciseId: teId,
+          exerciseSource: 'CATALOG',
+          completedReps: 0,
+          completedTimeSeconds: null,
+          weightUsed: null,
+          startedAt: startTime + 1,
+          measuredTimeSeconds: null,
+          createdAt: startTime + 1,
+          updatedAt: startTime + 1,
+        },
+      ],
+    };
+    const protocol = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'docs', 'COACH-PLANNING-PROTOCOL.md'),
+      'utf-8',
+    );
+    const explanation = /^\| `zero_set` \| `(This [^`]+)` \|$/m.exec(protocol)?.[1];
+    expect(explanation).toBeDefined();
+
+    const result = getHistory(CHAR166_HISTORY_ARGS, snap, undefined, undefined, CHAR166_CATALOG);
+    const sl = (result.setLogs as unknown as Array<Record<string, unknown>>).find((x) => x.id === setId);
+    expect(sl).toBeDefined();
+    const keys = Object.keys(sl!);
+    expect(keys[keys.length - 1]).toBe('suspect');
+    expect(sl!.suspect).toEqual([{ reason: 'zero_set', explanation }]);
   });
 });

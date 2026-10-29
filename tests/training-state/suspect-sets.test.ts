@@ -210,6 +210,37 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
     expect(snap).toEqual(before);
   });
 
+  it('P166 166-17-FUND-01 a set at a time station with zero repetitions and no time is marked zero_set', () => {
+    // Protocol 1.51 §1.11 "Suspect sets", zero_set: the value of the set's kind, otherwise the
+    // other value. The constellation of the zero sets an athlete keeps on purpose (D-17), with
+    // invented ids: a repetition exercise at a TIME station without targetReps, before app plan
+    // 165-02 the app took the counted zero there, so the set records a time (Rule M) and its
+    // zero stands in completedReps without a time.
+    const te = [templateExercise('ss-te-fund01', EX_REPS.id, 'TIME', { targetTimeSeconds: 30 })];
+    const open = session('ss-f01-open', '2026-05-04T08:00:00Z', { finished: false });
+    const done = session('ss-f01-done', '2026-05-05T08:00:00Z');
+    const other = session('ss-f01-other', '2026-05-06T08:00:00Z');
+    const atStation = { workoutExerciseId: 'ss-te-fund01', exerciseId: EX_REPS.id };
+    const snap = snapshot({
+      templateExercises: te,
+      sessions: [open, done, other],
+      setLogs: [
+        set('ss-f01-open-zero', open.id, open.startTime + 1, { ...atStation, completedReps: 0 }),
+        set('ss-f01-done-zero', done.id, done.startTime + 1, { ...atStation, completedReps: 0 }),
+        // Counter cases: no value at all, repetitions without a time, a reps set with time 0.
+        set('ss-f01-empty', other.id, other.startTime + 1, { ...atStation }),
+        set('ss-f01-reps-no-time', other.id, other.startTime + 2, { ...atStation, completedReps: 7 }),
+        set('ss-f01-reps-kind-time-zero', other.id, other.startTime + 3, { exerciseId: EX_REPS.id, completedTimeSeconds: 0 }),
+      ],
+    });
+    const marks = suspectMarksFor(snap, CATALOG);
+    expect(reasonsOf(marks, 'ss-f01-open-zero')).toEqual(['zero_set']);
+    expect(reasonsOf(marks, 'ss-f01-done-zero')).toEqual(['zero_set']);
+    expect(marks.has('ss-f01-empty')).toBe(false);
+    expect(reasonsOf(marks, 'ss-f01-reps-no-time') ?? []).not.toContain('zero_set');
+    expect(reasonsOf(marks, 'ss-f01-reps-kind-time-zero')).toEqual(['zero_set']);
+  });
+
   it('P166 a missing measured time after measurements began is marked measured_time_missing', () => {
     const sessions = Array.from({ length: 8 }, (_, i) => session(`ss-m${i}`, `2026-05-0${i + 1}T08:00:00Z`));
     const at = (i: number) => sessions[i].startTime + 1;
