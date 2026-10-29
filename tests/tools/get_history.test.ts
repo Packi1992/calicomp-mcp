@@ -351,6 +351,22 @@ describe('get_history — registered MCP handler', () => {
     expect(fileChannelModule.writeExportFile).not.toHaveBeenCalled();
   });
 
+  it('P166 IN-06 get_history names a foreign time outside HH:mm in droppedValues after unreadable', async () => {
+    const dropped = [{ entity: 'foreignActivity', id: 'row-fa-bad', field: 'performedTime', reason: 'not_hh_mm' }];
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...MOCK_CACHE,
+      decodeReport: { unreadable: [], encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 }, failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 }, droppedValues: dropped },
+    });
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    const result = await getHandler(server)({ from: '2024-01-01', to: '2024-12-31', limit: 200 });
+
+    const resolver = createExerciseNameResolver({ catalog: mockCatalog, snapshot: mockSnapshot });
+    const expected = getHistory({ from: '2024-01-01', to: '2024-12-31', limit: 200 }, mockSnapshot, resolver);
+    // Every existing key exactly as before; the new key only when a value was dropped.
+    expect(result.content[0].text).toBe(JSON.stringify({ ...expected, unreadable: [], droppedValues: dropped }));
+  });
+
   it('outputFile: false behaves exactly like an omitted switch', async () => {
     const server = new McpServer({ name: 'test', version: '0.1.0' });
     registerToolGetHistory(server, DUMMY_CFG);

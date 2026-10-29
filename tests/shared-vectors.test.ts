@@ -697,10 +697,11 @@ describe('shared coach-planning vector corpus', () => {
   // -----------------------------------------------------------------------
 
   describe('exerciseNameOverrideDecode vectors', () => {
-    it('P164 exerciseNameOverrideDecode section holds all 57 vectors', () => {
+    it('P164 exerciseNameOverrideDecode section holds all 63 vectors', () => {
       // A replay that read fewer vectors than the corpus carries would pass vacuously.
-      expect(corpus.exerciseNameOverrideDecode).toHaveLength(57);
-      expect(new Set(corpus.exerciseNameOverrideDecode.map((v) => v.name)).size).toBe(57);
+      // 57 until plan 166-10, which added six vectors of GR-MCP-01.
+      expect(corpus.exerciseNameOverrideDecode).toHaveLength(63);
+      expect(new Set(corpus.exerciseNameOverrideDecode.map((v) => v.name)).size).toBe(63);
     });
 
     it('P156 WR-MCP-03 every exerciseNameOverrideDecode vector decodes to its expected outcome', () => {
@@ -734,9 +735,45 @@ describe('shared coach-planning vector corpus', () => {
           unreadableSeen += 1;
         }
       }
-      expect(readableSeen + unreadableSeen).toBe(57);
+      expect(readableSeen + unreadableSeen).toBe(63);
       expect(readableSeen).toBeGreaterThan(0);
       expect(unreadableSeen).toBeGreaterThan(0);
+    });
+
+    // Plan 166-10 (D-19, 156 review GR-MCP-01): plaintext a lenient JSON reader would accept
+    // (an unquoted literal, `01`, `+1`, a bare word, `NaN`) is no JSON and fails rule 3 with
+    // malformed_payload before the version is read; an updatedAt outside ±(2^53 - 1) fails
+    // rule 5, also in the exponent spelling. Both decoder sections, the real decoders.
+    it('P166 GR-MCP-01 every decode vector with invalid JSON or an unsafe integer yields its reason', () => {
+      const overrideNames = [
+        'unquoted-literal-in-unknown-key', 'v-leading-zero', 'v-plus-sign', 'v-bare-word', 'v-not-a-number',
+        'updatedAt-exponent-beyond-safe-integer', 'updatedAt-outside-safe-integer', 'updatedAt-beyond-long',
+      ];
+      const ownNames = [
+        'unquoted-literal-in-unknown-key', 'v-leading-zero', 'updatedAt-exponent-beyond-safe-integer',
+        'updatedAt-outside-safe-integer', 'updatedAt-beyond-long',
+      ];
+      const reasonOf = (fn: () => unknown): string | undefined => {
+        try {
+          fn();
+        } catch (err) {
+          return err instanceof RowDecodeError ? err.reason : `not a RowDecodeError: ${String(err)}`;
+        }
+        return undefined;
+      };
+      for (const name of overrideNames) {
+        const vector = corpus.exerciseNameOverrideDecode.find((v) => v.name === name);
+        expect(vector, name).toBeDefined();
+        expect(vector!.expected, name).toEqual({ readable: false, reason: 'malformed_payload' });
+        const row = { id: `exercise_name_override-${name}`, clientLocalId: vector!.clientLocalId };
+        expect(reasonOf(() => decodeExerciseNameOverridePlaintext(vector!.plaintext, row)), name).toBe('malformed_payload');
+      }
+      for (const name of ownNames) {
+        const vector = corpus.ownExerciseDecode.find((v) => v.name === name);
+        expect(vector, name).toBeDefined();
+        expect(vector!.reason, name).toBe('malformed_payload');
+        expect(reasonOf(() => decodeOwnExercisePlaintext(vector!.plaintext, vector!.rowId)), name).toBe('malformed_payload');
+      }
     });
   });
 
@@ -765,7 +802,8 @@ describe('shared coach-planning vector corpus', () => {
       // A replay that read fewer vectors than the corpus carries would pass vacuously.
       expect(corpus.ownExerciseCipher).toHaveLength(6);
       expect(corpus.ownExerciseTranslationCipher).toHaveLength(3);
-      expect(corpus.ownExerciseDecode).toHaveLength(33);
+      // 33 until plan 166-10, which added three vectors of GR-MCP-01.
+      expect(corpus.ownExerciseDecode).toHaveLength(36);
       expect(corpus.keyCheck).toHaveLength(3);
     });
 
@@ -905,7 +943,7 @@ describe('shared coach-planning vector corpus', () => {
           unreadableSeen += 1;
         }
       }
-      expect(readableSeen + unreadableSeen).toBe(33);
+      expect(readableSeen + unreadableSeen).toBe(36);
       expect(readableSeen).toBe(5);
       expect(translationSeen).toBe(5);
     });

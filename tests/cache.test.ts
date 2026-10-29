@@ -1572,12 +1572,13 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
           updatedAt: 1_791_450_000_000,
         },
       ]);
-      // Each unreadable row is reported by entity, id, reason and routing timestamps only.
+      // Each unreadable row is reported by entity, id, reason, its plaintext routing key
+      // (since 166-10, GR-MCP-03) and routing timestamps only.
       const routing = { createdAt: 1_791_400_000_000, updatedAt: 1_791_400_000_000 };
       expect(report.unreadable).toEqual([
-        { entity: 'exerciseNameOverride', id: 'row-eno-2', reason: 'decrypt_failed', ...routing },
-        { entity: 'exerciseNameOverride', id: 'row-eno-3', reason: 'unknown_version', ...routing },
-        { entity: 'exerciseNameOverride', id: 'row-eno-4', reason: 'malformed_payload', ...routing },
+        { entity: 'exerciseNameOverride', id: 'row-eno-2', reason: 'decrypt_failed', key: '15600000-0000-4000-8000-0000000000a2:de', ...routing },
+        { entity: 'exerciseNameOverride', id: 'row-eno-3', reason: 'unknown_version', key: '15600000-0000-4000-8000-0000000000a3:de', ...routing },
+        { entity: 'exerciseNameOverride', id: 'row-eno-4', reason: 'malformed_payload', key: '15600000-0000-4000-8000-0000000000a4:de', ...routing },
       ]);
       expect(report.encryptedCount.exerciseNameOverride).toBe(4);
       expect(report.failedCount.exerciseNameOverride).toBe(3);
@@ -1751,6 +1752,7 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
           entity: 'exerciseNameOverride',
           id: 'row-crossed',
           reason: 'malformed_payload',
+          key: `${ID_A}:de`,
           createdAt: 1_791_400_000_000,
           updatedAt: 1_791_400_000_000,
         },
@@ -1789,8 +1791,8 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
     expect(cache.snapshot.exerciseNameOverrides?.[0].name).toBe('\uFEFFDips ');
     const routing = { createdAt: 1_791_400_000_000, updatedAt: 1_791_400_000_000 };
     expect(cache.decodeReport!.unreadable).toEqual([
-      { entity: 'exerciseNameOverride', id: 'row-blank-zw', reason: 'malformed_payload', ...routing },
-      { entity: 'exerciseNameOverride', id: 'row-blank-sp', reason: 'malformed_payload', ...routing },
+      { entity: 'exerciseNameOverride', id: 'row-blank-zw', reason: 'malformed_payload', key: `${ID_C}:de`, ...routing },
+      { entity: 'exerciseNameOverride', id: 'row-blank-sp', reason: 'malformed_payload', key: `${ID_D}:de`, ...routing },
     ]);
 
     const catalog = [
@@ -1888,5 +1890,168 @@ describe('decrypt-merge: own exercises, encrypted (Phase 164)', () => {
     expect(plain[2]).toContain('"exerciseName":"Ringstütz, tief"');
     expect(plain[1]).toContain('"nameEn":"Ringstütz tief"');
     expect(cipher.join('')).not.toContain('encryptedPayload');
+  });
+});
+
+// ── Phase 166 plan 166-10: review findings of 155 and 156 at the decoders (D-19, MCP-09) ──
+
+describe('decrypt-merge: review findings of 155 and 156 (Phase 166, plan 166-10)', () => {
+  const P166_KEY_B64 = Buffer.from(Array.from({ length: 32 }, (_, i) => 31 - i)).toString('base64');
+  let ivCounter = 0;
+
+  /** A real `{"iv":...,"ct":...}` envelope; a fresh IV per call (test-only key). */
+  function encrypt166(payload: Record<string, unknown>): string {
+    ivCounter += 1;
+    const iv = Buffer.alloc(12);
+    iv.writeUInt32BE(ivCounter, 0);
+    const cipher = createCipheriv('aes-256-gcm', Buffer.from(P166_KEY_B64, 'base64'), iv);
+    const ctBuf = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final(), cipher.getAuthTag()]);
+    return JSON.stringify({ iv: iv.toString('base64'), ct: ctBuf.toString('base64') });
+  }
+
+  function miscRow(id: string, kind: string, encryptedPayload: string, clientLocalId = id): MiscSyncRow {
+    return { id, kind, clientLocalId, encryptedPayload, createdAt: 1_792_000_000_000, updatedAt: 1_792_000_000_000 };
+  }
+
+  function activity(id: string, performedTime: unknown): Record<string, unknown> {
+    return {
+      v: 1, id, typeId: 'b85b2339-ddf1-385d-acb2-b0d3d498eeca', performedOn: '2026-10-20', performedTime,
+      durationMinutes: 30, intensity: 3, dayForm: null, distanceMeters: null, note: null,
+      createdAt: 1_792_000_000_000, updatedAt: 1_792_000_000_000,
+    };
+  }
+
+  function appointment(id: string, scheduledTime: unknown): Record<string, unknown> {
+    return {
+      v: 1, id, typeId: 'b85b2339-ddf1-385d-acb2-b0d3d498eeca', scheduledDate: 1_792_108_800_000, scheduledTime,
+      note: null, recurrenceRule: null, deletedOccurrences: null, createdAt: 1_792_000_000_000, updatedAt: 1_792_000_000_000,
+    };
+  }
+
+  it('P166 IN-06 a performedTime or scheduledTime outside HH:mm is reported and not used', async () => {
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        foreignActivityTypes: [],
+        foreignActivities: [
+          miscRow('row-fa-ok', 'foreign_activity', encrypt166(activity('fa-ok', '18:30'))),
+          miscRow('row-fa-none', 'foreign_activity', encrypt166(activity('fa-none', null))),
+          miscRow('row-fa-hour', 'foreign_activity', encrypt166(activity('fa-hour', '25:00'))),
+          miscRow('row-fa-short', 'foreign_activity', encrypt166(activity('fa-short', '7:05'))),
+          miscRow('row-fa-number', 'foreign_activity', encrypt166(activity('fa-number', 1830))),
+        ],
+        plannedForeignActivities: [
+          miscRow('row-pfa-ok', 'planned_foreign_activity', encrypt166(appointment('pfa-ok', '07:00'))),
+          miscRow('row-pfa-word', 'planned_foreign_activity', encrypt166(appointment('pfa-word', 'noon'))),
+        ],
+      }),
+    );
+
+    const cache = await getSnapshot(PAT, P166_KEY_B64, URL);
+    const report = cache.decodeReport!;
+    const times = new Map((cache.snapshot.foreignActivities ?? []).map((a) => [a.id, a.performedTime]));
+    const appointmentTimes = new Map((cache.snapshot.plannedForeignActivities ?? []).map((p) => [p.id, p.scheduledTime]));
+
+    // Not used: a value outside HH:mm reads as no time; the row itself stays readable.
+    expect(Object.fromEntries(times)).toEqual({
+      'fa-ok': '18:30', 'fa-none': null, 'fa-hour': null, 'fa-short': null, 'fa-number': null,
+    });
+    expect(Object.fromEntries(appointmentTimes)).toEqual({ 'pfa-ok': '07:00', 'pfa-word': null });
+    expect(report.unreadable).toEqual([]);
+    expect(report.failedCount.foreignActivity).toBe(0);
+    expect(foreignSportAvailability(cache.snapshot, report)).toEqual({ available: true });
+
+    // Reported: by entity, wire row id, field and reason, never with the value itself.
+    expect(report.droppedValues).toEqual([
+      { entity: 'foreignActivity', id: 'row-fa-hour', field: 'performedTime', reason: 'not_hh_mm' },
+      { entity: 'foreignActivity', id: 'row-fa-short', field: 'performedTime', reason: 'not_hh_mm' },
+      { entity: 'foreignActivity', id: 'row-fa-number', field: 'performedTime', reason: 'not_hh_mm' },
+      { entity: 'plannedForeignActivity', id: 'row-pfa-word', field: 'scheduledTime', reason: 'not_hh_mm' },
+    ]);
+    const reportText = JSON.stringify(report);
+    for (const value of ['25:00', '7:05', '1830', 'noon']) expect(reportText).not.toContain(value);
+  });
+
+  it('P166 IN-06 a pull whose times are all HH:mm or null carries no droppedValues key', async () => {
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        foreignActivityTypes: [],
+        foreignActivities: [miscRow('row-fa-ok', 'foreign_activity', encrypt166(activity('fa-ok', '00:00')))],
+        plannedForeignActivities: [miscRow('row-pfa-ok', 'planned_foreign_activity', encrypt166(appointment('pfa-ok', '23:59')))],
+      }),
+    );
+    const cache = await getSnapshot(PAT, P166_KEY_B64, URL);
+    expect(cache.decodeReport).not.toHaveProperty('droppedValues');
+    expect(cache.snapshot.foreignActivities?.[0].performedTime).toBe('00:00');
+    expect(cache.snapshot.plannedForeignActivities?.[0].scheduledTime).toBe('23:59');
+  });
+
+  it('P166 IN-MCP-05 a null element in a wire array is skipped and reported like a bad row', async () => {
+    const session: SyncSessionDto = {
+      id: 'sess-p166', startTime: 1_792_000_000_000, endTime: 1_792_003_600_000, isManual: false,
+      isCorrected: false, isQuickChallenge: false, createdAt: 1_792_000_000_000, updatedAt: 1_792_000_000_000,
+    };
+    const bad = null as unknown;
+    const pull = makePull({
+      sessions: [bad as SyncSessionDto, session],
+      setLogs: [bad as never],
+      hrSamples: [bad as never],
+      // A number is no row object either; it takes the same path as null.
+      plannedWorkouts: [5 as never],
+      settings: [bad as never],
+      exercises: [bad as SyncExerciseDto],
+      exerciseTranslations: [[] as unknown as SyncExerciseTranslationDto],
+      foreignActivityTypes: [bad as never],
+      foreignActivities: [bad as never, miscRow('row-fa-ok', 'foreign_activity', encrypt166(activity('fa-ok', '18:30')))],
+      plannedForeignActivities: [bad as never],
+      exerciseNameOverrides: [bad as never],
+    });
+    mockFetchSnapshot.mockResolvedValueOnce(pull);
+
+    // Before 166-10 the property read `row.encryptedPayload` sat outside the try and the whole pull failed.
+    const cache = await getSnapshot(PAT, P166_KEY_B64, URL);
+    const report = cache.decodeReport!;
+
+    expect(cache.snapshot.sessions.map((s) => s.id)).toEqual(['sess-p166']);
+    expect(cache.snapshot.foreignActivities?.map((a) => a.id)).toEqual(['fa-ok']);
+    const entities = [
+      'session', 'setLog', 'hrSample', 'exercise', 'exerciseTranslation', 'plannedWorkout', 'setting',
+      'foreignActivityType', 'foreignActivity', 'plannedForeignActivity', 'exerciseNameOverride',
+    ] as const;
+    expect(report.unreadable).toEqual(entities.map((entity) => ({ entity, id: '', reason: 'malformed_payload' })));
+    for (const entity of entities) {
+      expect(report.failedCount[entity], entity).toBe(1);
+      expect(report.encryptedCount[entity], entity).toBe(entity === 'foreignActivity' ? 1 : 0);
+    }
+    // A non-object element is no session id: it never removes set-logs as "rows of an unreadable session".
+    expect(report.unreadable.find((r) => r.entity === 'session')).not.toHaveProperty('affectedSetLogCount');
+  });
+
+  it('P166 GR-MCP-03 an unreadable name override names the affected exercise id', async () => {
+    const exerciseId = '16600000-0000-4000-8000-0000000000b1';
+    const broken = JSON.parse(
+      encrypt166({ v: 1, exerciseId, languageCode: 'de', name: 'x', description: null, updatedAt: 1_792_000_000_001 }),
+    ) as { iv: string; ct: string };
+    const ctBuf = Buffer.from(broken.ct, 'base64');
+    ctBuf[0] ^= 0xff;
+    const tampered = JSON.stringify({ iv: broken.iv, ct: ctBuf.toString('base64') });
+    const unknownVersion = encrypt166({ v: 9, exerciseId, languageCode: 'en', name: 'y', description: null, updatedAt: 1 });
+
+    mockFetchSnapshot.mockResolvedValueOnce(
+      makePull({
+        exerciseNameOverrides: [
+          miscRow('row-eno-b1-de', 'exercise_name_override', tampered, `${exerciseId}:de`),
+          miscRow('row-eno-b1-en', 'exercise_name_override', unknownVersion, `${exerciseId}:en`),
+        ],
+      }),
+    );
+    const cache = await getSnapshot(PAT, P166_KEY_B64, URL);
+    const routing = { createdAt: 1_792_000_000_000, updatedAt: 1_792_000_000_000 };
+    // `key` is the row's plaintext routing key "<exerciseId>:<languageCode>" (what the server
+    // already sees), never content from the payload — the same field the setting rows carry.
+    expect(cache.decodeReport!.unreadable).toEqual([
+      { entity: 'exerciseNameOverride', id: 'row-eno-b1-de', reason: 'decrypt_failed', key: `${exerciseId}:de`, ...routing },
+      { entity: 'exerciseNameOverride', id: 'row-eno-b1-en', reason: 'unknown_version', key: `${exerciseId}:en`, ...routing },
+    ]);
+    for (const entry of cache.decodeReport!.unreadable) expect(entry.key?.startsWith(`${exerciseId}:`)).toBe(true);
   });
 });

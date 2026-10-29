@@ -340,6 +340,24 @@ describe('get_planned_workouts — registered MCP handler', () => {
     expect(result.isError).toBeUndefined();
     const body = JSON.parse(result.content[0].text) as { unreadable: unknown[] };
     expect(body.unreadable).toEqual([]);
+    expect(body).not.toHaveProperty('droppedValues');
+  });
+
+  it('P166 IN-06 get_planned_workouts names a foreign time outside HH:mm in droppedValues after unreadable', async () => {
+    const snapshot = snapshotWith([root({ id: 'root-inside', scheduledDate: epochMs(2026, 6, 10) })]);
+    const dropped = [{ entity: 'plannedForeignActivity', id: 'row-pfa-bad', field: 'scheduledTime', reason: 'not_hh_mm' }];
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...mockCacheFor(snapshot),
+      decodeReport: { unreadable: [], encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 }, failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 }, droppedValues: dropped },
+    });
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetPlannedWorkouts(server, DUMMY_CFG);
+    const result = await getHandler(server)({ from: '2026-06-01', to: '2026-06-14' });
+
+    const body = JSON.parse(result.content[0].text) as Record<string, unknown>;
+    const keys = Object.keys(body);
+    expect(keys.slice(-2)).toEqual(['unreadable', 'droppedValues']);
+    expect(body.droppedValues).toEqual(dropped);
   });
 });
 
