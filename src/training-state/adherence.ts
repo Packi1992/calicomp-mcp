@@ -71,7 +71,7 @@
  */
 
 import { getPlannedWorkouts, type PlannedOccurrenceOut } from '../tools/get_planned_workouts.js';
-import { epochDay, parseIsoDate, formatIsoDate, plusDays } from '../recurrence.js';
+import { epochDay, parseIsoDate, formatIsoDate, plusDays, parseDeletedOccurrences } from '../recurrence.js';
 import { toCalendarDay } from './time-zone.js';
 import {
   buildCombinedVector,
@@ -134,7 +134,9 @@ export interface AdherenceResult {
   unplannedSessionIds: string[];
   explanation: string;
   /** Phase 155 (D-07): removed dates of a recurring root with a finished session of the same
-   *  template on that calendar day — a subset of `removedOccurrenceCount`, never subtracted. */
+   *  template on that calendar day, never subtracted from `removedOccurrenceCount`. Since
+   *  Phase 166 (IN-02) over every live recurring root, so it can name a date of a root without
+   *  a live occurrence in the window, which `removedOccurrenceCount` does not see (D-08). */
   removedWithCompletedSessionCount: number;
   removedWithCompletedSessionDates: { date: string; rootId: string; templateId: string }[];
   removedWithCompletedSessionExplanation: string;
@@ -251,6 +253,14 @@ export function computeAdherence(
   // `linkSessionToPlannedWorkout` wrote a completed series date into `deletedOccurrences`;
   // since 155-10 the app writes no such date any more (D-05, D-08), the old entries stay in
   // the data (D-06). `removedOccurrenceCount` keeps its definition byte for byte.
+  //
+  // Phase 166 (MCP-09, IN-02 of 155-REVIEW.md, protocol §1.6 "Removed occurrences: why the
+  // two sides count differently"): this step runs over EVERY live template root of the
+  // snapshot with a non-empty recurrenceRule (`snapshot.plannedWorkouts` carries only live
+  // roots), not over `denom.roots`. A series whose only dates in the window were written as
+  // cancelled although they were done has no live occurrence there, is absent from
+  // `denom.roots`, and is exactly the old case this field exists to explain. The root set of
+  // `removedOccurrenceCount` (step 2) stays `denom.roots` (D-08).
   const finishedSessionDays = new Set<string>();
   for (const session of snapshot.sessions) {
     if (session.deletedAt !== undefined) continue;
@@ -259,9 +269,9 @@ export function computeAdherence(
     finishedSessionDays.add(`${session.templateId}::${toCalendarDay(session.startTime, timeZoneId)}`);
   }
   const removedWithCompletedSessionDates: { date: string; rootId: string; templateId: string }[] = [];
-  for (const root of denom.roots) {
+  for (const root of snapshot.plannedWorkouts) {
     if (root.recurrenceRule === null || root.recurrenceRule.trim() === '') continue;
-    for (const deletedDate of root.deletedOccurrences) {
+    for (const deletedDate of parseDeletedOccurrences(root.deletedOccurrencesRaw)) {
       if (deletedDate < from || deletedDate > to) continue;
       if (finishedSessionDays.has(`${root.templateId}::${deletedDate}`)) {
         removedWithCompletedSessionDates.push({ date: deletedDate, rootId: root.id, templateId: root.templateId });
