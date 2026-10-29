@@ -229,8 +229,8 @@ byte as before.
   row that cannot be decrypted or decoded, one with a blank name included (empty or only
   characters of the list in § 1.7 "Blank text", since protocol 1.29), stands in `unreadable` of
   `get_history`, `get_stats`, `get_progress`, `get_training_state`, `get_adherence` and
-  `get_planned_workouts` with `entity: "exerciseNameOverride"`, its `id` and its `reason`, never
-  its content. It takes away only the own name of that exercise in that language; `exerciseName`,
+  `get_planned_workouts` with `entity: "exerciseNameOverride"`, its `id`, its `reason` and (since
+  phase 166) its plaintext routing `key` `"<exerciseId>:<languageCode>"`, never its content. It takes away only the own name of that exercise in that language; `exerciseName`,
   `exerciseKey`, the own names of every other exercise and every other key stay complete. The
   descriptions of those six tools say the same (`get_adherence` and `get_planned_workouts` output
   no exercise names, so there it affects nothing). `get_template`, `get_suggestion` and
@@ -312,6 +312,10 @@ after it.
 | `get_training_state` | `capabilityBalance` (windows `last7Days`, `last30Days`, `allTime`, each `{ setCounts, weighted }`, stretching included on purpose) and `dataQuality` (`suspectSetCount`, `byReason`, at most 20 `newest`), both after the existing keys |
 | `get_history` | `suspect` on a set-log that is probably an entry error: a list of `{ reason, explanation }` with `reps_on_time_station`, `zero_set` or `measured_time_missing`; absent on a set without a finding |
 | `get_suggestion` | for an `exercise_update` proposal, the top-level `exerciseId` of the resolved copy is named like every other exercise reference |
+| `get_template`, `get_history`, `get_progress`, `get_training_state`, `get_stats`, `get_suggestion` | `exerciseNameFreeText` beside `exerciseName` of an own exercise (key `user_exercise:<id>`, live or deleted): its shown name in the free-text envelope, because that name is the athlete's free text; `exerciseName` keeps its value |
+| `get_exercise_catalog` | `nameFreeText` on an entry with `origin: "CUSTOM"`: its shown name (`localizedName` with `lang`, else `nameEn`) in the free-text envelope; `nameEn` and `localizedName` keep their values |
+| `get_history`, `get_progress`, `get_stats`, `get_training_state`, `get_adherence`, `get_planned_workouts` | `key` on an `unreadable` entry with `entity: "exerciseNameOverride"`: the row's plaintext routing key `"<exerciseId>:<languageCode>"`, so the coach knows whose own name is missing |
+| `get_history`, `get_planned_workouts` | `droppedValues` after `unreadable`, only when a stored foreign `performedTime` or `scheduledTime` is not `HH:mm`: that time reads as `null`, the row stays readable, and the entry names `entity`, `id`, `field` and `reason: "not_hh_mm"`, never the value |
 
 The marks are hints only: no tool changes or deletes a set, the athlete decides in the app.
 
@@ -336,6 +340,14 @@ The marks are hints only: no tool changes or deletes a set, the athlete decides 
   stored hold times.
 
 Nothing is applied by the MCP: the athlete accepts, edits or rejects every proposal in the app.
+
+### Own names without `lang`
+
+Without `lang`, own names follow the app language (`default_language`). When that setting is
+missing (the athlete never chose a language in the app, which then never syncs it) or unreadable,
+no own name appears, exactly as § 1.7 "Which language" says; every tool with own names now says so
+and that a call with `lang` shows the own names of that language. `get_training_state` names the
+reason in `appLanguageUnavailableReason`.
 
 ### Export directory
 
