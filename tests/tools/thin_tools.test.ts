@@ -610,21 +610,45 @@ describe('getExerciseCatalog — Phase 156 own names', () => {
     const en = getExerciseCatalog({ lang: 'en' }, mockCatalog, catalogSnapshot({ appLanguage: 'de' }));
     expect(JSON.stringify(en)).toBe(JSON.stringify(getExerciseCatalog({ lang: 'en' }, mockCatalog)));
 
-    // Without lang, default_language de applies.
+    // Without lang, default_language de applies (since 166-20, E-16, also to localizedName).
     const appDe = getExerciseCatalog({}, mockCatalog, catalogSnapshot({ appLanguage: 'de' }));
     expect(pushUp(appDe).ownName).toEqual(ENVELOPE_DE);
     expect(pushUp(appDe).ownNameLanguage).toBe('de');
+    expect(pushUp(appDe).localizedName).toBe('Liegestütz');
 
-    // Without lang and without (or with an unrecognized) app language: no own name.
-    for (const appLanguage of [undefined, 'Deutsch', 'en']) {
+    // Without lang and without (or with an unrecognized) app language: no own name, the unchanged array.
+    for (const appLanguage of [undefined, 'Deutsch']) {
       const none = getExerciseCatalog({}, mockCatalog, catalogSnapshot({ appLanguage }));
       expect(none, `appLanguage ${String(appLanguage)}`).toBe(mockCatalog);
     }
+    // App language en (no override in en): no own name; since 166-20 (E-16) localizedName in en, else nameEn.
+    const appEn = getExerciseCatalog({}, mockCatalog, catalogSnapshot({ appLanguage: 'en' }));
+    expect(JSON.stringify(appEn)).toBe(JSON.stringify(getExerciseCatalog({ lang: 'en' }, mockCatalog)));
+    expect(pushUp(appEn)).not.toHaveProperty('ownName');
 
     // lang de without app language: the own name, beside the German localizedName.
     const langDe = pushUp(getExerciseCatalog({ lang: 'de' }, mockCatalog, catalogSnapshot({})));
     expect(langDe.localizedName).toBe('Liegestütz');
     expect(langDe.ownName).toEqual(ENVELOPE_DE);
+  });
+
+  it('P166 E-16 get_exercise_catalog without lang carries localizedName in the app language', () => {
+    // 166-20 (E-16): only the device fact effective_language de, no explicit choice and no override.
+    const snapshot: DecryptedSnapshot = {
+      ...catalogSnapshot({ overrides: false }),
+      settings: [{ key: 'effective_language', type: 's', value: 'de' }],
+    };
+    const result = getExerciseCatalog({}, mockCatalog, snapshot);
+    expect(result).toHaveLength(mockCatalog.length);
+    for (const [i, entry] of result.entries()) {
+      const source = mockCatalog[i];
+      const de = source.translations.find((t) => t.languageCode === 'de');
+      expect(entry.localizedName, source.key).toBe(de ? de.name : source.nameEn);
+      expect(entry, source.key).toEqual({ ...source, localizedName: entry.localizedName });
+    }
+    expect(result.find((e) => e.id === CATALOG_EXERCISE_ID_PUSHUP)!.localizedName).toBe('Liegestütz');
+    // The same as a call with lang de.
+    expect(JSON.stringify(result)).toBe(JSON.stringify(getExerciseCatalog({ lang: 'de' }, mockCatalog)));
   });
 
   it('P156 D-10 the catalog never carries the own description', async () => {

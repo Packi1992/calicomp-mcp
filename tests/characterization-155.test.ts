@@ -73,6 +73,9 @@ import {
   CHAR_NEW_PLAN_ARGS,
 } from './characterization-150-fixture.js';
 import { applyDeclaredDeltas } from './characterization-166-deltas.js';
+import { FOREIGN_BUILTIN_TYPES } from '../src/foreign-types.js';
+import { createExerciseNameResolver } from '../src/exercise-names.js';
+import { getExerciseCatalog } from '../src/tools/get_exercise_catalog.js';
 
 // ---------------------------------------------------------------------------
 // Fixture: CHAR_SNAPSHOT plus Fremddaten (feste Ids, feste Zeitstempel).
@@ -344,3 +347,109 @@ if (!process.env.CHAR_155_PIN_GENERATE) {
     });
   });
 }
+
+// ---------------------------------------------------------------------------
+// Phase 166, gap plan 166-20 (E-16, protocol 1.50 §1.7 "Which language"): without lang every name
+// follows the app language — here only the device fact effective_language de, no explicit choice.
+// ---------------------------------------------------------------------------
+
+const CHAR_155_SNAPSHOT_EFFECTIVE_DE: DecryptedSnapshot = {
+  ...CHAR_155_SNAPSHOT,
+  settings: [...CHAR_155_SNAPSHOT.settings, { key: 'effective_language', type: 's', value: 'de' }],
+};
+
+const BUILTIN_NAMES = new Map(FOREIGN_BUILTIN_TYPES.map((t) => [t.key, { en: t.nameEn, de: t.nameDe }]));
+
+/** Every object of a tool output that carries the type fields of a predefined foreign type. */
+function builtinTypeEntries(value: unknown, out: Record<string, unknown>[] = []): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    for (const item of value) builtinTypeEntries(item, out);
+  } else if (value !== null && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (record.typeSource === 'builtin') out.push(record);
+    for (const inner of Object.values(record)) builtinTypeEntries(inner, out);
+  }
+  return out;
+}
+
+/** The four foreign tools without lang (the two without a lang parameter never get one). */
+function foreignToolOutputs(snapshot: DecryptedSnapshot, lang?: string): Record<string, unknown> {
+  const langArg = lang === undefined ? {} : { lang };
+  return {
+    get_history: getHistory({ ...CHAR_HISTORY_ARGS, ...langArg }, snapshot),
+    get_training_state: getTrainingState({ ...CHAR_TRAINING_STATE_ARGS, ...langArg }, { ...CHAR_TRAINING_STATE_DATA, snapshot }, CHAR_NOW_MS),
+    get_adherence: getAdherence(CHAR_ADHERENCE_ARGS, { ...CHAR_ADHERENCE_DATA, snapshot }, CHAR_NOW_MS),
+    get_planned_workouts: getPlannedWorkouts(CHAR_PLANNED_WORKOUTS_ARGS, snapshot),
+  };
+}
+
+/** The catalog names of the resolver tools and the catalog tool, for the two cross cases below. */
+function catalogNameOutputs(snapshot: DecryptedSnapshot, lang?: string): { names: string[]; localized: (string | undefined)[] } {
+  const resolver = createExerciseNameResolver({ catalog: CHAR_CATALOG, snapshot, lang });
+  const template = getTemplate({ templateId: CHAR_TEMPLATE_ID_LIVE }, snapshot, resolver);
+  const history = getHistory({ ...CHAR_HISTORY_ARGS, ...(lang === undefined ? {} : { lang }) }, snapshot, resolver);
+  const names = [
+    ...(template?.templateExercises ?? []).map((e) => e.exerciseName),
+    ...JSON.stringify(history).match(/"exerciseName":"[^"]*"/g)!.map((m) => JSON.parse(`{${m}}`).exerciseName as string),
+  ].filter((n): n is string => typeof n === 'string');
+  const localized = getExerciseCatalog(lang === undefined ? {} : { lang }, CHAR_CATALOG, snapshot).map((e) => e.localizedName);
+  return { names, localized };
+}
+
+describe('P166 E-16 names without lang follow the app language (166-20)', () => {
+  it.each(['get_history', 'get_training_state', 'get_adherence', 'get_planned_workouts'])(
+    'P166 E-16 %s without lang names predefined foreign types in the app language',
+    (tool) => {
+      const entries = builtinTypeEntries(JSON.parse(JSON.stringify(foreignToolOutputs(CHAR_155_SNAPSHOT_EFFECTIVE_DE)[tool])));
+      // NICHT GEMESSEN guard: the fixture plans and records predefined types for every tool.
+      expect(entries.length, `${tool}: at least one predefined type`).toBeGreaterThan(0);
+      for (const entry of entries) {
+        const names = BUILTIN_NAMES.get(entry.typeKey as string)!;
+        expect(names.de, `${String(entry.typeKey)} differs between the languages`).not.toBe(names.en);
+        expect(entry.typeName, `${tool} ${String(entry.typeKey)}`).toBe(names.de);
+      }
+    },
+  );
+
+  it('P166 E-16 lang wins over the app language in every name tool', () => {
+    // Foreign type names of the two foreign tools with a lang parameter.
+    const foreign = foreignToolOutputs(CHAR_155_SNAPSHOT_EFFECTIVE_DE, 'en');
+    let typeEntries = 0;
+    for (const tool of ['get_history', 'get_training_state']) {
+      for (const entry of builtinTypeEntries(JSON.parse(JSON.stringify(foreign[tool])))) {
+        expect(entry.typeName, `${tool} ${String(entry.typeKey)}`).toBe(BUILTIN_NAMES.get(entry.typeKey as string)!.en);
+        typeEntries++;
+      }
+    }
+    expect(typeEntries).toBeGreaterThan(0);
+    // Catalog names of the resolver tools and the catalog tool: lang en against the app language de.
+    const withLang = catalogNameOutputs(CHAR_155_SNAPSHOT_EFFECTIVE_DE, 'en');
+    const english = catalogNameOutputs(CHAR_155_SNAPSHOT, 'en');
+    expect(withLang.names.length).toBeGreaterThan(0);
+    expect(withLang).toEqual(english);
+    const nameEnById = new Map(CHAR_CATALOG.map((e) => [e.id, e.nameEn]));
+    const catalogEn = getExerciseCatalog({ lang: 'en' }, CHAR_CATALOG, CHAR_155_SNAPSHOT_EFFECTIVE_DE);
+    for (const e of catalogEn) expect(e.localizedName, e.key).toBe(e.translations.find((t) => t.languageCode === 'en')?.name ?? nameEnById.get(e.id));
+    // And the app language does reach every one of them without lang (the counter-check).
+    expect(catalogNameOutputs(CHAR_155_SNAPSHOT_EFFECTIVE_DE)).not.toEqual(english);
+  });
+
+  it('P166 E-16 without lang and without an app language every name stays English', () => {
+    const outputs = foreignToolOutputs(CHAR_155_SNAPSHOT);
+    let typeEntries = 0;
+    for (const [tool, output] of Object.entries(outputs)) {
+      for (const entry of builtinTypeEntries(JSON.parse(JSON.stringify(output)))) {
+        expect(entry.typeName, `${tool} ${String(entry.typeKey)}`).toBe(BUILTIN_NAMES.get(entry.typeKey as string)!.en);
+        typeEntries++;
+      }
+    }
+    expect(typeEntries).toBeGreaterThanOrEqual(4);
+    const plain = catalogNameOutputs(CHAR_155_SNAPSHOT);
+    const nameEn = new Set(CHAR_CATALOG.map((e) => e.nameEn));
+    expect(plain.names.length).toBeGreaterThan(0);
+    for (const n of plain.names) expect(nameEn.has(n), n).toBe(true);
+    // The catalog tool without lang and without an app language is the unchanged catalog array.
+    expect(getExerciseCatalog({}, CHAR_CATALOG, CHAR_155_SNAPSHOT)).toBe(CHAR_CATALOG);
+    expect(plain.localized.every((l) => l === undefined)).toBe(true);
+  });
+});
