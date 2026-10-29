@@ -397,11 +397,12 @@ function buildForeignActivities(
  *   registerToolGetHistory(server, { pat, keyB64, serverUrl })
  *
  * @param server  McpServer instance.
- * @param cfg     Runtime config: PAT, encryption key, server base URL.
+ * @param cfg     Runtime config: PAT, encryption key, server base URL, and the export
+ *                directory resolved once at start (CALICOMP_EXPORT_DIR, Phase 166).
  */
 export function registerToolGetHistory(
   server: McpServer,
-  cfg: { pat: string; keyB64: string; serverUrl: string },
+  cfg: { pat: string; keyB64: string; serverUrl: string; exportDir?: string },
 ): void {
   const { pat, keyB64, serverUrl } = cfg;
 
@@ -529,7 +530,7 @@ export function registerToolGetHistory(
 
         if ((args as GetHistoryArgs).outputFile) {
           const itemCount = result.sessions.length + result.setLogs.length;
-          const handle    = await writeExportFile({ ...result, unreadable }, itemCount);
+          const handle    = await writeExportFile({ ...result, unreadable }, itemCount, cfg.exportDir);
           const summary   = {
             outputFile:       { path: handle.path, bytes: handle.bytes, itemCount: handle.itemCount },
             from:             (args as GetHistoryArgs).from,

@@ -189,11 +189,12 @@ export function foreignSummaryOf(foreign: ForeignAdherenceResult): Record<string
  * Register the `get_adherence` tool with the MCP server.
  *
  * @param server  McpServer instance.
- * @param cfg     Runtime config: PAT, encryption key, server base URL.
+ * @param cfg     Runtime config: PAT, encryption key, server base URL, and the export
+ *                directory resolved once at start (CALICOMP_EXPORT_DIR, Phase 166).
  */
 export function registerToolGetAdherence(
   server: McpServer,
-  cfg: { pat: string; keyB64: string; serverUrl: string },
+  cfg: { pat: string; keyB64: string; serverUrl: string; exportDir?: string },
 ): void {
   const { pat, keyB64, serverUrl } = cfg;
 
@@ -265,7 +266,7 @@ export function registerToolGetAdherence(
 
         if ((args as GetAdherenceArgs).outputFile) {
           const itemCount = result.matches.length + result.missed.length;
-          const handle = await writeExportFile(full, itemCount);
+          const handle = await writeExportFile(full, itemCount, cfg.exportDir);
           const summary = {
             outputFile: { path: handle.path, bytes: handle.bytes, itemCount: handle.itemCount },
             window: result.window,

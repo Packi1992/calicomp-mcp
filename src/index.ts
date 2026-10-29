@@ -19,7 +19,7 @@ import * as getCoachParametersTool from './tools/get_coach_parameters.js';
 import * as setCoachParametersTool from './tools/set_coach_parameters.js';
 import * as getAdherenceTool from './tools/get_adherence.js';
 import * as getProgressTool from './tools/get_progress.js';
-import { pruneExports } from './file-channel.js';
+import { ExportDirError, pruneExports, resolveExportDir } from './file-channel.js';
 import { SERVER_NAME, SERVER_VERSION } from './version.js';
 
 const pat      = process.env.CALICOMP_PAT;
@@ -31,8 +31,21 @@ if (!pat || !keyB64) {
   process.exit(1);
 }
 
+// Protocol §1.5 rule 2 (version 1.49, Phase 166, D-09, D-21): the export directory of
+// `outputFile` comes only from CALICOMP_EXPORT_DIR, resolved once here, before any tool is
+// registered; without the variable it is the tmpdir directory as before. An unusable value
+// stops the start with a message that names the variable, never the path.
+let exportDir: string;
+try {
+  exportDir = await resolveExportDir(process.env.CALICOMP_EXPORT_DIR);
+} catch (e) {
+  const reason = e instanceof ExportDirError ? e.message : 'CALICOMP_EXPORT_DIR could not be resolved.';
+  console.error(`[calicomp-mcp] FATAL: ${reason}`);
+  process.exit(1);
+}
+
 const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
-const config = { pat, keyB64, serverUrl };
+const config = { pat, keyB64, serverUrl, exportDir };
 
 getHistoryTool.registerToolGetHistory(server, config);
 getStatsTool.registerToolGetStats(server, config);
@@ -54,7 +67,8 @@ setCoachParametersTool.registerToolSetCoachParameters(server, config);
 getAdherenceTool.registerToolGetAdherence(server, config);
 getProgressTool.registerToolGetProgress(server, config);
 
-// Protocol v1.15 §1.5 rule 4: clean up stale export files at every process start.
+// Protocol §1.5 rule 4: clean up stale export files at every process start, only in the
+// tmpdir directory, never in the directory configured by CALICOMP_EXPORT_DIR (Phase 166).
 await pruneExports();
 
 const transport = new StdioServerTransport();

@@ -172,11 +172,12 @@ export function getProgress(
  * Register the `get_progress` tool with the MCP server.
  *
  * @param server  McpServer instance.
- * @param cfg     Runtime config: PAT, encryption key, server base URL.
+ * @param cfg     Runtime config: PAT, encryption key, server base URL, and the export
+ *                directory resolved once at start (CALICOMP_EXPORT_DIR, Phase 166).
  */
 export function registerToolGetProgress(
   server: McpServer,
-  cfg: { pat: string; keyB64: string; serverUrl: string },
+  cfg: { pat: string; keyB64: string; serverUrl: string; exportDir?: string },
 ): void {
   const { pat, keyB64, serverUrl } = cfg;
 
@@ -235,7 +236,7 @@ export function registerToolGetProgress(
 
         if ((args as GetProgressArgs).outputFile) {
           const itemCount = full.series.reduce((sum, s) => sum + s.points.length, 0);
-          const handle = await writeExportFile(full, itemCount);
+          const handle = await writeExportFile(full, itemCount, cfg.exportDir);
           const summary =
             full.kind === 'exercise'
               ? {

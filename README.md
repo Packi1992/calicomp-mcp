@@ -40,6 +40,7 @@ CalisthenicsCompanion-MCP/
 | `CALICOMP_PAT` | Personal Access Token (prefixed `calicomp_pat_`). Created in the CalisthenicsCompanion app. |
 | `CALICOMP_KEY` | AES-256 encryption key in raw base64 (no prefix). Exported from the app alongside the PAT. |
 | `CALICOMP_SERVER_URL` | *(Optional)* Override the API base URL. Defaults to `https://api.calicompanion.de`. |
+| `CALICOMP_EXPORT_DIR` | *(Optional)* The directory that `outputFile: true` writes into. Absolute, or starting with `~/`. Defaults to a directory under the system temp dir. See [Export directory for outputFile](#export-directory-for-outputfile-unreleased-after-130). |
 
 ## Credential Storage
 
@@ -230,6 +231,35 @@ byte for byte as before.
 The contract — the payload form, the conflict rule between devices, the decoding rules, the
 language rule and the field names — is § 1.7 "Own names of catalog exercises" of
 `docs/COACH-PLANNING-PROTOCOL.md` (version 1.29) in the CaliCompanion super-repo.
+
+## Export directory for outputFile (unreleased, after 1.3.0)
+
+`get_history`, `get_progress` and `get_adherence` accept `outputFile: true`: the MCP then writes
+the full result to a local JSON file and returns only its path, byte size and item count, so the
+numbers never pass through the model (protocol §1.5, "The Local File Channel").
+
+Where that file lands is the athlete's choice, never the model's. No tool takes a directory or a
+file name as an argument. The directory comes only from the environment variable
+`CALICOMP_EXPORT_DIR`, which you set yourself in the `env` block of the MCP registration, for
+example:
+
+```text
+CALICOMP_EXPORT_DIR=~/training/personal
+```
+
+- **Without the variable** the files go to `calicomp-mcp-exports` under the system temp directory,
+  as before, and files older than 24 hours are deleted there at every start.
+- **With the variable** the files go into that directory and stay: the 24-hour cleanup never runs
+  there. The value must be absolute or start with `~/` (your home directory), and it must name an
+  existing directory. It is resolved once at start; a symlinked directory is followed once, so a
+  later change of the link does not move the writes. A relative value, a missing directory or a
+  file stops the start with an error that names the variable but not the path.
+- Every file is named by a random UUID with `.json`, created new with mode `0600` (owner read and
+  write only), and never written through an existing file or symlink of the same name.
+
+The file holds decrypted training data in plaintext. With `CALICOMP_EXPORT_DIR` set it stays in
+your directory after the conversation; it is written only when a tool call says `outputFile: true`.
+Keep that directory out of any repository you publish.
 
 ## Building
 
