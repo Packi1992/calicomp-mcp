@@ -126,6 +126,54 @@ if (!process.env.CHAR_166_PIN_GENERATE) {
       expect(problems.some((p) => p.includes('additions[1]') && p.includes('parallel field'))).toBe(true);
     });
 
+    it('P166 E-17 a chained delta continues exactly where the earlier delta of its path ends', () => {
+      // Gap plan 166-22 (protocol 1.52): station sets leave maxHoldSeconds. The delta of rule M (166-04) at that
+      // path keeps its origin; the E-17 delta continues it, its before being exactly the earlier after.
+      const allPins: Partial<Record<PinFile, Record<string, unknown>>> = {};
+      for (const name of PIN_FILES) {
+        if (existsSync(join(__dirname, 'vectors', name))) allPins[name] = loadPinFile(name);
+      }
+      const file = loadDeltaFile();
+      const path = '/personalRecords/maxHoldSeconds';
+      const atPath = file.deltas
+        .map((d, i) => ({ d, i }))
+        .filter(({ d }) => d.pinFile === PIN_166 && d.pinKey === 'getTrainingState' && d.path === path);
+      expect(atPath.map(({ d }) => d.rule)).toEqual(['M', 'E-17']);
+      const [m, e17] = atPath;
+      expect(e17.d.plan).toBe('166-22');
+      expect(e17.d.before).toEqual(m.d.after);
+      // The real chain is sound and applies in file order.
+      expect(checkDeltaFile(file, allPins).filter((p) => p.includes('chained') || p.includes('overlaps'))).toEqual([]);
+      const applied = applyDeclaredDeltas(PIN_166, 'getTrainingState', pins.getTrainingState, file) as { personalRecords: { maxHoldSeconds: unknown } };
+      expect(applied.personalRecords.maxHoldSeconds).toEqual(e17.d.after);
+
+      // Controls: a chain whose before differs from the earlier after, and a chain at a prefix path, are reported.
+      const broken: DeltaFile = {
+        deltas: [...file.deltas, { ...e17.d, before: m.d.before, after: [], why: 'Planted.' }],
+        additions: [],
+      };
+      const brokenIndex = broken.deltas.length - 1;
+      const brokenProblems = checkDeltaFile(broken, allPins);
+      expect(brokenProblems.some((p) => p.includes(`deltas[${brokenIndex}]`) && p.includes('chained delta: before differs'))).toBe(true);
+      expect(() => applyDeclaredDeltas(PIN_166, 'getTrainingState', pins.getTrainingState, broken)).toThrow(/differs from the pin/);
+      const prefix: DeltaFile = {
+        deltas: [
+          ...file.deltas,
+          { pinFile: PIN_166, pinKey: 'getTrainingState', path: '/personalRecords', before: null, after: {}, rule: 'E-17', plan: '166-22', why: 'Planted.' },
+        ],
+        additions: [{ pinFile: PIN_166, pinKey: 'getTrainingState', path: '/personalRecords/holdInTime', rule: 'E-17', plan: '166-22', why: 'Planted.' }],
+      };
+      const prefixProblems = checkDeltaFile(prefix, allPins);
+      expect(prefixProblems.some((p) => p.includes('overlaps') && p.includes('/personalRecords'))).toBe(true);
+      expect(prefixProblems.some((p) => p.includes('additions[0]') && p.includes('E-17 adds only'))).toBe(true);
+      // E-17 acts only under /personalRecords of getTrainingState.
+      const outside: DeltaFile = {
+        deltas: [{ pinFile: PIN_166, pinKey: 'getStatsExercise', path: '/setCount', before: 0, after: 1, rule: 'E-17', plan: '166-22', why: 'Planted.' }],
+        additions: [],
+      };
+      expect(checkDeltaFile(outside, allPins).some((p) => p.includes('E-17 acts only'))).toBe(true);
+    });
+
     it('P166 an undeclared change or addition fails the pin check', () => {
       // Self-contained: the base is the pin with its declared deltas applied, so this control
       // measures the check, not the code under test.

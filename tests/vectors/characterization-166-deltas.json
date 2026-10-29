@@ -627,6 +627,36 @@
       "rule": "IN-02",
       "plan": "166-07",
       "why": "Rule IN-02: the dates follow the same root set as the count; the one date is 2026-03-04 of the IN-02 series with its root and template."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/personalRecords/maxHoldSeconds",
+      "before": [
+        {
+          "exerciseId": "char166-cat-hold",
+          "exerciseName": "P166 Hold",
+          "value": 50,
+          "achievedOn": "2026-03-06"
+        },
+        {
+          "exerciseId": "char166-cat-push",
+          "exerciseName": "P166 Push",
+          "value": 30,
+          "achievedOn": "2026-03-06"
+        }
+      ],
+      "after": [
+        {
+          "exerciseId": "char166-cat-hold",
+          "exerciseName": "P166 Hold",
+          "value": 50,
+          "achievedOn": "2026-03-06"
+        }
+      ],
+      "rule": "E-17",
+      "plan": "166-22",
+      "why": "Protocol 1.52 (E-17): the 30 seconds of the push exercise come from a station set, a set with 40 repetitions at the TIME workout exercise of a repetition exercise; a station set never counts for the hold record, so only the hold exercise keeps its 50 seconds. Chained to the delta of rule M at the same path, whose after is this before."
     }
   ],
   "additions": [
@@ -653,6 +683,14 @@
       "rule": "STAT-05",
       "plan": "166-06",
       "why": "Genuine addition (D-04 in the version E-15, D-05): the summary of the suspect marks (count, by reason, at most 20 newest) as the last key after capabilityBalance; no existing field carried this information."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/personalRecords/repsInTime",
+      "rule": "E-17",
+      "plan": "166-22",
+      "why": "Genuine addition (protocol 1.52, D-04 in the version E-15): the third record kind, repetitions in time per exercise, duration and weight class from station sets; one exercise may stand several times, so no existing field carried it and it is no entry kind of maxReps. It is the last key of personalRecords."
     }
   ]
 }

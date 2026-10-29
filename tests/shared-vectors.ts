@@ -773,6 +773,8 @@ const CorpusSetLogSchema = z.object({
   workoutExerciseId: z.string().min(1).nullable(),
   completedReps: z.number().int().nullable(),
   completedTimeSeconds: z.number().int().nullable(),
+  /** Since protocol 1.52 (gap plan 166-22, E-17): optional, absent means `null`. */
+  weightUsed: z.number().nullable().optional(),
   createdAt: z.number().int(),
   deleted: z.boolean(),
 });
@@ -823,6 +825,17 @@ const RecordExpectationSchema = z.object({
   value: z.number().int(),
 });
 
+/**
+ * Since protocol 1.52 (gap plan 166-22, E-17): one entry of the third record kind, repetitions in time, per
+ * exercise, duration (the station set's `completedTimeSeconds`) and weight class (`weightKg`, `null` without weight).
+ */
+const RepsInTimeExpectationSchema = z.object({
+  exerciseId: z.string().min(1),
+  durationSeconds: z.number().int().positive(),
+  weightKg: z.number().positive().nullable(),
+  value: z.number().int().nonnegative(),
+});
+
 const PersonalRecordsByTrainingModeVectorSchema = z.object({
   name: z.string().min(1),
   exercises: z.array(z.object({ id: z.string().min(1), defaultMode: z.string().min(1) })).min(1),
@@ -831,6 +844,7 @@ const PersonalRecordsByTrainingModeVectorSchema = z.object({
   setLogs: z.array(CorpusSetLogSchema).min(1),
   expectedMaxReps: z.array(RecordExpectationSchema),
   expectedMaxTime: z.array(RecordExpectationSchema),
+  expectedRepsInTime: z.array(RepsInTimeExpectationSchema),
 });
 
 export type PersonalRecordsByTrainingModeVector = z.infer<typeof PersonalRecordsByTrainingModeVectorSchema>;
@@ -1060,6 +1074,8 @@ export interface CorpusDatabase {
     workoutExerciseId: string | null;
     completedReps: number | null;
     completedTimeSeconds: number | null;
+    /** Since protocol 1.52 (166-22): optional, absent means `null`. */
+    weightUsed?: number | null;
     createdAt: number;
     deleted: boolean;
   }[];
@@ -1140,7 +1156,7 @@ export function corpusSnapshot(db: CorpusDatabase): DecryptedSnapshot {
       exerciseSource: 'CATALOG',
       completedReps: sl.completedReps,
       completedTimeSeconds: sl.completedTimeSeconds,
-      weightUsed: null,
+      weightUsed: sl.weightUsed ?? null,
       startedAt: sl.createdAt,
       measuredTimeSeconds: null,
       createdAt: sl.createdAt,

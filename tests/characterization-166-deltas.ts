@@ -14,6 +14,12 @@
  *   - an **addition** names `pinFile`, `pinKey`, `path` (a pointer, `*` for any list
  *     element), `rule`, `plan` and `why`: a key the pin does not know that is allowed to appear.
  *
+ * **Chained deltas** (gap plan 166-22, E-17): a later delta may carry exactly the same `pinFile`,
+ * `pinKey` and `path` as an earlier one when its `before` is deeply equal to the earlier delta's
+ * `after`; the deltas apply in file order, so the chain continues exactly where the earlier delta
+ * ends and the origin of the earlier rule stays visible. Any other overlap (a different `before`,
+ * or a path that is a prefix of another delta's path) stays a problem.
+ *
  * `applyDeclaredDeltas` returns the pin with its deltas applied (and fails on a delta whose
  * `before` does not match); `expectPinsWithDeltas` compares a tool output against that, keeps
  * every old key deeply equal (`expectOldKeysUnchanged`) and, for `characterization-166.json`,
@@ -149,7 +155,9 @@ function under(path: string, prefix: string): boolean {
  * there under `/personalRecords`, `P` only at the three `getStats` pins, `D-10` and `IN-02`
  * only at `getAdherence`, a D-19 finding id at any pin. Rule P changes of `muscleBalance` and
  * `personalRecords` are declared as S and M, because the protocol defines those fields as
- * Rule S over Rule P and Rule M over the population of Rule P (§1.11).
+ * Rule S over Rule P and Rule M over the population of Rule P (§1.11). `E-17` (gap plan 166-22,
+ * protocol 1.52: station sets leave the hold record) acts only at `getTrainingState` under
+ * `/personalRecords`, like rule M which it precises.
  */
 export function deltaRuleProblem(d: Pick<DeclaredDelta, 'rule' | 'pinKey' | 'path'>): string | null {
   switch (d.rule) {
@@ -157,6 +165,8 @@ export function deltaRuleProblem(d: Pick<DeclaredDelta, 'rule' | 'pinKey' | 'pat
       return d.pinKey === 'getTrainingState' && under(d.path, '/muscleBalance') ? null : 'rule S acts only on getTrainingState /muscleBalance';
     case 'M':
       return d.pinKey === 'getTrainingState' && under(d.path, '/personalRecords') ? null : 'rule M acts only on getTrainingState /personalRecords';
+    case 'E-17':
+      return d.pinKey === 'getTrainingState' && under(d.path, '/personalRecords') ? null : 'E-17 acts only on getTrainingState /personalRecords';
     case 'P':
       return STATS_PIN_KEYS.has(d.pinKey) ? null : 'rule P acts only on the getStats pins';
     case 'D-10':
@@ -169,8 +179,10 @@ export function deltaRuleProblem(d: Pick<DeclaredDelta, 'rule' | 'pinKey' | 'pat
 
 /**
  * The scope of an addition: `STAT-03` only `getTrainingState /capabilityBalance`, `STAT-05`
- * only `getTrainingState /dataQuality` or a `suspect` key in `getHistory`, a D-19 finding id
- * anywhere except beside a field that a delta corrects (no parallel field, D-04 E-15).
+ * only `getTrainingState /dataQuality` or a `suspect` key in `getHistory`, `E-17` only
+ * `getTrainingState /personalRecords/repsInTime` (a new record kind beside the corrected
+ * `maxHoldSeconds`, not a parallel field of it: protocol 1.52), a D-19 finding id anywhere except
+ * beside a field that a delta corrects (no parallel field, D-04 E-15).
  */
 export function additionRuleProblem(a: Pick<DeclaredAddition, 'rule' | 'pinKey' | 'path' | 'pinFile'>, deltas: DeclaredDelta[]): string | null {
   const tokens = parsePointer(a.path);
@@ -182,6 +194,10 @@ export function additionRuleProblem(a: Pick<DeclaredAddition, 'rule' | 'pinKey' 
       if (a.pinKey === 'getTrainingState' && under(a.path, '/dataQuality')) return null;
       if (a.pinKey === 'getHistory' && tokens[tokens.length - 1] === 'suspect') return null;
       return 'STAT-05 adds only getTrainingState /dataQuality or getHistory .../suspect';
+    case 'E-17':
+      return a.pinKey === 'getTrainingState' && a.path === '/personalRecords/repsInTime'
+        ? null
+        : 'E-17 adds only getTrainingState /personalRecords/repsInTime';
     default: {
       if (!FINDING_ID.test(a.rule)) return `unknown addition rule ${JSON.stringify(a.rule)}`;
       const parent = tokens.slice(0, -1);
@@ -195,29 +211,49 @@ export function additionRuleProblem(a: Pick<DeclaredAddition, 'rule' | 'pinKey' 
   }
 }
 
+/**
+ * The index of the delta that `file.deltas[i]` continues as a chain (gap plan 166-22): the last
+ * earlier delta of the same pin with exactly the same path, or -1.
+ */
+export function chainPredecessorIndex(deltas: DeclaredDelta[], i: number): number {
+  const d = deltas[i];
+  for (let j = i - 1; j >= 0; j--) {
+    const o = deltas[j];
+    if (o.pinFile === d.pinFile && o.pinKey === d.pinKey && o.path === d.path) return j;
+  }
+  return -1;
+}
+
 /** Every problem of a delta file, empty when it is sound. */
 export function checkDeltaFile(file: DeltaFile, pins: Partial<Record<PinFile, Record<string, unknown>>>): string[] {
   const problems: string[] = [];
-  const planOk = (plan: string): boolean => /^166-(0[4-9]|10)$/.test(plan);
+  const planOk = (plan: string): boolean => /^166-(0[4-9]|10|22)$/.test(plan);
   const textOk = (why: string): boolean => typeof why === 'string' && why.trim().length > 0;
   file.deltas.forEach((d, i) => {
     const at = `deltas[${i}] ${d.pinFile}:${d.pinKey}${d.path}`;
     if (!(PIN_FILES as readonly string[]).includes(d.pinFile)) problems.push(`${at}: pinFile must be a bare pin file name`);
-    if (!planOk(d.plan)) problems.push(`${at}: plan must be 166-04 to 166-10`);
+    if (!planOk(d.plan)) problems.push(`${at}: plan must be 166-04 to 166-10 or 166-22`);
     if (!textOk(d.why)) problems.push(`${at}: why is missing`);
     const ruleProblem = deltaRuleProblem(d);
     if (ruleProblem) problems.push(`${at}: ${ruleProblem}`);
+    const previous = chainPredecessorIndex(file.deltas, i);
     const pin = pins[d.pinFile as PinFile]?.[d.pinKey];
     if (pin === undefined) {
       problems.push(`${at}: pin key not found`);
     } else {
       const at0 = resolvePointer(pin, d.path);
       if (!at0.found) problems.push(`${at}: pointer not found in the pin`);
-      else if (!isDeepStrictEqual(at0.value, d.before)) problems.push(`${at}: before differs from the pin`);
+      else if (previous >= 0) {
+        if (!isDeepStrictEqual(file.deltas[previous].after, d.before)) {
+          problems.push(`${at}: chained delta: before differs from the after of deltas[${previous}]`);
+        }
+      } else if (!isDeepStrictEqual(at0.value, d.before)) problems.push(`${at}: before differs from the pin`);
     }
     if (isDeepStrictEqual(d.before, d.after)) problems.push(`${at}: after equals before`);
     file.deltas.forEach((o, j) => {
       if (j <= i || o.pinFile !== d.pinFile || o.pinKey !== d.pinKey) return;
+      // The same path is a chain (its before is checked at deltas[j]); a prefix path is an overlap.
+      if (o.path === d.path) return;
       const a = parsePointer(d.path);
       const b = parsePointer(o.path);
       if (isPrefixPath(a, b) || isPrefixPath(b, a)) problems.push(`${at}: overlaps deltas[${j}] ${o.path}`);
@@ -226,7 +262,7 @@ export function checkDeltaFile(file: DeltaFile, pins: Partial<Record<PinFile, Re
   file.additions.forEach((a, i) => {
     const at = `additions[${i}] ${a.pinFile}:${a.pinKey}${a.path}`;
     if (!(PIN_FILES as readonly string[]).includes(a.pinFile)) problems.push(`${at}: pinFile must be a bare pin file name`);
-    if (!planOk(a.plan)) problems.push(`${at}: plan must be 166-04 to 166-10`);
+    if (!planOk(a.plan)) problems.push(`${at}: plan must be 166-04 to 166-10 or 166-22`);
     if (!textOk(a.why)) problems.push(`${at}: why is missing`);
     const ruleProblem = additionRuleProblem(a, file.deltas);
     if (ruleProblem) problems.push(`${at}: ${ruleProblem}`);
@@ -239,14 +275,17 @@ export function checkDeltaFile(file: DeltaFile, pins: Partial<Record<PinFile, Re
 // ---------------------------------------------------------------------------
 
 /**
- * The pin `pinFile`:`pinKey` with every declared delta of that pin applied. Throws when a
- * delta's `before` is not deeply equal to the pin at its pointer, or `after` equals `before`.
+ * The pin `pinFile`:`pinKey` with every declared delta of that pin applied, in file order. Throws
+ * when a delta's `before` is not deeply equal to the value at its pointer (the pin, or for a
+ * chained delta the `after` of the earlier delta of the same path), or `after` equals `before`.
  */
 export function applyDeclaredDeltas(pinFile: PinFile, pinKey: string, pinned: unknown, file: DeltaFile = loadDeltaFile()): unknown {
   let result: unknown = structuredClone(pinned);
   for (const d of file.deltas) {
     if (d.pinFile !== pinFile || d.pinKey !== pinKey) continue;
-    const at = resolvePointer(pinned, d.path);
+    // Resolved against the deltas applied so far: equal to the pin for every unchained delta
+    // (deltas do not overlap), the earlier `after` for a chained one (gap plan 166-22).
+    const at = resolvePointer(result, d.path);
     if (!at.found) throw new Error(`delta ${pinFile}:${pinKey}${d.path}: pointer not found in the pin`);
     if (!isDeepStrictEqual(at.value, d.before)) {
       throw new Error(

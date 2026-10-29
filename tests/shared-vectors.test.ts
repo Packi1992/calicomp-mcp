@@ -1282,6 +1282,25 @@ describe('shared coach-planning vector corpus', () => {
     }
   });
 
+  // Phase 166, gap plan 166-22 (STAT-02, E-17, protocol 1.52 §1.11 Rule M steps 3 to 5): the third record kind.
+  // The corpus lists the entries in the order of protocol 1.52 (exerciseId, durationSeconds, weightKg with null
+  // first); the MCP must return exactly that order. The date is not pinned (the app takes the row of SQLite's MAX).
+  it('P166 E-17 every personalRecordsByTrainingMode vector yields its expected repetitions in time', () => {
+    const vectors = corpus.personalRecordsByTrainingMode;
+    expect(vectors.length).toBeGreaterThanOrEqual(17);
+    expect(vectors.some((v) => v.expectedRepsInTime.length > 0)).toBe(true);
+    for (const vector of vectors) {
+      const records = computePersonalRecords(corpusSnapshot(vector), corpusCatalog(vector), 'Europe/Berlin');
+      const actual = records.repsInTime.map((r) => ({
+        exerciseId: r.exerciseId,
+        durationSeconds: r.durationSeconds,
+        weightKg: r.weightKg,
+        value: r.value,
+      }));
+      expect(actual, `${vector.name} repsInTime`).toEqual(vector.expectedRepsInTime);
+    }
+  });
+
   // -----------------------------------------------------------------------
   // Phase 166 (plan 166-08, MCP-05, D-12): protocol §2.6 block ops on the MCP side. Every
   // planUpdateOps payload goes through the real ProposePlanUpdateSchema (the tool's input

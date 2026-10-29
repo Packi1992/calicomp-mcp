@@ -1269,3 +1269,83 @@ describe('get_training_state — Phase 166 counting rules', () => {
     expect(result.narrative).toBe(pinned.narrative);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 166, gap plan 166-22 (STAT-02, E-17, protocol 1.52 §1.11 Rule M steps 3 to 5)
+// ---------------------------------------------------------------------------
+
+describe('get_training_state — repetitions in time (E-17)', () => {
+  beforeEach(() => {
+    vi.mocked(cacheModule.getSnapshot).mockReset();
+    vi.mocked(coachParametersModule.loadCoachParameters).mockReset();
+  });
+
+  it('P166 E-17 get_training_state lists repetitions in time and keeps station sets out of maxHoldSeconds', async () => {
+    // Invented fixture (P166): the repetition exercise of the shared fixture at a TIME station of its template.
+    // Three station sets (reps with the station time) in two weight classes and one pure time set. Expected by hand
+    // from protocol 1.52: the station sets form repetitions in time per duration and weight class (8 kg: 20, 12 kg: the
+    // larger 23), never a hold time; the hold record is only the 45 seconds of the pure time set.
+    const timeStationId = 'eeeeeeee-1662-4000-e000-000000000001';
+    const session = mockSnapshot.sessions[0];
+    const at = (n: number) => session.startTime + n * 60_000;
+    const stationSet = (id: string, n: number, reps: number | null, time: number, weight: number | null) => ({
+      id,
+      sessionId: session.id,
+      exerciseId: CATALOG_EXERCISE_ID_PUSHUP,
+      workoutExerciseId: timeStationId,
+      completedReps: reps,
+      completedTimeSeconds: time,
+      weightUsed: weight,
+      startedAt: null,
+      measuredTimeSeconds: null,
+      createdAt: at(n),
+      updatedAt: at(n),
+    });
+    const snapshot = snapshotWithZone(TZ, {
+      templateExercises: [
+        ...mockSnapshot.templateExercises,
+        {
+          ...mockSnapshot.templateExercises[0],
+          id: timeStationId,
+          exerciseId: CATALOG_EXERCISE_ID_PUSHUP,
+          mode: 'TIME',
+          targetReps: undefined,
+          targetTimeSeconds: 30,
+          orderIndex: 9,
+        },
+      ],
+      setLogs: [
+        ...mockSnapshot.setLogs,
+        stationSet('sl-166-22-station-1', 1, 20, 30, 8),
+        stationSet('sl-166-22-station-2', 2, 23, 30, 12),
+        stationSet('sl-166-22-station-3', 3, 21, 30, 12),
+        stationSet('sl-166-22-pure-time', 4, null, 45, null),
+      ],
+    });
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
+    vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({ params: COACH_PARAMETER_DEFAULTS, source: 'defaults' });
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetTrainingState(server, DUMMY_CFG);
+    const result = await getHandler(server)({});
+    expect(result.isError).toBeFalsy();
+    type Entry = { exerciseId: string; exerciseName: string | null; exerciseKey?: string; value: number; achievedOn: string; durationSeconds?: number; weightKg?: number | null };
+    const body = JSON.parse(result.content[0].text) as { personalRecords: { maxReps: Entry[]; maxHoldSeconds: Entry[]; repsInTime: Entry[] } };
+
+    expect(Object.keys(body.personalRecords)).toEqual(['maxReps', 'maxHoldSeconds', 'repsInTime']);
+    const pushRepsInTime = body.personalRecords.repsInTime.filter((r) => r.exerciseId === CATALOG_EXERCISE_ID_PUSHUP);
+    expect(pushRepsInTime.map((r) => ({ durationSeconds: r.durationSeconds, weightKg: r.weightKg, value: r.value }))).toEqual([
+      { durationSeconds: 30, weightKg: 8, value: 20 },
+      { durationSeconds: 30, weightKg: 12, value: 23 },
+    ]);
+    for (const entry of pushRepsInTime) {
+      expect(entry.exerciseName).toBe('Push-Up');
+      expect(entry.exerciseKey).toBe('push_up');
+      expect(entry.achievedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+    const pushHold = body.personalRecords.maxHoldSeconds.filter((r) => r.exerciseId === CATALOG_EXERCISE_ID_PUSHUP);
+    expect(pushHold.map((r) => r.value)).toEqual([45]);
+    const pushReps = body.personalRecords.maxReps.find((r) => r.exerciseId === CATALOG_EXERCISE_ID_PUSHUP);
+    expect(pushReps?.value ?? 0).toBeLessThan(20);
+  });
+});
