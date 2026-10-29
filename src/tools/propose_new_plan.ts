@@ -209,7 +209,7 @@ export function registerToolProposeNewPlan(
         'stores that target; MAX counts up until the athlete stops, so MAX is a measurement. Propose ' +
         'a maximal hold, for example a benchmark hold or any hold whose capacity you want to measure, ' +
         'with MAX, never with TIME; use TIME only where the time is a target not to exceed, such as a ' +
-        'plank in a finisher or a stretch.',
+        'stretch held for a set time.',
       inputSchema: ProposeNewPlanSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },

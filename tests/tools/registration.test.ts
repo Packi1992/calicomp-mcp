@@ -311,7 +311,7 @@ const PROPOSAL_HOLD_RULE =
   'stores that target; MAX counts up until the athlete stops, so MAX is a measurement. Propose ' +
   'a maximal hold, for example a benchmark hold or any hold whose capacity you want to measure, ' +
   'with MAX, never with TIME; use TIME only where the time is a target not to exceed, such as a ' +
-  'plank in a finisher or a stretch.';
+  'stretch held for a set time.';
 
 /** The proposal tools whose input carries a `mode` (propose_exercise_update has none). */
 const PROPOSAL_TOOLS_WITH_MODE = ['propose_plan_update', 'propose_new_plan', 'propose_new_exercise'] as const;

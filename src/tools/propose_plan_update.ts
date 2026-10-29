@@ -321,7 +321,7 @@ export function registerToolProposePlanUpdate(
         'stores that target; MAX counts up until the athlete stops, so MAX is a measurement. Propose ' +
         'a maximal hold, for example a benchmark hold or any hold whose capacity you want to measure, ' +
         'with MAX, never with TIME; use TIME only where the time is a target not to exceed, such as a ' +
-        'plank in a finisher or a stretch.' +
+        'stretch held for a set time.' +
         ' formatParams entries know only REPS and TIME, so a hold to measure belongs in a CLASSIC ' +
         'template.',
       inputSchema: ProposePlanUpdateSchema,
