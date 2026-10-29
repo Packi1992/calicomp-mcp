@@ -14,8 +14,14 @@
  * | Reason                  | A set carries the mark when | Exception |
  * |-------------------------|-----------------------------|-----------|
  * | `reps_on_time_station`  | it records a time and `completedReps > 0` | its workout exercise has `targetReps > 0` |
- * | `zero_set`              | it does not record a time and `completedReps = 0`, or it records a time and `completedTimeSeconds = 0` | none |
+ * | `zero_set`              | its value is `0`: the value of its kind (`completedTimeSeconds` if it records a time, otherwise `completedReps`), or, when that value is absent, the other value | none |
  * | `measured_time_missing` | it records a time, `completedTimeSeconds` is set and `measuredTimeSeconds` is not, it was created after the first set of the same exercise that has a `measuredTimeSeconds`, and at least 80 % of the timed sets of that exercise created after that first measured set have one | manual sessions and quick challenges, which never measure; both also take no part in the first measured set and in the share |
+ *
+ * `zero_set` since protocol 1.51 (gap plan 166-21, finding 166-17-FUND-01): before app plan
+ * 165-02 the app chose the input field by the catalog mode, so a repetition exercise at a TIME
+ * station took the counted repetitions. Rule M reads such a set as one that records a time, and
+ * its zero stands in `completedReps` without a time; the mark therefore falls back to the other
+ * value when the value of the set's kind is absent.
  *
  * The thresholds of `measured_time_missing` are chosen values (Claude's Discretion to D-05,
  * assumption A5 of Phase 166), not measurements. A set can carry more than one reason; the
@@ -125,7 +131,10 @@ function reasonsOf(entry: PopulationSet, baselines: ReturnType<typeof measuredTi
     if (!(targetReps !== undefined && targetReps !== null && targetReps > 0)) reasons.push('reps_on_time_station');
   }
 
-  if ((!recordsTime && reps === 0) || (recordsTime && time === 0)) reasons.push('zero_set');
+  // zero_set (protocol 1.51, 166-17-FUND-01): the value of the set's kind, otherwise the other one.
+  const ownValue = recordsTime ? time : reps;
+  const value = ownValue === null || ownValue === undefined ? (recordsTime ? reps : time) : ownValue;
+  if (value === 0) reasons.push('zero_set');
 
   if (recordsTime && time !== null && time !== undefined && !hasMeasuredTime(entry) && !neverMeasures(entry)) {
     const baseline = baselines.get(entry.exerciseId);
