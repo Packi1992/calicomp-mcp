@@ -885,6 +885,28 @@ const NewExerciseLinksVectorSchema = z.object({
 
 export type NewExerciseLinksVector = z.infer<typeof NewExerciseLinksVectorSchema>;
 
+/**
+ * Phase 166 (plan 166-08, MCP-06, D-15): the `exerciseUpdate` corpus section of protocol §2.7
+ * "exercise_update: changing an existing exercise". `catalog.exerciseIds` are the exercises the
+ * MCP reads (catalog and own), `target` says which kind the vector's exercise is to the MCP
+ * (`own` = origin CUSTOM, `catalog` = origin CATALOG). `base`, `deviceCatalog` and the expected
+ * after-states are read by the app replay only.
+ */
+const ExerciseUpdateVectorSchema = z.object({
+  name: z.string().min(1),
+  target: z.enum(['own', 'catalog']),
+  catalog: z.object({
+    muscleGroupKeys: z.array(z.string().min(1)).min(1),
+    capabilityAxisKeys: z.array(z.string().min(1)).min(1),
+    exerciseIds: z.array(z.string().min(1)).min(1),
+  }),
+  payload: z.record(z.string(), z.unknown()),
+  acceptedBy: AcceptedBySchema,
+  note: z.string().min(1),
+});
+
+export type ExerciseUpdateVector = z.infer<typeof ExerciseUpdateVectorSchema>;
+
 export const CoachPlanningVectorsSchema = z.object({
   _provenance: ProvenanceSchema,
   expansion: z.array(ExpansionVectorSchema).min(1),
@@ -927,6 +949,7 @@ export const CoachPlanningVectorsSchema = z.object({
   // Phase 166 (plan 166-08): listed for the same reason as every section above.
   planUpdateOps: z.array(PlanUpdateOpsVectorSchema).min(8),
   newExerciseLinks: z.array(NewExerciseLinksVectorSchema).min(9),
+  exerciseUpdate: z.array(ExerciseUpdateVectorSchema).min(8),
 });
 
 export type CoachPlanningVectors = z.infer<typeof CoachPlanningVectorsSchema>;

@@ -1,5 +1,8 @@
 /**
- * Runtime registration test for all 19 CalisthenicsCompanion-MCP tools (13 READ + 6 WRITE).
+ * Runtime registration test for all 20 CalisthenicsCompanion-MCP tools (13 READ + 7 WRITE).
+ *
+ * Phase 166 (plan 166-08, D-15) adds the twentieth tool, `propose_exercise_update`, a propose-only
+ * WRITE tool with the same annotation shape as the other propose tools (19 -> 20).
  *
  * Endstand dieser Phase (137): 14 tools existed before Phase 137; this phase adds FIVE new
  * tools per D-22 (`get_training_state`, `get_coach_parameters`, `set_coach_parameters`,
@@ -49,6 +52,7 @@ import { registerToolGetTrainingState }   from '../../src/tools/get_training_sta
 import { registerToolProposePlanUpdate }  from '../../src/tools/propose_plan_update.js';
 import { registerToolProposeNewPlan }     from '../../src/tools/propose_new_plan.js';
 import { registerToolProposeNewExercise } from '../../src/tools/propose_new_exercise.js';
+import { registerToolProposeExerciseUpdate } from '../../src/tools/propose_exercise_update.js';
 import { registerToolProposePlannedUpdate } from '../../src/tools/propose_planned_update.js';
 import { registerToolGetSuggestions }     from '../../src/tools/get_suggestions.js';
 import { registerToolGetSuggestion }      from '../../src/tools/get_suggestion.js';
@@ -88,6 +92,7 @@ const WRITE_TOOL_NAMES = [
   'propose_plan_update',
   'propose_new_plan',
   'propose_new_exercise',
+  'propose_exercise_update',
   'propose_planned_update',
   'withdraw_suggestion',
 ] as const;
@@ -168,9 +173,9 @@ const EXERCISE_ID_NAMING_TOOL_NAMES = [
 // Registration tests
 // ---------------------------------------------------------------------------
 
-describe('tool registration — all 19 tools (13 READ + 6 WRITE)', () => {
+describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
   /**
-   * Build a fresh server, register all 19 tools, return the internal tool map.
+   * Build a fresh server, register all 20 tools, return the internal tool map.
    * Each test creates its own server to guarantee isolation.
    */
   function buildRegisteredServer() {
@@ -186,6 +191,7 @@ describe('tool registration — all 19 tools (13 READ + 6 WRITE)', () => {
     registerToolProposePlanUpdate(server, DUMMY_CFG);
     registerToolProposeNewPlan(server, DUMMY_CFG);
     registerToolProposeNewExercise(server, DUMMY_CFG);
+    registerToolProposeExerciseUpdate(server, DUMMY_CFG);
     registerToolProposePlannedUpdate(server, DUMMY_CFG);
     registerToolGetSuggestions(server, DUMMY_CFG);
     registerToolGetSuggestion(server, DUMMY_CFG);
@@ -198,9 +204,9 @@ describe('tool registration — all 19 tools (13 READ + 6 WRITE)', () => {
     return (server as any)._registeredTools as RegisteredToolMap;
   }
 
-  it('registers exactly 19 tools', () => {
+  it('registers exactly 20 tools', () => {
     const tools = buildRegisteredServer();
-    expect(Object.keys(tools)).toHaveLength(19);
+    expect(Object.keys(tools)).toHaveLength(20);
   });
 
   it('registers all expected tool names', () => {
@@ -239,12 +245,12 @@ describe('tool registration — all 19 tools (13 READ + 6 WRITE)', () => {
     }
   });
 
-  it('no tool is registered twice (exactly 19 unique keys)', () => {
+  it('no tool is registered twice (exactly 20 unique keys)', () => {
     const tools = buildRegisteredServer();
     const names = Object.keys(tools);
     const uniqueNames = new Set(names);
-    expect(names).toHaveLength(19);
-    expect(uniqueNames.size).toBe(19);
+    expect(names).toHaveLength(20);
+    expect(uniqueNames.size).toBe(20);
   });
 
   it('P150 D-33 the six snapshot-reading tools describe their unreadable list', () => {
@@ -383,5 +389,32 @@ describe('tool registration — all 19 tools (13 READ + 6 WRITE)', () => {
     ).items?.properties;
     expect(blocksItemsProps?.rounds?.description).toBeDefined();
     expect(blocksItemsProps?.rounds?.description).toContain('rounds: 1 makes no sense');
+  });
+  it('P166 propose_exercise_update is registered with its description', () => {
+    const tools = buildRegisteredServer();
+    const tool = tools.propose_exercise_update;
+    expect(tool, 'propose_exercise_update should be registered').toBeDefined();
+    expect(tool.annotations?.readOnlyHint).toBe(false);
+    expect(tool.annotations?.destructiveHint).toBe(false);
+    for (const part of [
+      'Never changes it directly',
+      'only the athlete applies it by accepting in the app',
+      'translations, muscleGroups and capabilities',
+      'replaces that list completely',
+      'personal name and description per language',
+      'the shared catalog never changes for anyone',
+      'refused until phase 168.1',
+      'EXERCISE_NOT_FOUND',
+      'Equipment is not part of this proposal',
+      'once the server has been deployed with it',
+    ]) {
+      expect(tool.description, `description should contain "${part}"`).toContain(part);
+    }
+    // Werkzeugtexte ohne Gedankenstriche (166 notes, rule 5).
+    expect(tool.description).not.toMatch(/[\u2013\u2014]/);
+    const jsonSchema = z.toJSONSchema(tool.inputSchema) as { properties: Record<string, { description?: string }> };
+    expect(Object.keys(jsonSchema.properties).sort()).toStrictEqual(
+      ['capabilities', 'exerciseId', 'muscleGroups', 'rationale', 'translations'],
+    );
   });
 });

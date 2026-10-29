@@ -60,10 +60,12 @@ import { amrapSummary, deathBySummary, emomIntervals } from '../src/training-sta
 import {
   MUSCLE_KEY,
   NewExerciseDefSchema,
+  ProposeExerciseUpdateSchema,
   ProposeNewExerciseSchema,
   ProposeNewPlanSchema,
   ProposePlanUpdateSchema,
 } from '../src/schemas.js';
+import { buildExerciseUpdatePayload, validateExerciseUpdate } from '../src/tools/propose_exercise_update.js';
 import { buildNewExercisePayload, findUnknownLinkKey } from '../src/tools/propose_new_exercise.js';
 import { computeChangeHash } from '../src/hash.js';
 import { buildNewPlanPayload, type ProposeNewPlanArgs } from '../src/tools/propose_new_plan.js';
@@ -1284,6 +1286,40 @@ describe('shared coach-planning vector corpus', () => {
     // carried new fields through the builder.
     expect(keyRefusals).toBeGreaterThanOrEqual(1);
     expect(fieldsSeen).toBeGreaterThanOrEqual(4);
+  });
+
+  // -----------------------------------------------------------------------
+  // Phase 166 (plan 166-08, MCP-06, D-15): protocol §2.7 exercise_update on the MCP side. The
+  // MCP accepts a vector when the input schema accepts it AND validateExerciseUpdate (the check
+  // the tool runs against the exercises it read) finds nothing to refuse: the exercise must be
+  // known (vector.catalog.exerciseIds), a catalog exercise takes translations only, and every
+  // capability key must be in the loaded vocabulary. An accepted payload is sent unchanged.
+  // -----------------------------------------------------------------------
+
+  it('P166 every exerciseUpdate vector is accepted or rejected by the MCP as the corpus says', () => {
+    expect(corpus.exerciseUpdate.length).toBeGreaterThanOrEqual(8);
+    expect(corpus.exerciseUpdate.some((v) => v.acceptedBy.mcp === false)).toBe(true);
+    expect(corpus.exerciseUpdate.some((v) => v.target === 'catalog' && v.acceptedBy.mcp === true)).toBe(true);
+    let checkRefusals = 0;
+    for (const vector of corpus.exerciseUpdate) {
+      expect([...vector.catalog.muscleGroupKeys].sort(), vector.name).toEqual([...MUSCLE_KEY.options].sort());
+      const vocabulary = { capabilityKeys: new Set(vector.catalog.capabilityAxisKeys), equipmentKeys: new Set<string>() };
+      const parsed = ProposeExerciseUpdateSchema.safeParse({ ...vector.payload, rationale: 'corpus replay' });
+      let accepted = parsed.success;
+      if (parsed.success) {
+        const known = vector.catalog.exerciseIds.includes(parsed.data.exerciseId);
+        const target = known ? { origin: vector.target === 'own' ? ('CUSTOM' as const) : ('CATALOG' as const) } : undefined;
+        const refusal = validateExerciseUpdate(parsed.data, target, vocabulary);
+        if (refusal !== undefined) checkRefusals += 1;
+        accepted = refusal === undefined;
+        if (accepted) {
+          expect(buildExerciseUpdatePayload(parsed.data), vector.name).toStrictEqual(vector.payload);
+        }
+      }
+      expect(accepted, `${vector.name}: acceptedBy.mcp is ${vector.acceptedBy.mcp}`).toBe(vector.acceptedBy.mcp);
+    }
+    // NICHT GEMESSEN guard: the tool-side check refused at least one vector (the catalog muscles).
+    expect(checkRefusals).toBeGreaterThanOrEqual(1);
   });
 
   // -----------------------------------------------------------------------

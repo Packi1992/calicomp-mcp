@@ -1066,6 +1066,12 @@ export const ProposeNewExerciseSchema = z.object({
   ...NEW_EXERCISE_LINK_FIELDS,
 });
 
+/** STUB (red commit of 166-08): propose_exercise_update without its fields yet. */
+export const ProposeExerciseUpdateSchema = z.object({
+  exerciseId: UUID_STRING,
+  rationale: z.string().min(1).max(2000),
+});
+
 // ---------------------------------------------------------------------------
 // propose_planned_update (Phase 136, D-01, Protocol v1.11 §2). The coach names an
 // INTENT — `z.discriminatedUnion('intent', [...])` — and the MCP code (never the
