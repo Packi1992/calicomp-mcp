@@ -686,7 +686,8 @@ describe('get_progress — own names in the outputFile summary (WR-MCP-01)', () 
     });
 
     expect(series).toHaveLength(1);
-    expect(series[0].exerciseName).toBe('Push-Up');
+    // Since 166-20 (E-16) the catalog name follows the app language de without lang.
+    expect(series[0].exerciseName).toBe('Liegestütz');
     expect(series[0].exerciseKey).toBe('push_up');
     expect(series[0].exerciseOwnName).toEqual({
       text: 'P156 Meine Liegestütze',

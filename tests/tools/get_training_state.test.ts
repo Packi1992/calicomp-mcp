@@ -1093,7 +1093,8 @@ describe('get_training_state — own-name result types and an unreadable languag
     expect(recentPushUp).toBeDefined();
     expect(recentPushUp?.exerciseOwnName).toEqual(ownName);
     expect(recentPushUp?.exerciseOwnNameLanguage).toBe('de');
-    expect(recentPushUp?.exerciseName).toBe('Push-Up');
+    // Since 166-20 (E-16) the catalog name follows the app language de without lang.
+    expect(recentPushUp?.exerciseName).toBe('Liegestütz');
 
     const recordPushUp = body.personalRecords.maxReps.find((r) => r.exerciseId === CATALOG_EXERCISE_ID_PUSHUP);
     expect(recordPushUp).toBeDefined();

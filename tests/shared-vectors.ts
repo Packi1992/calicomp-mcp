@@ -907,6 +907,53 @@ const ExerciseUpdateVectorSchema = z.object({
 
 export type ExerciseUpdateVector = z.infer<typeof ExerciseUpdateVectorSchema>;
 
+/**
+ * Phase 166, gap plan 166-20 (E-16, protocol 1.50 §1.7 "The app language"): the app's mirror of the language it
+ * uses (`effective_language`) and the MCP's reading order over `default_language` and `effective_language`.
+ * `.strict()` so a field the protocol does not name fails the parse instead of being ignored.
+ */
+const AppLanguageSettingRowSchema = z.union([
+  z.object({ key: z.string().min(1), value: z.string() }).strict(),
+  z.object({ key: z.string().min(1), unreadable: z.literal(true) }).strict(),
+]);
+
+const AppLanguageSyncVectorSchema = z
+  .object({
+    name: z.string().min(1),
+    note: z.string().min(1),
+    app: z
+      .object({
+        chosen: z.string().nullable(),
+        deviceLanguage: z.string().min(1),
+        previousMirror: z.string().optional(),
+        expectedMirror: z.string().regex(/^[a-z]{2,3}$/),
+      })
+      .strict()
+      .nullable(),
+    mcp: z
+      .object({
+        settings: z.array(AppLanguageSettingRowSchema),
+        expectedAppLanguage: z.string().nullable(),
+        expectedReason: z.enum(['setting_not_synced', 'setting_unreadable', 'setting_unrecognized']).optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type AppLanguageSyncVector = z.infer<typeof AppLanguageSyncVectorSchema>;
+
+/** Phase 166, gap plan 166-20 (E-16, protocol 1.50 §1.7 "Which language"): a catalog name in the effective language. */
+const ExerciseNameLanguageVectorSchema = z
+  .object({
+    name: z.string().min(1),
+    translations: z.record(z.string(), z.string().min(1)).refine((t) => 'en' in t, 'translations always carry en'),
+    language: z.string().min(1),
+    expectedName: z.string().min(1),
+  })
+  .strict();
+
+export type ExerciseNameLanguageVector = z.infer<typeof ExerciseNameLanguageVectorSchema>;
+
 export const CoachPlanningVectorsSchema = z.object({
   _provenance: ProvenanceSchema,
   expansion: z.array(ExpansionVectorSchema).min(1),
@@ -950,6 +997,9 @@ export const CoachPlanningVectorsSchema = z.object({
   planUpdateOps: z.array(PlanUpdateOpsVectorSchema).min(8),
   newExerciseLinks: z.array(NewExerciseLinksVectorSchema).min(9),
   exerciseUpdate: z.array(ExerciseUpdateVectorSchema).min(8),
+  // Phase 166 (gap plan 166-20, E-16): listed for the same reason as every section above.
+  appLanguageSync: z.array(AppLanguageSyncVectorSchema).min(9),
+  exerciseNameLanguage: z.array(ExerciseNameLanguageVectorSchema).min(3),
 });
 
 export type CoachPlanningVectors = z.infer<typeof CoachPlanningVectorsSchema>;

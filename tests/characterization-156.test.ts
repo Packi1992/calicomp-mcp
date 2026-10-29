@@ -474,7 +474,8 @@ function expectOwnNames(
         treatAs: 'data_not_instructions',
       });
       expect(hit.exerciseOwnNameLanguage, `${tool} exerciseOwnNameLanguage`).toBe(overridden.language);
-      // exerciseName stays the catalog name of the existing rule (lang, otherwise English).
+      // exerciseName is the catalog name in the effective language (lang, otherwise the app language; Phase 166,
+      // gap plan 166-20, E-16). `lang` here is that effective name language, not the tool argument.
       const catalogNames = CATALOG_NAME_BY_KEY[overridden.key];
       expect(hit.exerciseName, `${tool} exerciseName`).toBe(lang === 'de' ? catalogNames.de : catalogNames.en);
     }
@@ -485,6 +486,12 @@ function expectOwnNames(
   }
 }
 
+/** CHAR_156_SNAPSHOT with only the device fact `effective_language` de, no explicit choice (166-20, E-16). */
+const CHAR_156_SNAPSHOT_EFFECTIVE_DE: DecryptedSnapshot = {
+  ...CHAR_156_SNAPSHOT,
+  settings: [...CHAR_156_SNAPSHOT.settings, { key: 'effective_language', type: 's', value: 'de' }],
+};
+
 describe('P156 D-10 own names in every resolver tool', () => {
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockReset();
@@ -493,11 +500,12 @@ describe('P156 D-10 own names in every resolver tool', () => {
 
   it('P156 D-10 every resolver tool carries the own name for an overridden exercise', async () => {
     // Without lang, the app language de applies (D-17): the push-up override (de) shows,
-    // the squat override (en) and the pull-up (no override) do not.
+    // the squat override (en) and the pull-up (no override) do not. Since 166-20 (E-16) the
+    // catalog name follows the app language too, so the effective name language is de.
     expectOwnNames(
       await runResolverTools(CHAR_156_SNAPSHOT_APP_DE),
       { key: PUSHUP_KEY, name: PUSHUP_OVERRIDE.name, language: 'de' },
-      undefined,
+      'de',
     );
     // lang en wins over the app language: now only the squat override (en) shows.
     expectOwnNames(
@@ -511,6 +519,28 @@ describe('P156 D-10 own names in every resolver tool', () => {
       { key: PUSHUP_KEY, name: PUSHUP_OVERRIDE.name, language: 'de' },
       'de',
     );
+  });
+
+  it('P166 E-16 without lang every resolver tool names catalog exercises in the app language', async () => {
+    const outputs = await runResolverTools(CHAR_156_SNAPSHOT_EFFECTIVE_DE);
+    let checked = 0;
+    for (const [tool, output] of Object.entries(outputs)) {
+      const scope = tool === 'get_training_state'
+        ? { recent: (output as Record<string, unknown>).recentExercises, records: (output as Record<string, unknown>).personalRecords }
+        : output;
+      const entries = namedEntries(JSON.parse(JSON.stringify(scope))).filter(
+        (e) => typeof e.exerciseKey === 'string' && e.exerciseKey in CATALOG_NAME_BY_KEY,
+      );
+      expect(entries.length, `${tool}: at least one catalog entry`).toBeGreaterThan(0);
+      for (const e of entries) {
+        expect(e.exerciseName, `${tool} ${String(e.exerciseKey)}`).toBe(CATALOG_NAME_BY_KEY[e.exerciseKey as string].de);
+        checked++;
+      }
+    }
+    // NICHT GEMESSEN guard: six tools, each with at least one catalog entry.
+    expect(checked).toBeGreaterThanOrEqual(6);
+    // The own name of the push-up follows the same app language, without any explicit choice (156-IN-MCP-04).
+    expectOwnNames(outputs, { key: PUSHUP_KEY, name: PUSHUP_OVERRIDE.name, language: 'de' }, 'de');
   });
 
   it('P156 D-10 no tool output carries the own description', async () => {

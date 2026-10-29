@@ -70,7 +70,9 @@ import { buildNewExercisePayload, findUnknownLinkKey } from '../src/tools/propos
 import { computeChangeHash } from '../src/hash.js';
 import { buildNewPlanPayload, type ProposeNewPlanArgs } from '../src/tools/propose_new_plan.js';
 import { buildPlanUpdatePayload, type ProposePlanUpdateArgs } from '../src/tools/propose_plan_update.js';
-import type { MiscSyncRow, DecryptedSetLog, SyncSessionDto } from '../src/types.js';
+import type { MiscSyncRow, DecryptedSetLog, SyncSessionDto, DecryptedSnapshot, UnreadableRow, CatalogExercise } from '../src/types.js';
+import { resolveAppLanguage } from '../src/app-language.js';
+import { createExerciseNameResolver } from '../src/exercise-names.js';
 
 /**
  * Phase 137-07 (STATE-02, D-04): the named float-comparison tolerance the muscleBalance
@@ -1385,6 +1387,103 @@ describe('shared coach-planning vector corpus', () => {
     }
     // NICHT GEMESSEN guard: the tool-side check refused at least one vector (the catalog muscles).
     expect(checkRefusals).toBeGreaterThanOrEqual(1);
+  });
+
+  // -----------------------------------------------------------------------
+  // Phase 166, gap plan 166-20 (E-16, protocol 1.50 §1.7): the app language over both setting rows and the
+  // name of a catalog exercise in the effective language.
+  // -----------------------------------------------------------------------
+
+  /** The `mcp` side of an appLanguageSync vector as a snapshot plus the decode report of the same read. */
+  function appLanguageInputs(settings: (typeof corpus.appLanguageSync)[number]['mcp']['settings']): {
+    snapshot: DecryptedSnapshot;
+    report: { unreadable: UnreadableRow[] };
+  } {
+    const readable = settings.flatMap((row) => ('value' in row ? [{ key: row.key, type: 's', value: row.value }] : []));
+    const unreadable = settings.flatMap((row): UnreadableRow[] =>
+      'unreadable' in row ? [{ entity: 'setting', id: `p166-${row.key}`, reason: 'decrypt_failed', key: row.key }] : [],
+    );
+    return { snapshot: { ...emptyLanguageSnapshot(), settings: readable }, report: { unreadable } };
+  }
+
+  function emptyLanguageSnapshot(): DecryptedSnapshot {
+    return {
+      syncedAt: 1_700_000_000_000,
+      exercises: [],
+      exerciseTranslations: [],
+      templates: [],
+      blocks: [],
+      templateExercises: [],
+      sessions: [],
+      setLogs: [],
+      hrSamples: [],
+      plannedWorkouts: [],
+      settings: [],
+    };
+  }
+
+  it('P166 E-16 every appLanguageSync vector yields its app language or reason', () => {
+    expect(corpus.appLanguageSync.length).toBeGreaterThanOrEqual(9);
+    for (const v of corpus.appLanguageSync) {
+      const { snapshot, report } = appLanguageInputs(v.mcp.settings);
+      const resolved = resolveAppLanguage(snapshot, report);
+      expect(resolved.languageCode, `${v.name} languageCode`).toBe(v.mcp.expectedAppLanguage);
+      if (v.mcp.expectedAppLanguage === null) {
+        expect(resolved, `${v.name} reason`).toEqual({ languageCode: null, reason: v.mcp.expectedReason });
+      } else {
+        expect(v.mcp.expectedReason, `${v.name} carries no reason beside a language`).toBeUndefined();
+        expect(resolved, v.name).toEqual({ languageCode: v.mcp.expectedAppLanguage });
+      }
+    }
+  });
+
+  it('P166 E-16 every appLanguageSync vector with an app side reads exactly the rows the app mirrors', () => {
+    const withApp = corpus.appLanguageSync.filter((v) => v.app !== null);
+    // NICHT GEMESSEN guard: the corpus names four vectors with an app side.
+    expect(withApp.length).toBeGreaterThanOrEqual(4);
+    for (const v of withApp) {
+      const app = v.app!;
+      const expectedRows = [
+        ...(app.chosen === null ? [] : [{ key: 'default_language', value: app.chosen }]),
+        { key: 'effective_language', value: app.expectedMirror },
+      ];
+      const byKey = (a: { key: string }, b: { key: string }): number => a.key.localeCompare(b.key);
+      expect([...v.mcp.settings].sort(byKey), `${v.name} binding`).toEqual(expectedRows.sort(byKey));
+      // The app's rule: the explicit choice, otherwise the device language, a code of its list, otherwise en.
+      const resolved = resolveAppLanguage(appLanguageInputs(v.mcp.settings).snapshot);
+      expect(resolved.languageCode, `${v.name} the coach reads what the app shows`).toBe(app.chosen ?? app.expectedMirror);
+    }
+  });
+
+  it('P166 E-16 every exerciseNameLanguage vector names the exercise like the corpus says', () => {
+    expect(corpus.exerciseNameLanguage.length).toBeGreaterThanOrEqual(3);
+    const exerciseId = '16620000-0000-4000-8000-000000000001';
+    for (const v of corpus.exerciseNameLanguage) {
+      const catalog: CatalogExercise[] = [
+        {
+          id: exerciseId,
+          key: 'p166_wall_hold',
+          nameEn: v.translations.en,
+          mode: 'TIME',
+          usesWeight: false,
+          lastModifiedAt: 1_700_000_000_000,
+          translations: Object.entries(v.translations)
+            .filter(([code]) => code !== 'en')
+            .map(([languageCode, name]) => ({ languageCode, name })),
+          muscleGroups: [],
+          equipment: [],
+          capabilities: [],
+          origin: 'CATALOG',
+        },
+      ];
+      const withLang = createExerciseNameResolver({ catalog, snapshot: emptyLanguageSnapshot(), lang: v.language });
+      const withAppLanguage = createExerciseNameResolver({
+        catalog,
+        snapshot: { ...emptyLanguageSnapshot(), settings: [{ key: 'effective_language', type: 's', value: v.language }] },
+      });
+      expect(withLang.forExerciseId(exerciseId).exerciseName, `${v.name} with lang`).toBe(v.expectedName);
+      expect(withAppLanguage.forExerciseId(exerciseId).exerciseName, `${v.name} without lang`).toBe(v.expectedName);
+    }
   });
 
   // -----------------------------------------------------------------------

@@ -256,14 +256,14 @@ describe('createExerciseNameResolver — own names (Phase 156, D-10/D-17)', () =
       withoutOverrideDe.forExerciseId(CATALOG_ID).exerciseName,
     );
 
-    // Without lang, through the app language: exerciseName stays English (the existing rule),
-    // the own name comes in the app language together with that language's code.
+    // Without lang, through the app language: since 166-20 (E-16) exerciseName follows the app
+    // language too (German catalog name), the own name comes in the same language with its code.
     const resolvedApp = createExerciseNameResolver({
       catalog,
       snapshot: snapshotWith([override(CATALOG_ID, 'de', OWN_NAME_DE)], 'de'),
     });
     expect(resolvedApp.forExerciseId(CATALOG_ID)).toEqual({
-      exerciseName: 'Push-Up',
+      exerciseName: 'Liegestütz',
       exerciseKey: 'push_up',
       exerciseOwnName: OWN_NAME_DE_ENVELOPE,
       exerciseOwnNameLanguage: 'de',
@@ -371,6 +371,31 @@ describe('createExerciseNameResolver — own names (Phase 156, D-10/D-17)', () =
     ).toBe(false);
   });
 
+  it('P166 IN-MCP-04 without a chosen app language the coach still sees the own name', () => {
+    // 166-20 (E-16): the app mirrors the language it uses as the device fact effective_language, also when the
+    // athlete never chose one. Without lang the coach then sees the own name and the catalog name in that language.
+    const catalog = [curatedExercise, otherCuratedExercise];
+    const snapshot: DecryptedSnapshot = {
+      ...emptySnapshot(),
+      settings: [{ key: 'effective_language', type: 's', value: 'de' }],
+      exerciseNameOverrides: [override(CATALOG_ID, 'de', OWN_NAME_DE)],
+    };
+    const resolver = createExerciseNameResolver({ catalog, snapshot });
+    expect(resolver.forExerciseId(CATALOG_ID)).toEqual({
+      exerciseName: 'Liegestütz',
+      exerciseKey: 'push_up',
+      exerciseOwnName: OWN_NAME_DE_ENVELOPE,
+      exerciseOwnNameLanguage: 'de',
+    });
+    expect(resolver.forExerciseId(OTHER_CATALOG_ID)).toEqual({ exerciseName: 'Klimmzug', exerciseKey: 'pull_up' });
+    // An explicit choice keeps its precedence over the mirror.
+    const chosenEn = createExerciseNameResolver({
+      catalog,
+      snapshot: { ...snapshot, settings: [{ key: 'default_language', type: 's', value: 'en' }, ...snapshot.settings] },
+    });
+    expect(chosenEn.forExerciseId(CATALOG_ID)).toEqual({ exerciseName: 'Push-Up', exerciseKey: 'push_up' });
+  });
+
   it('P156 D-10 user exercises, deleted and unknown exercises never get an own name', () => {
     const deletedUserExercise = {
       id: DELETED_USER_ID,
@@ -469,13 +494,14 @@ describe('createExerciseNameResolver — own names (Phase 156, D-10/D-17)', () =
     const [overridden, plain] = result!.templateExercises;
     const [overriddenBefore, plainBefore] = baseline!.templateExercises;
 
-    // The overridden template exercise: catalog name unchanged, own name beside it.
+    // The overridden template exercise: catalog name unchanged by the override, own name beside it.
+    // Since 166-20 (E-16) the catalog name follows the app language de without lang.
     expect(overridden).toEqual({
       ...overriddenBefore,
       exerciseOwnName: OWN_NAME_DE_ENVELOPE,
       exerciseOwnNameLanguage: 'de',
     });
-    expect(overridden.exerciseName).toBe('Push-Up');
+    expect(overridden.exerciseName).toBe('Liegestütz');
     expect(overridden.exerciseKey).toBe('push_up');
 
     // The other template exercise is deep-equal to before and carries no own-name field.
@@ -567,7 +593,8 @@ describe('own names — description-only override (Phase 156 gap round, D-22)', 
       const baseline = run(before);
       expect(result).not.toBeNull();
       const [entry] = result!.templateExercises;
-      expect(entry.exerciseName).toBe(lang === 'de' ? 'Toter Hang' : 'Dead Hang');
+      // Since 166-20 (E-16) the catalog name follows the app language de also without lang.
+      expect(entry.exerciseName).toBe('Toter Hang');
       expect(entry).not.toHaveProperty('exerciseOwnName');
       expect(entry).not.toHaveProperty('exerciseOwnNameLanguage');
       expect(JSON.parse(JSON.stringify(result))).toStrictEqual(JSON.parse(JSON.stringify(baseline)));
