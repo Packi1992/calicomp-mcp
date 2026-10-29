@@ -575,7 +575,9 @@ describe('getExerciseCatalog — Phase 156 own names', () => {
   it('P156 D-10 get_exercise_catalog adds ownName only to overridden entries', () => {
     for (const lang of [undefined, 'de'] as const) {
       const args = lang === undefined ? {} : { lang };
-      const before = getExerciseCatalog(args, CATALOG_WITH_USER_EXERCISE);
+      // GEAENDERT in 166-20 (E-16): without lang the app language de is the effective language, so the
+      // comparison base is the call with lang de (through 166-14: the call without lang, without localizedName).
+      const before = getExerciseCatalog({ lang: 'de' }, CATALOG_WITH_USER_EXERCISE);
       const result = getExerciseCatalog(args, CATALOG_WITH_USER_EXERCISE, catalogSnapshot({ appLanguage: 'de' }));
       expect(result).toHaveLength(before.length);
       result.forEach((entry, i) => {
@@ -594,9 +596,13 @@ describe('getExerciseCatalog — Phase 156 own names', () => {
     }
 
     // Without an override the output is byte-identical to before Phase 156, with and without lang;
-    // without lang it is still the unchanged catalog array itself.
+    // without lang and without an app language it is still the unchanged catalog array itself. GEAENDERT in
+    // 166-20 (E-16): with the app language de and without lang it equals the call with lang de.
     const noOverrides = catalogSnapshot({ appLanguage: 'de', overrides: false });
-    expect(getExerciseCatalog({}, mockCatalog, noOverrides)).toBe(mockCatalog);
+    expect(getExerciseCatalog({}, mockCatalog, catalogSnapshot({ overrides: false }))).toBe(mockCatalog);
+    expect(JSON.stringify(getExerciseCatalog({}, mockCatalog, noOverrides))).toBe(
+      JSON.stringify(getExerciseCatalog({ lang: 'de' }, mockCatalog)),
+    );
     expect(JSON.stringify(getExerciseCatalog({ lang: 'de' }, mockCatalog, noOverrides))).toBe(
       JSON.stringify(getExerciseCatalog({ lang: 'de' }, mockCatalog)),
     );
