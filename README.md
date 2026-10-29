@@ -293,7 +293,7 @@ tool texts name the rule of each field below.
 | Tool | Existing field | Before 166 | Since 166 |
 |---|---|---|---|
 | `get_training_state` | `muscleBalance` | every set of finished sessions, also of exercises whose rated capability axes are only `mobility` or `flexibility` | Rule S over Rule P: such stretch-only exercises are left out, the same number as the app's strength heatmap |
-| `get_training_state` | `personalRecords` | the hold list by the catalog mode only, the repetition list without any mode | Rule M: by the mode the set was trained in (`maxHoldSeconds` only from sets that record a time, `maxReps` only from the others) |
+| `get_training_state` | `personalRecords` | the hold list by the catalog mode only, the repetition list without any mode | Rule M: by the mode the set was trained in (`maxHoldSeconds` only from sets that record a time, `maxReps` only from the others); since protocol 1.52 `maxHoldSeconds` leaves out station sets |
 | `get_stats` | `by: "exercise"`, `by: "muscle"`: every field of the aggregate and `weightedSetCount` | no deletion marks, no `endTime`, no resolution over `workoutExerciseId` | Rule P with finished sessions; `by: "muscle"` still counts stretch-only exercises (no Rule S) |
 | `get_stats` | `by: "capabilities"`: `axes[]` with `setCount`, `weightedSetCount`, `sessionCount`, `contributingExerciseIds`, `lastSessionDate` | the same three gaps | Rule P with finished sessions |
 | `get_adherence` | `matches[]` and `unplannedSessionIds` | of several sessions of the same template on the same day as an occurrence, the one with the smaller `sessionId` won | the session with more live sets wins, then the longer one, then the old tie-break; `matchedCount` and `adherenceRatio` keep their definition |
@@ -318,6 +318,7 @@ after it.
 | `get_suggestion` | for an `exercise_update` proposal, the top-level `exerciseId` of the resolved copy is named like every other exercise reference |
 | `get_template`, `get_history`, `get_progress`, `get_training_state`, `get_stats`, `get_suggestion` | `exerciseNameFreeText` beside `exerciseName` of an own exercise (key `user_exercise:<id>`, live or deleted): its shown name in the free-text envelope, because that name is the athlete's free text; `exerciseName` keeps its value |
 | `get_exercise_catalog` | `nameFreeText` on an entry with `origin: "CUSTOM"`: its shown name (`localizedName` when present, else `nameEn`) in the free-text envelope; `nameEn` and `localizedName` keep their values |
+| `get_training_state` | `personalRecords.repsInTime` as the last key of `personalRecords`, a new record kind (protocol 1.52): entries `{ exerciseId, exerciseName, durationSeconds, weightKg, value, achievedOn }` with the name fields of the other two lists, ordered by `exerciseId`, then `durationSeconds`, then `weightKg` (without weight first); one exercise may stand several times |
 | `get_training_state` | `narrativeNames` directly after `narrative`, only when the sentence names an own exercise: `[{ ref, name }]` with `ref` = its `exerciseKey` in the sentence and `name` = its name in the free-text envelope (see [Names without `lang`](#names-without-lang)) |
 | `get_history`, `get_progress`, `get_stats`, `get_training_state`, `get_adherence`, `get_planned_workouts` | `key` on an `unreadable` entry with `entity: "exerciseNameOverride"`: the row's plaintext routing key `"<exerciseId>:<languageCode>"`, so the coach knows whose own name is missing |
 | `get_history`, `get_planned_workouts` | `droppedValues` after `unreadable`, only when a stored foreign `performedTime` or `scheduledTime` is not `HH:mm`: that time reads as `null`, the row stays readable, and the entry names `entity`, `id`, `field` and `reason: "not_hh_mm"`, never the value |
@@ -326,6 +327,13 @@ Since protocol 1.51 (gap plan 166-21) `reps_on_time_station` marks only repetiti
 whose catalog mode is `TIME` (repetitions of a repetition exercise at a `TIME` station are real
 counts, recorded before app plan 165-02), and `zero_set` falls back to the other value when the
 value of the set's kind is absent.
+
+Since protocol 1.52 (gap plan 166-22) such a set is a station set: it records a time, the catalog
+mode of its exercise is not `TIME`, and it carries `completedReps`. A station set never counts for
+`maxHoldSeconds` or `maxReps`; `personalRecords.repsInTime` keeps the largest `completedReps` per
+exercise, duration (the set's own `completedTimeSeconds`, greater than 0) and weight class
+(`weightUsed` in hundredths of a kilogram; `null` or `0` is the class without weight, reported as
+`weightKg: null`), compared only at the same duration and weight.
 
 The marks are hints only: no tool changes or deletes a set, the athlete decides in the app.
 

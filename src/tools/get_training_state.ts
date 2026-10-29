@@ -148,6 +148,13 @@ export interface GetTrainingStateRecentExercise extends Partial<Pick<ExerciseNam
 /** One personal record, additively named (Phase 150, D-16; Phase 156, D-10) — same additivity story as above. */
 export type PersonalRecordWithName = PersonalRecord & Partial<Pick<ExerciseNameFields, OwnNamePick>>;
 
+/**
+ * Gap plan 166-22 (E-17, protocol 1.52 §1.11 Rule M, D-04 in the version E-15): the one sentence of the tool text
+ * that names the station set, the meaning change of maxHoldSeconds in place and the genuine addition repsInTime.
+ * `tests/tools/registration.test.ts` reads it as the rule of maxHoldSeconds in CHANGED_MEANING_166.
+ */
+export const REPS_IN_TIME_SENTENCE = "Since protocol 1.52 a station set (a set that records a time on an exercise whose catalog mode is not TIME and carries completedReps) never counts for maxHoldSeconds or maxReps; personalRecords.repsInTime lists per exercise, durationSeconds (the set's completedTimeSeconds) and weightKg (weightUsed in hundredths of a kilogram, null without weight) the largest completedReps, compared only at the same duration and weight.";
+
 /** One record of repetitions in time (protocol 1.52, gap plan 166-22, E-17), additively named like the other two lists. */
 export type RepsInTimeRecordWithName = RepsInTimeRecord & Partial<Pick<ExerciseNameFields, OwnNamePick>>;
 
@@ -650,7 +657,9 @@ export function registerToolGetTrainingState(
         'personal records (personalRecords; since phase 166 split by the mode the set was trained ' +
         'in, rule M: maxHoldSeconds only from sets trained in TIME or in MAX on a TIME catalog ' +
         'exercise, maxReps only from the other sets); and a short, deterministic narrative sentence built ' +
-        'from these already-computed numbers, never a second model call. Every entry in ' +
+        'from these already-computed numbers, never a second model call. ' +
+        REPS_IN_TIME_SENTENCE + ' ' +
+        'Every entry in ' +
         'recentExercises and personalRecords carries exerciseName and exerciseKey next to its ' +
         'exerciseId (optional lang). ' +
         APP_LANGUAGE_NAMES_SENTENCE + ' ' +
