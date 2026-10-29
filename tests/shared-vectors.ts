@@ -809,6 +809,32 @@ const StrengthHeatmapSelectionVectorSchema = z.object({
 
 export type StrengthHeatmapSelectionVector = z.infer<typeof StrengthHeatmapSelectionVectorSchema>;
 
+/**
+ * Phase 166 (plan 166-04, STAT-02, D-02): the `personalRecordsByTrainingMode` corpus section —
+ * Rule M of protocol §1.11 over the population of Rule P without the finished-session
+ * requirement. The name names the rule, not a tool field. Each vector carries a small database
+ * (catalog exercises with their `defaultMode`, workout exercises with their `mode`, sessions, set
+ * logs) and the expected records per exercise: `expectedMaxReps` from the sets that do not record
+ * a time, `expectedMaxTime` from the sets that do. The MCP replays it against
+ * `computePersonalRecords` (the function behind `get_training_state.personalRecords`).
+ */
+const RecordExpectationSchema = z.object({
+  exerciseId: z.string().min(1),
+  value: z.number().int(),
+});
+
+const PersonalRecordsByTrainingModeVectorSchema = z.object({
+  name: z.string().min(1),
+  exercises: z.array(z.object({ id: z.string().min(1), defaultMode: z.string().min(1) })).min(1),
+  templateExercises: z.array(CorpusTemplateExerciseSchema),
+  sessions: z.array(CorpusSessionSchema).min(1),
+  setLogs: z.array(CorpusSetLogSchema).min(1),
+  expectedMaxReps: z.array(RecordExpectationSchema),
+  expectedMaxTime: z.array(RecordExpectationSchema),
+});
+
+export type PersonalRecordsByTrainingModeVector = z.infer<typeof PersonalRecordsByTrainingModeVectorSchema>;
+
 export const CoachPlanningVectorsSchema = z.object({
   _provenance: ProvenanceSchema,
   expansion: z.array(ExpansionVectorSchema).min(1),
@@ -847,6 +873,7 @@ export const CoachPlanningVectorsSchema = z.object({
   // Phase 166 (plan 166-04): listed for the same reason as every section above — an unlisted
   // section would be silently dropped by the parse and its replay would measure nothing.
   strengthHeatmapSelection: z.array(StrengthHeatmapSelectionVectorSchema).min(10),
+  personalRecordsByTrainingMode: z.array(PersonalRecordsByTrainingModeVectorSchema).min(5),
 });
 
 export type CoachPlanningVectors = z.infer<typeof CoachPlanningVectorsSchema>;

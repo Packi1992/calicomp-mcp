@@ -131,6 +131,120 @@
       "rule": "S",
       "plan": "166-04",
       "why": "Rule S: legs keep only the mixed exercise (quads 2 plus glutes 1 = 3) against the chest maximum of 9."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/personalRecords/maxReps/0/value",
+      "before": 40,
+      "after": 20,
+      "rule": "M",
+      "plan": "166-04",
+      "why": "Rule M: the 40 repetitions were trained on a TIME workout exercise and record a time, so the repetition record of the exercise is the 20 of the never finished session, which records repetitions and still counts."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/personalRecords/maxReps/0/achievedOn",
+      "before": "2026-03-06",
+      "after": "2026-03-08",
+      "rule": "M",
+      "plan": "166-04",
+      "why": "Rule M: the repetition record moves to the set of the never finished session on 2026-03-08."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/personalRecords/maxReps/1/value",
+      "before": 15,
+      "after": 12,
+      "rule": "M",
+      "plan": "166-04",
+      "why": "Rule M: MAX on a TIME catalog exercise records a time, so its 15 repetitions leave the list and the 12 of the REPS workout exercise remain."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/personalRecords/maxHoldSeconds",
+      "before": [
+        {
+          "exerciseId": "char166-cat-hold",
+          "exerciseName": "P166 Hold",
+          "value": 60,
+          "achievedOn": "2026-03-06"
+        }
+      ],
+      "after": [
+        {
+          "exerciseId": "char166-cat-hold",
+          "exerciseName": "P166 Hold",
+          "value": 50,
+          "achievedOn": "2026-03-06"
+        },
+        {
+          "exerciseId": "char166-cat-push",
+          "exerciseName": "P166 Push",
+          "value": 30,
+          "achievedOn": "2026-03-06"
+        }
+      ],
+      "rule": "M",
+      "plan": "166-04",
+      "why": "Rule M: the 60 seconds on a REPS workout exercise record no time, MAX on the TIME catalog exercise records its 50 seconds, and the TIME workout exercise of the REPS catalog exercise records its 30 seconds."
+    },
+    {
+      "pinFile": "characterization-150.json",
+      "pinKey": "getTrainingState",
+      "path": "/personalRecords/maxReps",
+      "before": [
+        {
+          "exerciseId": "char150-cat-pushup",
+          "exerciseName": "P150 Push-Up",
+          "value": 12,
+          "achievedOn": "2026-01-10"
+        },
+        {
+          "exerciseId": "char150-cat-squat",
+          "exerciseName": "P150 Squat",
+          "value": 8,
+          "achievedOn": "2026-01-07"
+        },
+        {
+          "exerciseId": "char150-cat-pullup",
+          "exerciseName": "P150 Pull-Up",
+          "value": 6,
+          "achievedOn": "2026-01-09"
+        },
+        {
+          "exerciseId": "char150-custom-live",
+          "exerciseName": null,
+          "value": 5,
+          "achievedOn": "2026-01-03"
+        }
+      ],
+      "after": [
+        {
+          "exerciseId": "char150-cat-pushup",
+          "exerciseName": "P150 Push-Up",
+          "value": 12,
+          "achievedOn": "2026-01-10"
+        },
+        {
+          "exerciseId": "char150-cat-squat",
+          "exerciseName": "P150 Squat",
+          "value": 8,
+          "achievedOn": "2026-01-07"
+        },
+        {
+          "exerciseId": "char150-cat-pullup",
+          "exerciseName": "P150 Pull-Up",
+          "value": 6,
+          "achievedOn": "2026-01-09"
+        }
+      ],
+      "rule": "M",
+      "plan": "166-04",
+      "why": "Rule M reads the population of rule P, whose resolved exercise must be a live exercise of the catalog the tool receives; the fixture's own exercise is not in its catalog, so its record goes (in production every live own exercise is in that catalog)."
     }
   ],
   "additions": []

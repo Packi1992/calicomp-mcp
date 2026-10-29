@@ -48,7 +48,7 @@ import {
 } from '../src/cache.js';
 import { FOREIGN_BUILTIN_TYPES } from '../src/foreign-types.js';
 import { assignForeignFulfilment, foreignFulfilmentRatio } from '../src/training-state/foreign-adherence.js';
-import { calculateLongestStreak, calculateCurrentStreak } from '../src/training-state/consistency.js';
+import { calculateLongestStreak, calculateCurrentStreak, computePersonalRecords } from '../src/training-state/consistency.js';
 import {
   toRadarValues,
   weightedCounts,
@@ -1184,6 +1184,23 @@ describe('shared coach-planning vector corpus', () => {
       expect(vector.expectedSessionLevelCounts, vector.name).toBeDefined();
       const actual = strengthLevelSetCountsForSession(corpusSnapshot(vector), corpusCatalog(vector), vector.sessionId as string);
       expect([...actual].sort(byLevelRow), vector.name).toEqual([...(vector.expectedSessionLevelCounts ?? [])].sort(byLevelRow));
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Phase 166 (plan 166-04, STAT-02, D-02): Rule M of protocol §1.11, replayed against the
+  // function behind get_training_state.personalRecords.
+  // -----------------------------------------------------------------------
+
+  it('P166 every personalRecordsByTrainingMode vector yields its expected records', () => {
+    expect(corpus.personalRecordsByTrainingMode.length).toBeGreaterThanOrEqual(5);
+    const byExercise = (a: { exerciseId: string }, b: { exerciseId: string }): number => a.exerciseId.localeCompare(b.exerciseId);
+    for (const vector of corpus.personalRecordsByTrainingMode) {
+      const records = computePersonalRecords(corpusSnapshot(vector), corpusCatalog(vector), 'Europe/Berlin');
+      const pick = (list: { exerciseId: string; value: number }[]) =>
+        list.map((r) => ({ exerciseId: r.exerciseId, value: r.value })).sort(byExercise);
+      expect(pick(records.maxReps), `${vector.name} maxReps`).toEqual([...vector.expectedMaxReps].sort(byExercise));
+      expect(pick(records.maxHoldSeconds), `${vector.name} maxHoldSeconds`).toEqual([...vector.expectedMaxTime].sort(byExercise));
     }
   });
 

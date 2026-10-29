@@ -234,3 +234,16 @@ describe('set-population (Rule P)', () => {
     expect(recordsTime('TIME', 'REPS')).toBe(true);
   });
 });
+
+describe('set-population (Rule M)', () => {
+  it('P166 recordsTime treats MAX as time only on a TIME catalog exercise', () => {
+    expect(recordsTime('TIME', 'TIME')).toBe(true);
+    expect(recordsTime('TIME', 'REPS')).toBe(true);
+    expect(recordsTime('MAX', 'TIME')).toBe(true);
+    expect(recordsTime('MAX', 'REPS')).toBe(false);
+    expect(recordsTime('MAX', 'MAX')).toBe(false);
+    expect(recordsTime('REPS', 'TIME')).toBe(false);
+    expect(recordsTime('REPS', 'REPS')).toBe(false);
+    expect(recordsTime(undefined, 'TIME')).toBe(false);
+  });
+});

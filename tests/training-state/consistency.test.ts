@@ -28,6 +28,15 @@ import {
   computeSessionsByKind,
 } from '../../src/training-state/consistency.js';
 import type { DecryptedSession, DecryptedSetLog, DecryptedSnapshot, CatalogExercise } from '../../src/types.js';
+import { getTrainingState } from '../../src/tools/get_training_state.js';
+import { createExerciseNameResolver } from '../../src/exercise-names.js';
+import {
+  CHAR166_CATALOG,
+  CHAR166_NOW_MS,
+  CHAR166_SNAPSHOT,
+  CHAR166_TRAINING_STATE_ARGS,
+  CHAR166_TRAINING_STATE_DATA,
+} from '../characterization-166-fixture.js';
 
 function session(overrides: Partial<DecryptedSession> & { id: string; startTime: number }): DecryptedSession {
   return {
@@ -483,3 +492,52 @@ describe('computeSessionsByKind', () => {
     expect(byKind).toEqual({ template: 0, templateless: 1, quick_challenge: 0 });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 166 (plan 166-04, STAT-02, D-02, D-04 in the version E-15): Rule M in the existing form
+// ---------------------------------------------------------------------------
+
+describe('computePersonalRecords — Rule M (Phase 166)', () => {
+  it('P166 personalRecords counts by rule M in its existing entry form', () => {
+    // Expected by hand from Rule M over the characterization fixture of 166 (population of
+    // Rule P WITHOUT the finished-session requirement): the 40 repetitions on the time station
+    // (workout exercise TIME) and the 15 on MAX of the TIME catalog exercise record a time, so
+    // they leave the repetition list; the never finished session keeps its 20 (Rule M, step 4).
+    // The 60 seconds on the REPS workout exercise of the TIME catalog exercise record no time;
+    // the hold list takes the 50 of MAX on TIME and the 30 of the time station. Entry form,
+    // ordering (value descending, then exerciseId) and calendar day are unchanged.
+    const expected = {
+      maxReps: [
+        { exerciseId: 'char166-cat-push', exerciseName: 'P166 Push', value: 20, achievedOn: '2026-03-08' },
+        { exerciseId: 'char166-cat-hold', exerciseName: 'P166 Hold', value: 12, achievedOn: '2026-03-06' },
+        { exerciseId: 'char166-cat-mixed', exerciseName: 'P166 Mixed', value: 10, achievedOn: '2026-03-04' },
+        { exerciseId: 'char166-cat-stretch', exerciseName: 'P166 Stretch', value: 8, achievedOn: '2026-03-06' },
+      ],
+      maxHoldSeconds: [
+        { exerciseId: 'char166-cat-hold', exerciseName: 'P166 Hold', value: 50, achievedOn: '2026-03-06' },
+        { exerciseId: 'char166-cat-push', exerciseName: 'P166 Push', value: 30, achievedOn: '2026-03-06' },
+      ],
+    };
+    const records = computePersonalRecords(CHAR166_SNAPSHOT, CHAR166_CATALOG, 'Europe/Berlin');
+    expect(records).toStrictEqual(expected);
+
+    // The tool carries exactly this value without a resolver; with one, every entry keeps its
+    // keys and only gains the resolver's name fields after them.
+    const plain = getTrainingState(CHAR166_TRAINING_STATE_ARGS, CHAR166_TRAINING_STATE_DATA, CHAR166_NOW_MS);
+    expect(plain.personalRecords).toStrictEqual(expected);
+    const named = getTrainingState(
+      CHAR166_TRAINING_STATE_ARGS,
+      { ...CHAR166_TRAINING_STATE_DATA, nameResolver: createExerciseNameResolver({ catalog: CHAR166_CATALOG, snapshot: CHAR166_SNAPSHOT }) },
+      CHAR166_NOW_MS,
+    );
+    for (const list of ['maxReps', 'maxHoldSeconds'] as const) {
+      expect(named.personalRecords[list].map((r) => Object.keys(r).slice(0, 4))).toEqual(
+        expected[list].map(() => ['exerciseId', 'exerciseName', 'value', 'achievedOn']),
+      );
+      expect(named.personalRecords[list].map((r) => r.exerciseKey)).toEqual(
+        expected[list].map((r) => r.exerciseId.replace('char166-cat-', 'char166_')),
+      );
+    }
+  });
+});
+

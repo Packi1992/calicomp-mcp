@@ -835,7 +835,13 @@ describe('get_training_state — exercise names (D-03/D-16/D-17)', () => {
     expect(bodyWithLang.narrative).toBe(bodyWithoutLang.narrative);
   });
 
-  it('P150 D-17 a deleted user exercise in personalRecords keeps its name', async () => {
+  // GEAENDERT in Phase 166 (plan 166-04, protocol §1.11 Rule M step 4 over Rule P; D-02, D-03,
+  // D-04 in the version E-15): a deleted exercise excludes its sets from every count, so a deleted
+  // own exercise has no personal record any more. Through Phase 165 this case asserted the record
+  // with the own name and exerciseDeleted: true; that the resolver keeps the name of a deleted own
+  // exercise stays proven in tests/exercise-names.test.ts ('P150 D-17 a deleted user exercise
+  // keeps its name and is flagged exerciseDeleted').
+  it('P166 D-17 a deleted user exercise has no personal record since rule M', async () => {
     const deletedUserExerciseId = 'eeeeeeee-0010-4000-e000-000000000001';
     const snapshot = snapshotWithZone(TZ, {
       exercises: [
@@ -879,10 +885,8 @@ describe('get_training_state — exercise names (D-03/D-16/D-17)', () => {
     const body = JSON.parse(result.content[0].text) as {
       personalRecords: { maxReps: Array<{ exerciseId: string; exerciseName: string | null; exerciseDeleted?: boolean }> };
     };
-    const record = body.personalRecords.maxReps.find((r) => r.exerciseId === deletedUserExerciseId);
-    expect(record).toBeDefined();
-    expect(record!.exerciseName).toBe('Alte Übung');
-    expect(record!.exerciseDeleted).toBe(true);
+    expect(body.personalRecords.maxReps.some((r) => r.exerciseId === deletedUserExerciseId)).toBe(false);
+    expect(body.personalRecords.maxReps.length).toBeGreaterThan(0);
   });
 });
 
