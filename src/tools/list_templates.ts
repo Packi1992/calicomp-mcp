@@ -93,7 +93,9 @@ export function registerToolListTemplates(
       description:
         'Return all non-deleted workout templates with their block and exercise counts. ' +
         'Use `get_template` to fetch a specific template\'s full detail (blocks + exercises). ' +
-        'This tool reads no encrypted training data and therefore carries no unreadable list.',
+        'Templates are stored in plaintext: no field of this result comes from the athlete\'s ' +
+        'encrypted data, so this tool carries no unreadable list (each call still loads the ' +
+        'shared snapshot, which the other tools read decrypted).',
       inputSchema: ListTemplatesSchema,
       annotations: { readOnlyHint: true },
     },

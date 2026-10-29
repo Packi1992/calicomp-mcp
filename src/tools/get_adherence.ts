@@ -216,7 +216,8 @@ export function registerToolGetAdherence(
         'Every result carries unreadable: rows that could not be decrypted or decoded (entity, ' +
         'id, reason and plaintext routing fields), independent of the date window; an empty ' +
         'list means every encrypted row was read. An entry with entity "exerciseNameOverride" ' +
-        'only takes away that exercise\'s own name; every other field is complete. ' +
+        'concerns only an own exercise name, which this tool does not output; it affects ' +
+        'nothing here. ' +
         'If any session/set-log/setting row of a kind ' +
         'this tool needs, any planned_workout row, or the athlete\'s time-zone setting cannot be ' +
         'decoded, this tool fails instead of returning a partial or misleading answer. This tool ' +

@@ -24,9 +24,11 @@
  * throws, still returns the row — with `payloadResolvedSkipped`/
  * `appliedPayloadResolvedSkipped` naming why (`unparsable_payload` | `catalog_unavailable`,
  * T-150-23/T-150-24) — never a silent gap and never an `isError` for either cause. This
- * tool itself reads no encrypted training data (session/set-log/etc.) and therefore never
- * carries an `unreadable` list (D-33) — the snapshot fetch here is solely for the
- * (plaintext) exercise catalog.
+ * tool never carries an `unreadable` list (D-33). The snapshot fetch here serves only the
+ * resolved copies, but that snapshot is decrypted (Phase 166-09, MCP-09, GR-MCP-02): own names
+ * (`exerciseNameOverrides`), the app language (`default_language`) and own exercises come from
+ * the athlete's encrypted data, so an own name can be missing and an own exercise that cannot be
+ * read is named `exerciseUnknown`, without an entry in a list of this tool.
  *
  * Exports:
  *   getSuggestion(args, cfg)               — the network-calling producer (UNCHANGED —
@@ -185,7 +187,14 @@ export function registerToolGetSuggestion(
         'payload/appliedPayload themselves are never changed. If a resolved copy ' +
         'cannot be produced, payloadResolvedSkipped/appliedPayloadResolvedSkipped names why: ' +
         '"unparsable_payload" or "catalog_unavailable" — the row is still returned either way. ' +
-        'This tool reads no encrypted training data and therefore carries no unreadable list.',
+        'The suggestion itself is stored in plaintext on the server; for the resolved copies ' +
+        'this tool decrypts the athlete\'s snapshot: own names, the app language (synchronized ' +
+        'setting default_language) and the athlete\'s own exercises (origin "CUSTOM", key ' +
+        'user_exercise:<id>) come from the athlete\'s encrypted data. An own name is missing for ' +
+        'up to 60 seconds (cache) and whenever its override or, without lang, the app-language ' +
+        'setting cannot be read; an own exercise that cannot be read is named with ' +
+        'exerciseUnknown. This tool carries no unreadable list; get_training_state and ' +
+        'get_history list every unreadable row.',
       inputSchema: GetSuggestionSchema,
       annotations: { readOnlyHint: true },
     },

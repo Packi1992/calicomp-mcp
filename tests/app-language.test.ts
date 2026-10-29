@@ -4,11 +4,12 @@
  * Coverage:
  *   - resolveAppLanguage reads the synchronized setting `default_language` and returns its
  *     language code when it is two to three lower-case letters (protocol §1.7 "The app
- *     language"), otherwise `null` with the reason `setting_not_synced` (missing) or
- *     `setting_unrecognized` (any other value) — and never throws.
- *   - Phase 156 gap round (WR-MCP-04, protocol 1.29): a `default_language` row that arrived
- *     but is listed as unreadable in the decode report yields `setting_unreadable`;
- *     `setting_not_synced` means only a missing row.
+ *     language"), otherwise `null` with one of three reasons: `setting_not_synced` (the row is
+ *     missing), `setting_unreadable` (the row arrived but is listed as unreadable in the decode
+ *     report) or `setting_unrecognized` (any other value) — and never throws.
+ *   - Phase 156 gap round (WR-MCP-04, protocol 1.29): the reason `setting_unreadable` came with
+ *     the gap round; since then `setting_not_synced` means only a missing row. (Phase 166-09,
+ *     GR-MCP-06: the first point names all three reasons.)
  */
 
 import { describe, it, expect } from 'vitest';

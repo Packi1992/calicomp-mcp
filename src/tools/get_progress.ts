@@ -215,7 +215,7 @@ export function registerToolGetProgress(
         'could not be decrypted or decoded (entity, id, reason and plaintext routing fields); an ' +
         'empty list means every encrypted row was read — including in the outputFile summary. ' +
         'An entry with entity "exerciseNameOverride" only takes away that exercise\'s own name; ' +
-        'every other field is complete.',
+        'it affects no other field.',
       inputSchema: GetProgressSchema,
       annotations: { readOnlyHint: true },
     },

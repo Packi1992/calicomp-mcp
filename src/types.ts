@@ -522,7 +522,9 @@ export interface DecryptedPlannedForeignActivity {
  * the normal form of protocol §1.7 "Decoded rows" and at the same time the
  * `expectedDecoded` of the corpus sections `exerciseNameOverrideCipher` and
  * `exerciseNameOverrideCipherV2` (§6). `v` is dropped; `description` is `null` when the
- * description is not overridden (an empty string decodes as `null`, D-01). `name` and `description` are athlete free text:
+ * description is not overridden (a blank description decodes as `null`: empty or only characters of
+ * the set W of protocol §1.7 "Blank text", since protocol 1.29; before, only the empty string, D-01).
+ * `name` and `description` are athlete free text:
  * never logged, and wrapped before they reach any tool output (156-08).
  */
 export interface DecryptedExerciseNameOverride {

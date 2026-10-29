@@ -104,9 +104,16 @@ returns two kinds of entries, distinguished by the `origin` field:
   muscle-group, equipment and capability-axis ratings.
 - **`"CUSTOM"`** — a user's own exercise, created because they cannot write to the curated
   catalog at all. For the closed test circle this is the normal case, not an exception: a custom
-  exercise is real training data, but it carries **no** muscle, equipment or capability rating —
-  there is nothing to invent, so those fields are always empty. Treat an empty rating as "not
-  rated", never as a measured zero.
+  exercise is real training data. Its key is `user_exercise:<id>`. Since phase 164 the app
+  encrypts an own exercise, and the encrypted payload carries the muscle groups, equipment and
+  capability ratings the athlete set; the MCP takes them over with the catalog's own keys, so
+  such an exercise counts in the weighted evaluations like a catalog exercise. A link to an id the
+  catalog does not know and a capability link without a level are left out, never invented. An
+  own exercise without links, or a plaintext row the app has not yet encrypted, has empty lists:
+  treat an empty rating as "not rated", never as a measured zero. An own exercise that cannot be
+  decrypted is left out of the catalog (`get_exercise_catalog` carries no `unreadable` list; the
+  row stands in the `unreadable` list of `get_history` and `get_training_state`) and is named with
+  `exerciseUnknown` wherever a tool names an exercise.
 
 **This does not replace curating the catalog.** If you have admin access and can run the
 catalog round trip (`tools/exercise.mjs` in the super-repo), your own exercises still belong in
@@ -185,8 +192,9 @@ The athlete can rename a catalog exercise in the app. Such an **override** is pe
 encrypted: it replaces the name, the description or both of one catalog exercise in one language,
 travels through the athlete's encrypted sync, and the server only ever holds ciphertext.
 Since 1.3.0 the coach sees the own name next to the catalog name. Every field below is a **new
-key**; every existing key keeps its value — above all, `exerciseName` stays the catalog name,
-byte for byte as before.
+key**; every existing key keeps its value, with one exception: `unreadable` can additionally name
+an unreadable override row (below). Above all, `exerciseName` stays the catalog name, byte for
+byte as before.
 
 | Tool | New keys |
 |---|---|
@@ -217,13 +225,18 @@ byte for byte as before.
   version 2 with `name: null`). The name then stays the catalog name and keeps following catalog
   updates: the tools carry no `exerciseOwnName` for that exercise, and `get_exercise_catalog` no
   `ownName`.
-- **An unreadable override is visible, not silent.** An override row that cannot be decrypted or
-  decoded, one with a blank name included (empty or only characters of the list in § 1.7 "Blank
-  text", since protocol 1.29), stands in `unreadable` with `entity: "exerciseNameOverride"`, its
-  `id` and its `reason`, never its content. It takes away only the own name of that exercise in
-  that language; `exerciseName`, `exerciseKey`, the own names of every other exercise and every
-  other key stay complete. The descriptions of the six tools with an `unreadable` list say the
-  same.
+- **An unreadable override is visible in the six tools with an `unreadable` list.** An override
+  row that cannot be decrypted or decoded, one with a blank name included (empty or only
+  characters of the list in § 1.7 "Blank text", since protocol 1.29), stands in `unreadable` of
+  `get_history`, `get_stats`, `get_progress`, `get_training_state`, `get_adherence` and
+  `get_planned_workouts` with `entity: "exerciseNameOverride"`, its `id` and its `reason`, never
+  its content. It takes away only the own name of that exercise in that language; `exerciseName`,
+  `exerciseKey`, the own names of every other exercise and every other key stay complete. The
+  descriptions of those six tools say the same (`get_adherence` and `get_planned_workouts` output
+  no exercise names, so there it affects nothing). `get_template`, `get_suggestion` and
+  `get_exercise_catalog` carry no `unreadable` list: there an unreadable override, or without
+  `lang` an unreadable `default_language`, only leaves the own name out. Call `get_history` or
+  `get_training_state` to see the entry.
 - **No own description.** An overridden description is decoded but not output by any tool of
   this version; a readable description-only override therefore changes no tool output.
 - **Freshness.** A freshly entered own name can be missing for up to 60 seconds (snapshot cache).

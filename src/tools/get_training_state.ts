@@ -616,7 +616,7 @@ export function registerToolGetTrainingState(
         'Every result carries unreadable: rows that could not be decrypted or decoded (entity, ' +
         'id, reason and plaintext routing fields); an empty list means every encrypted row was ' +
         'read. An entry with entity "exerciseNameOverride" only takes away that exercise\'s own ' +
-        'name; every other field is complete. If the training calendar is unreadable, adherence is null with ' +
+        'name; it affects no other field. If the training calendar is unreadable, adherence is null with ' +
         'adherenceUnavailableReason \'calendar_unreadable\' instead of failing. ' +
         'foreignSport, the last key, covers the athlete\'s foreign sport (running, bouldering, ' +
         'cycling and own types): windows.last7Days and windows.last28Days, both ending on asOfDate ' +

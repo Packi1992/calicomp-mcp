@@ -59,8 +59,10 @@ export function registerToolGetProfile(
       title:       'Get User Profile',
       description:
         'Return the authenticated user\'s profile: email, displayName, avatarUrl, ' +
-        'isPremium, and account createdAt epoch. This tool reads no encrypted training data ' +
-        'and therefore carries no unreadable list.',
+        'isPremium, and account createdAt epoch. The profile comes from a plaintext endpoint: no ' +
+        'field of this result comes from the athlete\'s encrypted data, so this tool carries no ' +
+        'unreadable list (each call still loads the shared snapshot, which the other tools read ' +
+        'decrypted).',
       inputSchema: GetProfileSchema,
       annotations: { readOnlyHint: true },
     },
