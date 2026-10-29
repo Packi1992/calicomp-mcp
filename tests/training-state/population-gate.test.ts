@@ -26,6 +26,10 @@ const MCP_ROOT = join(__dirname, '..', '..');
 export const POPULATION_COUNT_FUNCTIONS: readonly { name: string; file: string }[] = [
   { name: 'computeMuscleBalance', file: 'src/training-state/muscle-balance.ts' },
   { name: 'computePersonalRecords', file: 'src/training-state/consistency.ts' },
+  // Plan 166-06: the three branches of get_stats (Rule P, D-03).
+  { name: 'getStatsByExercise', file: 'src/tools/get_stats.ts' },
+  { name: 'getStatsByMuscle', file: 'src/tools/get_stats.ts' },
+  { name: 'getStatsByCapabilities', file: 'src/tools/get_stats.ts' },
 ];
 
 /**

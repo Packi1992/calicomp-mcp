@@ -10,6 +10,21 @@
  *   getStats(args, data)          — pure function; importable by Phase 121 WRITE tools
  *   registerToolGetStats(server, cfg) — registers the tool with the MCP server
  *
+ * Population (Phase 166, plan 166-06; protocol 1.48 §1.11 Rule P, D-03, D-04 in the
+ * version E-15 of the athlete, D-20):
+ *   Since 166 every branch counts over the shared population of
+ *   `../training-state/set-population.js` (`resolveSetPopulation`) with the
+ *   finished-session requirement — the same population as `get_training_state`: no
+ *   deleted set, no set of a deleted or missing session, only finished sessions
+ *   (`endTime` set), the exercise resolved as `setLog.exerciseId` or else over
+ *   `workoutExerciseId`, and the resolved exercise must be a live exercise of the catalog
+ *   the tool receives. Before 166 `get_stats` applied none of these filters. The fields
+ *   are corrected IN PLACE: name, place, form and the `getStats` signature stay as they
+ *   were, no field is added and none goes; only the sets they count change (protocol
+ *   "Existing fields that change meaning"). Rule S (the strength heatmap's exclusion of
+ *   stretch-only exercises) does NOT apply to `by:"muscle"` (D-20): that branch answers
+ *   "every set of every exercise that trains this muscle".
+ *
  * e1RM formula (D-01a):
  *   Mirrors WorkoutLoadCalculator.kt exactly — Epley variant with REP_CAP = 12.
  *   Must produce the same numbers as the app. Import from src/e1rm.ts; never re-implement.
@@ -93,6 +108,7 @@ import { bestE1rm } from '../e1rm.js';
 import { weightFor } from '../training-state/muscle-balance.js';
 import { weightedCounts as capabilityWeightedCounts } from '../training-state/capability-balance.js';
 import type { CapabilityLevelSetCount } from '../training-state/capability-balance.js';
+import { resolveSetPopulation } from '../training-state/set-population.js';
 import { decodeReportOf, assertEntitiesReadable } from '../read-guard.js';
 import { createExerciseNameResolver, type ExerciseNameFields, type ExerciseNameResolver } from '../exercise-names.js';
 import type { DecryptedSnapshot, DecryptedSetLog, CatalogExercise, UnreadableRow } from '../types.js';
@@ -273,13 +289,22 @@ function computeAggregates(
 // by-exercise path
 // ---------------------------------------------------------------------------
 
+/** The live catalog by id, the lookup `resolveSetPopulation` resolves exercises against. */
+function catalogByIdOf(catalog: CatalogExercise[]): Map<string, CatalogExercise> {
+  return new Map(catalog.map(ex => [ex.id, ex]));
+}
+
 function getStatsByExercise(
   args: { by: 'exercise'; exerciseId: string },
   data: { snapshot: DecryptedSnapshot; catalog: CatalogExercise[] },
 ): GetStatsByExerciseResult {
-  const matchingSetLogs = data.snapshot.setLogs.filter(
-    sl => sl.exerciseId === args.exerciseId,
-  );
+  // Rule P (protocol §1.11, D-03, since 166): the shared population with the
+  // finished-session requirement, resolved over `workoutExerciseId` too.
+  const matchingSetLogs = resolveSetPopulation(data.snapshot, catalogByIdOf(data.catalog), {
+    requireFinishedSession: true,
+  })
+    .filter(entry => entry.exerciseId === args.exerciseId)
+    .map(entry => entry.setLog);
   return {
     by:         'exercise',
     exerciseId: args.exerciseId,
@@ -309,14 +334,19 @@ function getStatsByMuscle(
     weightByExerciseId.set(ex.id, weightFor(muscleGroup.involvementLevel));
   }
 
+  // Rule P (protocol §1.11, D-03, since 166): the shared population with the
+  // finished-session requirement. Rule S does NOT apply here (D-20): this branch answers
+  // "every set of every exercise that trains this muscle", so a stretch-only exercise that
+  // hits the muscle stays in.
   const matchingExerciseIdSet = new Set<string>(matchingExerciseIds);
-  const matchingSetLogs = data.snapshot.setLogs.filter(
-    sl => sl.exerciseId !== undefined && matchingExerciseIdSet.has(sl.exerciseId!),
-  );
+  const matching = resolveSetPopulation(data.snapshot, catalogByIdOf(data.catalog), {
+    requireFinishedSession: true,
+  }).filter(entry => matchingExerciseIdSet.has(entry.exerciseId));
+  const matchingSetLogs = matching.map(entry => entry.setLog);
 
   let weightedSetCount = 0;
-  for (const sl of matchingSetLogs) {
-    weightedSetCount += weightByExerciseId.get(sl.exerciseId!) ?? 0;
+  for (const entry of matching) {
+    weightedSetCount += weightByExerciseId.get(entry.exerciseId) ?? 0;
   }
 
   return {
@@ -385,29 +415,29 @@ function getStatsByCapabilities(data: {
 
   // Every graded row across every axis, for the ONE weightedCounts call below — the
   // folding math is imported from capability-balance.js and never re-implemented here
-  // (D-13). Mirrors getStatsByMuscle's exerciseId-only matching (no workoutExerciseId
-  // resolution) — the established get_stats.ts precedent this branch follows.
+  // (D-13). Since 166 the sets come from the shared population of Rule P (protocol §1.11,
+  // D-03): no deleted set or session, only finished sessions, the exercise resolved over
+  // `workoutExerciseId` too — the same population as `get_training_state`.
   const allRows: CapabilityLevelSetCount[] = [];
-  const sessionById = new Map(data.snapshot.sessions.map(s => [s.id, s]));
+  const population = resolveSetPopulation(data.snapshot, catalogByIdOf(data.catalog), {
+    requireFinishedSession: true,
+  });
 
-  for (const setLog of data.snapshot.setLogs) {
-    if (setLog.exerciseId === undefined) continue;
-    const axes = capabilitiesByExerciseId.get(setLog.exerciseId);
+  for (const entry of population) {
+    const axes = capabilitiesByExerciseId.get(entry.exerciseId);
     if (axes === undefined) continue;
 
-    const session = sessionById.get(setLog.sessionId);
+    const session = entry.session;
 
     for (const axis of axes) {
       allRows.push({ capabilityAxisKey: axis.key, capabilityLevel: axis.capabilityLevel, setCount: 1 });
 
       const acc = accumulatorFor(axis.key);
       acc.setCount += 1;
-      acc.exerciseIds.add(setLog.exerciseId);
-      if (session !== undefined) {
-        acc.sessionIds.add(session.id);
-        if (acc.lastSessionStart === null || session.startTime > acc.lastSessionStart) {
-          acc.lastSessionStart = session.startTime;
-        }
+      acc.exerciseIds.add(entry.exerciseId);
+      acc.sessionIds.add(session.id);
+      if (acc.lastSessionStart === null || session.startTime > acc.lastSessionStart) {
+        acc.lastSessionStart = session.startTime;
       }
     }
   }
@@ -554,7 +584,13 @@ export function registerToolGetStats(
         '(`by: "muscle"`), or break down over every capability axis at once with no further ' +
         'argument (`by: "capabilities"` — balance, mobility, breath, etc.). e1RM uses the same ' +
         'Epley formula as the app. `trend.points` carries the full per-session e1RM series ' +
-        'alongside the existing first-vs-last delta. The `exercise` branch carries exerciseName ' +
+        'alongside the existing first-vs-last delta. ' +
+        'Since Phase 166 every count of all three branches follows Rule P, the same population ' +
+        'as get_training_state: no deleted sets or sessions, only finished sessions, and a set ' +
+        'without exerciseId is resolved over its workoutExerciseId. ' +
+        '`by: "muscle"` counts every exercise that trains the muscle, including stretch-only ' +
+        'exercises; the exclusion of the app\'s strength heatmap does not apply here. ' +
+        'The `exercise` branch carries exerciseName ' +
         'and exerciseKey next to its echoed exerciseId (optional lang, default English); the ' +
         '`muscle` branch additionally carries matchingExercises (exerciseId, exerciseName, ' +
         'exerciseKey) parallel to matchingExerciseIds, in the same order; the `capabilities` ' +
