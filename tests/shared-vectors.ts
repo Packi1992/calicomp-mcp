@@ -835,6 +835,30 @@ const PersonalRecordsByTrainingModeVectorSchema = z.object({
 
 export type PersonalRecordsByTrainingModeVector = z.infer<typeof PersonalRecordsByTrainingModeVectorSchema>;
 
+/**
+ * Phase 166 (plan 166-08, MCP-05, D-12): the `planUpdateOps` corpus section of protocol §2.6
+ * "Block ops: updateBlock and addBlock" and "Ops are bound to the proposal's template". Each
+ * vector carries a `plan_update` payload and `acceptedBy` for both enforcement points; the MCP
+ * replays the payload through `ProposePlanUpdateSchema` and expects `acceptedBy.mcp`, the app
+ * replays the base template, the payload and `expectedAfterState` (plan `166-11`).
+ *
+ * `payload` is a loose record on purpose (as `NewPlanVectorSchema.input` above): a rejected
+ * vector's payload is deliberately malformed (a `rounds` of 101, a dangling `tempId`), and
+ * modelling it here would defeat feeding it through the real schema. The app-side fields
+ * (`baseTemplate`, `expectedAfterState`, `expectedSkippedOpRefs`, `otherTemplate`) are not read
+ * by the MCP and stay unmodelled.
+ */
+const AcceptedBySchema = z.object({ mcp: z.boolean(), app: z.boolean() });
+
+const PlanUpdateOpsVectorSchema = z.object({
+  name: z.string().min(1),
+  payload: z.record(z.string(), z.unknown()),
+  acceptedBy: AcceptedBySchema,
+  note: z.string().min(1),
+});
+
+export type PlanUpdateOpsVector = z.infer<typeof PlanUpdateOpsVectorSchema>;
+
 export const CoachPlanningVectorsSchema = z.object({
   _provenance: ProvenanceSchema,
   expansion: z.array(ExpansionVectorSchema).min(1),
@@ -874,6 +898,8 @@ export const CoachPlanningVectorsSchema = z.object({
   // section would be silently dropped by the parse and its replay would measure nothing.
   strengthHeatmapSelection: z.array(StrengthHeatmapSelectionVectorSchema).min(10),
   personalRecordsByTrainingMode: z.array(PersonalRecordsByTrainingModeVectorSchema).min(5),
+  // Phase 166 (plan 166-08): listed for the same reason as every section above.
+  planUpdateOps: z.array(PlanUpdateOpsVectorSchema).min(8),
 });
 
 export type CoachPlanningVectors = z.infer<typeof CoachPlanningVectorsSchema>;

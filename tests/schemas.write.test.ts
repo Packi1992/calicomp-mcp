@@ -735,3 +735,78 @@ describe('ProposePlanUpdateSchema — formatParams New-ref tempId declaration (T
     expect(ProposePlanUpdateSchema.safeParse(ok).success).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 166 (plan 166-08, MCP-05, D-12): the block ops of protocol §2.6 "Block ops:
+// updateBlock and addBlock". `rounds` is a whole number from 1 to 100 on both ops; a
+// {source:'new', tempId} ref inside addBlock.exercises[] must be declared in newExercises[]
+// exactly like an addExercise ref (Pitfall 11, T-166-24).
+// ---------------------------------------------------------------------------
+
+describe('ProposePlanUpdateSchema — block ops (166-08, D-12)', () => {
+  const BLOCK_ID = '22222222-2222-4222-8222-222222222222';
+
+  const blockEntry = (exercise: Record<string, unknown>, orderIndex: number) => ({
+    exercise,
+    mode: 'REPS',
+    targetReps: 10,
+    restTimeSeconds: 15,
+    sets: 1,
+    orderIndex,
+  });
+
+  const withOps = (ops: unknown[], newExercises?: unknown[]) => ({
+    templateId: VALID_UUID,
+    rationale: 'block ops',
+    ...(newExercises !== undefined ? { newExercises } : {}),
+    ops,
+  });
+
+  it('P166 addBlock exercises with an undeclared tempId are rejected', () => {
+    const declared = withOps(
+      [{ op: 'addBlock', rounds: 3, orderIndex: 0, exercises: [blockEntry({ source: 'new', tempId: 't1' }, 0)] }],
+      [{ tempId: 't1', name: 'Dragon Flag', mode: 'REPS', usesWeight: false }],
+    );
+    expect(ProposePlanUpdateSchema.safeParse(declared).success).toBe(true);
+
+    const dangling = withOps([
+      {
+        op: 'addBlock',
+        rounds: 3,
+        orderIndex: 0,
+        exercises: [
+          blockEntry({ source: 'catalog', exerciseId: VALID_UUID }, 0),
+          blockEntry({ source: 'new', tempId: 't-missing' }, 1),
+        ],
+      },
+    ]);
+    const result = ProposePlanUpdateSchema.safeParse(dangling);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.message).join(' | ')).toContain('must reference a tempId defined in newExercises[]');
+    }
+  });
+
+  it('P166 updateBlock rounds outside 1 to 100 are rejected', () => {
+    for (const rounds of [1, 100]) {
+      expect(ProposePlanUpdateSchema.safeParse(withOps([{ op: 'updateBlock', blockId: BLOCK_ID, rounds }])).success, `rounds ${rounds}`).toBe(true);
+    }
+    for (const rounds of [0, 101, -1, 2.5]) {
+      expect(ProposePlanUpdateSchema.safeParse(withOps([{ op: 'updateBlock', blockId: BLOCK_ID, rounds }])).success, `rounds ${rounds}`).toBe(false);
+    }
+    // addBlock carries the same bound.
+    const addBlock = (rounds: number) =>
+      withOps([{ op: 'addBlock', rounds, orderIndex: 0, exercises: [blockEntry({ source: 'catalog', exerciseId: VALID_UUID }, 0)] }]);
+    expect(ProposePlanUpdateSchema.safeParse(addBlock(100)).success).toBe(true);
+    expect(ProposePlanUpdateSchema.safeParse(addBlock(101)).success).toBe(false);
+    expect(ProposePlanUpdateSchema.safeParse(addBlock(0)).success).toBe(false);
+  });
+
+  it('P166 updateBlock needs a UUID blockId and addBlock between 1 and 50 exercises', () => {
+    expect(ProposePlanUpdateSchema.safeParse(withOps([{ op: 'updateBlock', blockId: 'not-a-uuid', rounds: 3 }])).success).toBe(false);
+    expect(ProposePlanUpdateSchema.safeParse(withOps([{ op: 'addBlock', rounds: 3, orderIndex: 0, exercises: [] }])).success).toBe(false);
+    const fiftyOne = Array.from({ length: 51 }, (_, i) => blockEntry({ source: 'catalog', exerciseId: VALID_UUID }, i));
+    expect(ProposePlanUpdateSchema.safeParse(withOps([{ op: 'addBlock', rounds: 3, orderIndex: 0, exercises: fiftyOne }])).success).toBe(false);
+    expect(ProposePlanUpdateSchema.safeParse(withOps([{ op: 'addBlock', rounds: 3, orderIndex: -1, exercises: [blockEntry({ source: 'catalog', exerciseId: VALID_UUID }, 0)] }])).success).toBe(false);
+  });
+});

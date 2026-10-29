@@ -44,6 +44,7 @@ import * as cacheModule from '../../src/cache.js';
 import * as httpModule from '../../src/http.js';
 import { HttpError } from '../../src/http.js';
 import { computePlanHash } from '../../src/hash.js';
+import { ProposePlanUpdateSchema } from '../../src/schemas.js';
 import {
   registerToolProposePlanUpdate,
   buildPlanUpdatePayload,
@@ -603,5 +604,92 @@ describe('propose_plan_update — G-136-R2-7a Task 2: fail-closed invariant guar
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('EMPTY_PLAN_UPDATE');
     expect(httpModule.postSuggest).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 166 (plan 166-08, MCP-05, D-12): updateBlock and addBlock (protocol §2.6 "Block
+// ops"). The args go through the real ProposePlanUpdateSchema first (the SDK does the same
+// before it calls the handler), then through the registered handler; the POSTed payload must
+// carry both ops unchanged.
+// ---------------------------------------------------------------------------
+
+describe('propose_plan_update — block ops (166-08, D-12)', () => {
+  beforeEach(() => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(MOCK_CACHE);
+    vi.mocked(httpModule.postSuggest).mockReset();
+  });
+
+  const BLOCK_OPS = [
+    { op: 'updateBlock', blockId: BLOCK_ID_PUSH_A, rounds: 4 },
+    {
+      op: 'addBlock',
+      rounds: 3,
+      orderIndex: 1,
+      exercises: [
+        {
+          exercise: { source: 'catalog', exerciseId: CATALOG_EXERCISE_ID_PUSHUP },
+          mode: 'REPS',
+          targetReps: 12,
+          restTimeSeconds: 15,
+          sets: 1,
+          orderIndex: 0,
+        },
+        {
+          exercise: { source: 'new', tempId: 't-hollow' },
+          mode: 'TIME',
+          targetTimeSeconds: 30,
+          restTimeSeconds: 45,
+          sets: 1,
+          orderIndex: 1,
+        },
+      ],
+    },
+  ];
+
+  it('P166 propose_plan_update sends updateBlock and addBlock unchanged to the server', async () => {
+    vi.mocked(httpModule.postSuggest).mockResolvedValue(MOCK_SUGGESTION);
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolProposePlanUpdate(server, DUMMY_CFG);
+    const handler = getHandler(server);
+
+    const args = ProposePlanUpdateSchema.parse({
+      templateId: TEMPLATE_ID_PUSH,
+      rationale: 'one more round and a finisher block',
+      newExercises: [{ tempId: 't-hollow', name: 'Hollow Hold Variant', mode: 'TIME', usesWeight: false }],
+      ops: BLOCK_OPS,
+    });
+    const result = await handler(args);
+
+    expect(result.isError).toBeFalsy();
+    expect(httpModule.postSuggest).toHaveBeenCalledTimes(1);
+    const [body] = vi.mocked(httpModule.postSuggest).mock.calls[0];
+    expect(body.type).toBe('plan_update');
+    expect(body.planHash).toBe(computePlanHash(TEMPLATE_ID_PUSH, mockSnapshot));
+    const payload = JSON.parse(body.payload) as { ops: unknown[]; newExercises: { tempId: string }[] };
+    expect(payload.ops).toStrictEqual(BLOCK_OPS);
+    expect(payload.newExercises.map((e) => e.tempId)).toStrictEqual(['t-hollow']);
+  });
+
+  it('P166 a deduped tempId inside addBlock is rewritten to the catalog exercise', () => {
+    const args = ProposePlanUpdateSchema.parse({
+      templateId: TEMPLATE_ID_PUSH,
+      rationale: 'dedupe inside a new block',
+      newExercises: [{ tempId: 't-push', name: '  PUSH-UP  ', mode: 'REPS', usesWeight: false }],
+      ops: [
+        {
+          op: 'addBlock',
+          rounds: 2,
+          orderIndex: 0,
+          exercises: [
+            { exercise: { source: 'new', tempId: 't-push' }, mode: 'REPS', targetReps: 10, restTimeSeconds: 20, sets: 1, orderIndex: 0 },
+          ],
+        },
+      ],
+    }) as ProposePlanUpdateArgs;
+    const payload = buildPlanUpdatePayload(args, mockCatalog);
+    expect(payload.newExercises).toStrictEqual([]);
+    const addBlock = payload.ops[0] as { exercises: { exercise: unknown }[] };
+    expect(addBlock.exercises[0].exercise).toStrictEqual({ source: 'catalog', exerciseId: CATALOG_EXERCISE_ID_PUSHUP });
   });
 });

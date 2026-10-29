@@ -57,8 +57,9 @@ import {
 } from '../src/training-state/muscle-balance.js';
 import { weightedCounts as capabilityWeightedCounts } from '../src/training-state/capability-balance.js';
 import { amrapSummary, deathBySummary, emomIntervals } from '../src/training-state/format-progress.js';
-import { ProposeNewPlanSchema } from '../src/schemas.js';
+import { ProposeNewPlanSchema, ProposePlanUpdateSchema } from '../src/schemas.js';
 import { buildNewPlanPayload, type ProposeNewPlanArgs } from '../src/tools/propose_new_plan.js';
+import { buildPlanUpdatePayload, type ProposePlanUpdateArgs } from '../src/tools/propose_plan_update.js';
 import type { MiscSyncRow, DecryptedSetLog, SyncSessionDto } from '../src/types.js';
 
 /**
@@ -1202,6 +1203,32 @@ describe('shared coach-planning vector corpus', () => {
       expect(pick(records.maxReps), `${vector.name} maxReps`).toEqual([...vector.expectedMaxReps].sort(byExercise));
       expect(pick(records.maxHoldSeconds), `${vector.name} maxHoldSeconds`).toEqual([...vector.expectedMaxTime].sort(byExercise));
     }
+  });
+
+  // -----------------------------------------------------------------------
+  // Phase 166 (plan 166-08, MCP-05, D-12): protocol §2.6 block ops on the MCP side. Every
+  // planUpdateOps payload goes through the real ProposePlanUpdateSchema (the tool's input
+  // schema, with a rationale added because the payload carries none) and must be accepted or
+  // rejected exactly as acceptedBy.mcp says; an accepted payload must come out of
+  // buildPlanUpdatePayload unchanged (no catalog, so no dedupe rewrite).
+  // -----------------------------------------------------------------------
+
+  it('P166 every planUpdateOps vector is accepted or rejected by the schema as the corpus says', () => {
+    expect(corpus.planUpdateOps.length).toBeGreaterThanOrEqual(8);
+    expect(corpus.planUpdateOps.some((v) => v.acceptedBy.mcp === false)).toBe(true);
+    expect(corpus.planUpdateOps.some((v) => v.acceptedBy.mcp === true)).toBe(true);
+    const opKinds = new Set<string>();
+    for (const vector of corpus.planUpdateOps) {
+      const result = ProposePlanUpdateSchema.safeParse({ ...vector.payload, rationale: 'corpus replay' });
+      expect(result.success, `${vector.name}: acceptedBy.mcp is ${vector.acceptedBy.mcp}`).toBe(vector.acceptedBy.mcp);
+      if (!result.success) continue;
+      for (const op of result.data.ops ?? []) opKinds.add(op.op);
+      const built = buildPlanUpdatePayload(result.data as ProposePlanUpdateArgs, []);
+      expect(built, vector.name).toStrictEqual(vector.payload);
+    }
+    // NICHT GEMESSEN guard: the replay must have reached both new ops through the schema.
+    expect(opKinds.has('updateBlock')).toBe(true);
+    expect(opKinds.has('addBlock')).toBe(true);
   });
 
   // -----------------------------------------------------------------------
