@@ -691,6 +691,23 @@ export interface DecodeReport {
    * Counts only, never an id or a name. Present only when an own exercise arrived as ciphertext.
    */
   ownExerciseLinksLeftOut?: OwnExerciseLinksLeftOut;
+  /**
+   * Phase 166 (plan 166-10, review finding 155-IN-06): values of READABLE rows the decoder did
+   * not use because they break the form the protocol gives them — today a foreign
+   * `performedTime`/`scheduledTime` that is not `HH:mm` (§1.6: "the optional time of day, `HH:mm`,
+   * or `null`"). The value reads as `null`, the row stays readable and counts nowhere in
+   * `failedCount`. Each entry names the entity, the wire row id, the field and the reason, never
+   * the value. Present only when at least one value was dropped.
+   */
+  droppedValues?: DroppedValue[];
+}
+
+/** One value a decoder did not use (see `DecodeReport.droppedValues`). Never carries the value. */
+export interface DroppedValue {
+  entity: 'foreignActivity' | 'plannedForeignActivity';
+  id: string;
+  field: 'performedTime' | 'scheduledTime';
+  reason: 'not_hh_mm';
 }
 
 /** Phase 164: counts of own-exercise links the catalog projection left out (see `DecodeReport`). */

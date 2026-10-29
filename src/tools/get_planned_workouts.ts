@@ -428,7 +428,10 @@ export function registerToolGetPlannedWorkouts(
         'interval, byDay, until, deletedOccurrences) for every foreign root with an ' +
         'occurrence or a cancelled date in the window. A foreign root\'s deletedOccurrences ' +
         'are dates the athlete cancelled; a cancelled date has no foreign occurrence. Both ' +
-        'are raw: no fulfilment state and no assignment to an activity; whether a foreign ' +
+        'are raw: no fulfilment state and no assignment to an activity; scheduledTime is HH:mm ' +
+        'or null, and since phase 166 a stored time that is not HH:mm reads as null and ' +
+        'droppedValues (present only then, after unreadable) names each such row by entity, id, ' +
+        'field and reason "not_hh_mm", never the value; whether a foreign ' +
         'appointment was fulfilled is answered only by get_adherence (foreignSport) and ' +
         'get_training_state. typeName of a predefined type is its English app name; ' +
         'typeUnknown: true with typeName null means the type id matches no known type, so ' +
@@ -455,7 +458,11 @@ export function registerToolGetPlannedWorkouts(
           foreignSportAvailability(data.snapshot, report),
         );
         const unreadable: UnreadableRow[] = report.unreadable;
-        return { content: [{ type: 'text' as const, text: JSON.stringify({ ...result, unreadable }) }] };
+        // Phase 166 (plan 166-10, 155-IN-06): only when a foreign time was not HH:mm.
+        const dropped = report.droppedValues !== undefined && report.droppedValues.length > 0
+          ? { droppedValues: report.droppedValues }
+          : {};
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ ...result, unreadable, ...dropped }) }] };
       } catch (err) {
         return {
           isError: true,

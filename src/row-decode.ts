@@ -54,3 +54,20 @@ export function isBlankOverrideText(value: string): boolean {
 
 /** A canonical lower-case UUID — the only readable `exerciseId` (§1.7 "Decoded rows", rule 5); since Phase 164 also every id of §1.9. */
 export const CANONICAL_LOWER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * Phase 166 (plan 166-10, review finding 156-IN-MCP-05): whether one element of a wire array is
+ * a row object at all. A `null`, a number, a string or an array is not; every decode loop of
+ * `cache.ts` checks this first, so such an element takes the same per-row path as a row that
+ * cannot be decoded (reported as `malformed_payload`) instead of aborting the whole pull with a
+ * property read on `null`.
+ */
+export function isWireRowObject(row: unknown): row is object {
+  return typeof row === 'object' && row !== null && !Array.isArray(row);
+}
+
+/**
+ * The time of day of the foreign sport plaintext (protocol §1.6): `HH:mm` with hours 00 to 23 and
+ * minutes 00 to 59, the form the app's time picker writes and `LocalTime.parse` reads.
+ */
+export const LOCAL_TIME_HH_MM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;

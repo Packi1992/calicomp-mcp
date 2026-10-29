@@ -607,6 +607,7 @@ export function registerToolGetStats(
         'fields); an empty list means every encrypted row was read. An entry with entity ' +
         '"exerciseNameOverride" only takes away that exercise\'s own name; it affects no other ' +
         'field. ' +
+        'Since phase 166 such an entry carries key, the plaintext routing key "<exerciseId>:<languageCode>" of the row: the exercise and the language whose own name is missing. ' +
         'Hold times: a set trained in mode TIME counts down from its target, and a TIME set that ran ' +
         'out stores its target as completedTimeSeconds (since phase 165 the app records a time or ' +
         'repetitions by the mode the set was trained in), so it shows the target and not a measured ' +

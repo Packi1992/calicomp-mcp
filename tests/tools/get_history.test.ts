@@ -352,7 +352,7 @@ describe('get_history — registered MCP handler', () => {
   });
 
   it('P166 IN-06 get_history names a foreign time outside HH:mm in droppedValues after unreadable', async () => {
-    const dropped = [{ entity: 'foreignActivity', id: 'row-fa-bad', field: 'performedTime', reason: 'not_hh_mm' }];
+    const dropped = [{ entity: 'foreignActivity' as const, id: 'row-fa-bad', field: 'performedTime' as const, reason: 'not_hh_mm' as const }];
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
       ...MOCK_CACHE,
       decodeReport: { unreadable: [], encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 }, failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 }, droppedValues: dropped },

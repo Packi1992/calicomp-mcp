@@ -450,7 +450,9 @@ export function registerToolGetHistory(
         'id, reason and plaintext routing fields), independent of the date window; an ' +
         'empty list means every encrypted row was read. An entry with entity ' +
         '"exerciseNameOverride" only takes away that exercise\'s own name; it affects no other ' +
-        'field. Every session additionally ' +
+        'field. ' +
+        'Since phase 166 such an entry carries key, the plaintext routing key "<exerciseId>:<languageCode>" of the row: the exercise and the language whose own name is missing. ' +
+        'Every session additionally ' +
         'carries feedback: execution and feel are each { value, state, setLaterAt } — ' +
         'value is 1-5 or null; state is one of never_asked, not_offered, disabled, ' +
         'skipped, timeout, answered, confirmed, changed (only answered/confirmed/changed ' +
@@ -491,7 +493,10 @@ export function registerToolGetHistory(
         'foreignActivitiesTruncated says whether the limit cut it. Each entry carries id, ' +
         'typeId, typeKey, typeName, typeSource, typeArchived, typeUnknown, performedOn, ' +
         'performedTime, durationMinutes, intensity (1-5 or null), dayForm (1-5 or null), ' +
-        'distanceMeters (or null), note, createdAt and updatedAt. typeName of a predefined ' +
+        'distanceMeters (or null), note, createdAt and updatedAt. performedTime is HH:mm or ' +
+        'null; since phase 166 a stored time that is not HH:mm reads as null, and droppedValues ' +
+        '(present only then, after unreadable) names each such row by entity, id, field and ' +
+        'reason "not_hh_mm", never the value. typeName of a predefined ' +
         'type is its plain app name in lang (default English); typeUnknown: true with typeName ' +
         'null means the type id matches no known type, so never guess a name for it. The note ' +
         'and the name of an own type are the athlete\'s own free text, marked { text, source: ' +
@@ -539,7 +544,17 @@ export function registerToolGetHistory(
 
         if ((args as GetHistoryArgs).outputFile) {
           const itemCount = result.sessions.length + result.setLogs.length;
-          const handle    = await writeExportFile({ ...result, unreadable }, itemCount, cfg.exportDir);
+          const handle    = await writeExportFile(
+            {
+              ...result,
+              unreadable,
+              ...(report.droppedValues !== undefined && report.droppedValues.length > 0
+                ? { droppedValues: report.droppedValues }
+                : {}),
+            },
+            itemCount,
+            cfg.exportDir,
+          );
           const summary   = {
             outputFile:       { path: handle.path, bytes: handle.bytes, itemCount: handle.itemCount },
             from:             (args as GetHistoryArgs).from,
@@ -565,11 +580,18 @@ export function registerToolGetHistory(
               ? { foreignUnavailableReason: result.foreignUnavailableReason }
               : {}),
             unreadable,
+            ...(report.droppedValues !== undefined && report.droppedValues.length > 0
+              ? { droppedValues: report.droppedValues }
+              : {}),
           };
           return { content: [{ type: 'text' as const, text: JSON.stringify(summary) }] };
         }
 
-        return { content: [{ type: 'text' as const, text: JSON.stringify({ ...result, unreadable }) }] };
+        // Phase 166 (plan 166-10, 155-IN-06): only when a foreign time was not HH:mm.
+        const dropped = report.droppedValues !== undefined && report.droppedValues.length > 0
+          ? { droppedValues: report.droppedValues }
+          : {};
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ ...result, unreadable, ...dropped }) }] };
       } catch (err) {
         return {
           isError: true,

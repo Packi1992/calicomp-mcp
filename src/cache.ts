@@ -74,7 +74,14 @@
 import { decrypt } from './crypto.js';
 import { fetchSnapshot, fetchProfile, fetchCatalog } from './http.js';
 import { classifySession } from './session-kind.js';
-import { CANONICAL_LOWER_UUID, RowDecodeError, isBlankOverrideText, requiredString } from './row-decode.js';
+import {
+  CANONICAL_LOWER_UUID,
+  LOCAL_TIME_HH_MM,
+  RowDecodeError,
+  isBlankOverrideText,
+  isWireRowObject,
+  requiredString,
+} from './row-decode.js';
 // Phase 164 (plan 164-19): moved to row-decode.ts unchanged; re-exported so every importer of
 // cache.js keeps working.
 export { CANONICAL_LOWER_UUID, RowDecodeError, isBlankOverrideText, requiredString };
@@ -111,6 +118,8 @@ import type {
   OwnExerciseLinksLeftOut,
   UserProfileResponse,
   DecodeReport,
+  DroppedValue,
+  UnreadableEntity,
   UnreadableReason,
   SessionFeedback,
   SessionFeedbackStateWire,
@@ -161,6 +170,18 @@ function newDecodeReport(): DecodeReport {
       exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0,
     },
   };
+}
+
+/**
+ * Phase 166 (plan 166-10, 156-IN-MCP-05): one element of a wire array that is no row object
+ * (`null`, a number, a string, an array). It is skipped and reported exactly like a row that
+ * cannot be decoded — `malformed_payload`, counted in `failedCount`, never in `encryptedCount`
+ * (no decrypt was attempted) — instead of aborting the whole pull with a property read on
+ * `null`. It has no id; `''` stands in for the type, as for a translation row without id.
+ */
+function reportNonObjectRow(report: DecodeReport, entity: UnreadableEntity): void {
+  report.failedCount[entity] += 1;
+  report.unreadable.push({ entity, id: '', reason: 'malformed_payload' });
 }
 
 // ---------------------------------------------------------------------------
@@ -360,6 +381,10 @@ export function decryptSession(s: SyncSessionDto, keyB64: string): DecryptedSess
 function decodeSessions(rows: SyncSessionDto[], keyB64: string, report: DecodeReport): DecryptedSession[] {
   const decoded: DecryptedSession[] = [];
   for (const row of rows) {
+    if (!isWireRowObject(row)) {
+      reportNonObjectRow(report, 'session');
+      continue;
+    }
     if (row.encryptedPayload) {
       report.encryptedCount.session += 1;
     }
@@ -452,6 +477,10 @@ function decryptSetLog(sl: SyncSetLogDto, keyB64: string): DecryptedSetLog {
 function decodeSetLogs(rows: SyncSetLogDto[], keyB64: string, report: DecodeReport): DecryptedSetLog[] {
   const decoded: DecryptedSetLog[] = [];
   for (const row of rows) {
+    if (!isWireRowObject(row)) {
+      reportNonObjectRow(report, 'setLog');
+      continue;
+    }
     if (row.encryptedPayload) {
       report.encryptedCount.setLog += 1;
     }
@@ -512,6 +541,10 @@ function decryptHrSample(hr: SyncHrSampleDto, keyB64: string): DecryptedHrSample
 function decodeHrSamples(rows: SyncHrSampleDto[], keyB64: string, report: DecodeReport): DecryptedHrSample[] {
   const decoded: DecryptedHrSample[] = [];
   for (const row of rows) {
+    if (!isWireRowObject(row)) {
+      reportNonObjectRow(report, 'hrSample');
+      continue;
+    }
     if (row.encryptedPayload) {
       report.encryptedCount.hrSample += 1;
     }
@@ -670,6 +703,20 @@ function optionalString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
+/**
+ * Phase 166 (plan 166-10, 155-IN-06): an optional time of day (§1.6: `HH:mm` or `null`). A
+ * missing value or `null` is `null`; a value in the form `HH:mm` (`LOCAL_TIME_HH_MM`) is taken;
+ * any other value — a string like `25:00` or `7:05`, a number — is NOT used: it reads as
+ * `null` and `onDropped` names the field, so the decode report says that a value was there and
+ * was dropped instead of letting it act silently as a sort key.
+ */
+function optionalLocalTime(value: unknown, onDropped: () => void): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string' && LOCAL_TIME_HH_MM.test(value)) return value;
+  onDropped();
+  return null;
+}
+
 /** An integer in `min..max`, anything else `null` (D-16: "not measured", never 0). */
 function optionalIntInRange(value: unknown, min: number, max: number): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : null;
@@ -704,7 +751,11 @@ function timestampOr(value: unknown, fallback: number): number {
  */
 const INT32_MAX = 2147483647;
 
-export function decryptForeignActivity(row: MiscSyncRow, keyB64: string): DecryptedForeignActivity {
+export function decryptForeignActivity(
+  row: MiscSyncRow,
+  keyB64: string,
+  onDropped?: (field: 'performedTime') => void,
+): DecryptedForeignActivity {
   const p = decryptForeignPayload(row, keyB64, 'foreign_activity');
   const id = requiredString(p.id);
   const typeId = requiredString(p.typeId);
@@ -723,7 +774,7 @@ export function decryptForeignActivity(row: MiscSyncRow, keyB64: string): Decryp
     id,
     typeId,
     performedOn,
-    performedTime: optionalString(p.performedTime),
+    performedTime: optionalLocalTime(p.performedTime, () => onDropped?.('performedTime')),
     durationMinutes,
     intensity: optionalIntInRange(p.intensity, 1, 5),
     dayForm: optionalIntInRange(p.dayForm, 1, 5),
@@ -765,7 +816,11 @@ export function decryptForeignActivityType(row: MiscSyncRow, keyB64: string): De
  * (`malformed_payload`). `deletedOccurrences` is carried as the raw stored string in
  * `deletedOccurrencesRaw`, never parsed here — exactly like `decryptPlannedWorkout`.
  */
-export function decryptPlannedForeignActivity(row: MiscSyncRow, keyB64: string): DecryptedPlannedForeignActivity {
+export function decryptPlannedForeignActivity(
+  row: MiscSyncRow,
+  keyB64: string,
+  onDropped?: (field: 'scheduledTime') => void,
+): DecryptedPlannedForeignActivity {
   const p = decryptForeignPayload(row, keyB64, 'planned_foreign_activity');
   const id = requiredString(p.id);
   const typeId = requiredString(p.typeId);
@@ -778,7 +833,7 @@ export function decryptPlannedForeignActivity(row: MiscSyncRow, keyB64: string):
     id,
     typeId,
     scheduledDate,
-    scheduledTime: optionalString(p.scheduledTime),
+    scheduledTime: optionalLocalTime(p.scheduledTime, () => onDropped?.('scheduledTime')),
     note: optionalString(p.note),
     recurrenceRule: optionalString(p.recurrenceRule),
     deletedOccurrencesRaw: optionalString(p.deletedOccurrences),
@@ -934,6 +989,10 @@ function decodeExerciseNameOverrides(
 function decodePlannedWorkouts(rows: MiscSyncRow[], keyB64: string, report: DecodeReport): DecryptedPlannedWorkout[] {
   const decoded: DecryptedPlannedWorkout[] = [];
   for (const row of rows) {
+    if (!isWireRowObject(row)) {
+      reportNonObjectRow(report, 'plannedWorkout');
+      continue;
+    }
     if (row.encryptedPayload) {
       report.encryptedCount.plannedWorkout += 1;
     }
@@ -1009,6 +1068,10 @@ export function decryptSetting(row: MiscSyncRow, keyB64: string): DecryptedSetti
 function decodeSettings(rows: MiscSyncRow[], keyB64: string, report: DecodeReport): DecryptedSetting[] {
   const decoded: DecryptedSetting[] = [];
   for (const row of rows) {
+    if (!isWireRowObject(row)) {
+      reportNonObjectRow(report, 'setting');
+      continue;
+    }
     if (row.encryptedPayload) {
       report.encryptedCount.setting += 1;
     }
@@ -1050,6 +1113,10 @@ function decodeForeignRows<T>(
 ): T[] {
   const decoded: T[] = [];
   for (const row of rows) {
+    if (!isWireRowObject(row)) {
+      reportNonObjectRow(report, entity);
+      continue;
+    }
     if (row.encryptedPayload) {
       report.encryptedCount[entity] += 1;
     }
@@ -1062,6 +1129,10 @@ function decodeForeignRows<T>(
         entity,
         id: row.id,
         reason,
+        // Phase 166 (plan 166-10, 156-GR-MCP-03): an override row names its exercise through its
+        // plaintext routing key "<exerciseId>:<languageCode>" (what the server already sees,
+        // never payload content), the same field a setting row carries.
+        ...(entity === 'exerciseNameOverride' ? { key: row.clientLocalId } : {}),
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       });
@@ -1117,6 +1188,10 @@ function decodeOwnExercises(
   const exercises: SyncExerciseDto[] = [];
   const links: Record<string, OwnExerciseLinks> = {};
   for (const row of rows) {
+    if (!isWireRowObject(row)) {
+      reportNonObjectRow(report, 'exercise');
+      continue;
+    }
     if (row.encryptedPayload === undefined || row.encryptedPayload === null) {
       exercises.push(row);
       continue;
@@ -1162,6 +1237,10 @@ function decodeOwnExerciseTranslations(
 ): SyncExerciseTranslationDto[] {
   const translations: SyncExerciseTranslationDto[] = [];
   for (const row of rows) {
+    if (!isWireRowObject(row)) {
+      reportNonObjectRow(report, 'exerciseTranslation');
+      continue;
+    }
     if (row.encryptedPayload === undefined || row.encryptedPayload === null) {
       translations.push(row);
       continue;
@@ -1260,6 +1339,8 @@ function removeRowsOfUnreadableSessions<T extends { sessionId: string }>(
  */
 function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: DecryptedSnapshot; decodeReport: DecodeReport } {
   const decodeReport = newDecodeReport();
+  // Phase 166 (plan 166-10, 155-IN-06): values of readable foreign rows that were not used.
+  const dropped: DroppedValue[] = [];
 
   // EVERY list below carries `?? []`, not just the two that used to. `McpDataPullResponse`
   // declares all of them `= emptyList()` and the server serializes with
@@ -1270,7 +1351,8 @@ function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: Decryp
   // message that names neither the field nor this function.
   const sessions = decodeSessions(raw.sessions ?? [], keyB64, decodeReport);
   const unreadableSessionIds = new Set(
-    decodeReport.unreadable.filter((r) => r.entity === 'session').map((r) => r.id),
+    // An element that was no row object carries id '' and has no set-logs of its own (166-10).
+    decodeReport.unreadable.filter((r) => r.entity === 'session' && r.id !== '').map((r) => r.id),
   );
 
   let setLogs = decodeSetLogs(raw.setLogs ?? [], keyB64, decodeReport);
@@ -1313,14 +1395,19 @@ function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: Decryp
     ...(raw.foreignActivities != null
       ? {
           foreignActivities: decodeForeignRows(
-            raw.foreignActivities, keyB64, decodeReport, 'foreignActivity', decryptForeignActivity,
+            raw.foreignActivities, keyB64, decodeReport, 'foreignActivity',
+            (row, key) => decryptForeignActivity(row, key, (field) => dropped.push({ entity: 'foreignActivity', id: row.id, field, reason: 'not_hh_mm' })),
           ),
         }
       : {}),
     ...(raw.plannedForeignActivities != null
       ? {
           plannedForeignActivities: decodeForeignRows(
-            raw.plannedForeignActivities, keyB64, decodeReport, 'plannedForeignActivity', decryptPlannedForeignActivity,
+            raw.plannedForeignActivities, keyB64, decodeReport, 'plannedForeignActivity',
+            (row, key) =>
+              decryptPlannedForeignActivity(row, key, (field) =>
+                dropped.push({ entity: 'plannedForeignActivity', id: row.id, field, reason: 'not_hh_mm' }),
+              ),
           ),
         }
       : {}),
@@ -1336,6 +1423,7 @@ function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: Decryp
     ...(Object.keys(ownExercises.links).length > 0 ? { ownExerciseLinks: ownExercises.links } : {}),
   };
 
+  if (dropped.length > 0) decodeReport.droppedValues = dropped;
   return { snapshot, decodeReport };
 }
 

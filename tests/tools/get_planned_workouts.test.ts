@@ -345,7 +345,7 @@ describe('get_planned_workouts — registered MCP handler', () => {
 
   it('P166 IN-06 get_planned_workouts names a foreign time outside HH:mm in droppedValues after unreadable', async () => {
     const snapshot = snapshotWith([root({ id: 'root-inside', scheduledDate: epochMs(2026, 6, 10) })]);
-    const dropped = [{ entity: 'plannedForeignActivity', id: 'row-pfa-bad', field: 'scheduledTime', reason: 'not_hh_mm' }];
+    const dropped = [{ entity: 'plannedForeignActivity' as const, id: 'row-pfa-bad', field: 'scheduledTime' as const, reason: 'not_hh_mm' as const }];
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
       ...mockCacheFor(snapshot),
       decodeReport: { unreadable: [], encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 }, failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 }, droppedValues: dropped },
