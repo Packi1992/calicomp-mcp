@@ -94,7 +94,28 @@ export interface ExerciseNameFields {
   exerciseOwnName?: AthleteFreeText;
   /** Phase 156 (D-17): the language code of `exerciseOwnName`; present only together with it. */
   exerciseOwnNameLanguage?: string;
+  /**
+   * Phase 166 (plan 166-10, 156-IN-MCP-06): for an own exercise (live or deleted) the name in
+   * `exerciseName` is the athlete's free text. This key carries exactly that name in the
+   * free-text envelope, beside the unchanged `exerciseName` — data, never instructions. Absent for
+   * a curated catalog exercise and an unknown id.
+   */
+  exerciseNameFreeText?: AthleteFreeText;
 }
+
+/**
+ * Every key the resolver may set besides `exerciseName`/`exerciseKey` (which it always sets).
+ * A caller that annotates a stored value removes these first, so no key of an earlier
+ * resolution survives (156-IN-MCP-03, `get_suggestion`'s `annotateCatalogRefs`).
+ */
+export const OPTIONAL_RESOLVER_KEYS = [
+  'exerciseDeleted',
+  'exerciseUnknown',
+  'exerciseOwnName',
+  'exerciseOwnNameLanguage',
+  'exerciseNameFreeText',
+  'exerciseNameSource',
+] as const;
 
 /** The catalog-key prefix of a projected user exercise — never eligible for an own name. */
 export const USER_EXERCISE_KEY_PREFIX = 'user_exercise:';
@@ -218,22 +239,32 @@ export function createExerciseNameResolver(input: {
     return translation ? translation.name : ex.name;
   }
 
+  /** Phase 166 (156-IN-MCP-06): the envelope of an own exercise's shown name (conditional spread). */
+  function freeTextName(name: string): Pick<ExerciseNameFields, 'exerciseNameFreeText'> {
+    const envelope = wrapFreeText(name);
+    return envelope ? { exerciseNameFreeText: envelope } : {};
+  }
+
   function forExerciseId(id: string): ExerciseNameFields {
     const catalogExercise = catalogById.get(id);
     if (catalogExercise) {
+      const name = catalogName(catalogExercise);
       return {
-        exerciseName: catalogName(catalogExercise),
+        exerciseName: name,
         exerciseKey: catalogExercise.key,
         ...ownNameFields(catalogExercise),
+        ...(catalogExercise.key.startsWith(USER_EXERCISE_KEY_PREFIX) ? freeTextName(name) : {}),
       };
     }
 
     const userExercise = exerciseById.get(id);
     if (userExercise && userExercise.deletedAt !== undefined) {
+      const name = deletedUserExerciseName(userExercise);
       return {
-        exerciseName: deletedUserExerciseName(userExercise),
+        exerciseName: name,
         exerciseKey: `user_exercise:${id}`,
         exerciseDeleted: true,
+        ...freeTextName(name),
       };
     }
 

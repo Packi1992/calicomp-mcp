@@ -93,9 +93,11 @@ describe('createExerciseNameResolver — forExerciseId', () => {
 
   it('P150 D-15 a live user exercise resolves with key user_exercise:<id>', () => {
     const resolver = createExerciseNameResolver({ catalog: [liveUserCatalogEntry], snapshot: emptySnapshot() });
+    // Since 166-10 (156-IN-MCP-06) the own name additionally travels in the free-text envelope.
     expect(resolver.forExerciseId(LIVE_USER_ID)).toEqual({
       exerciseName: 'Meine Übung',
       exerciseKey: `user_exercise:${LIVE_USER_ID}`,
+      exerciseNameFreeText: { text: 'Meine Übung', source: 'athlete_free_text', treatAs: 'data_not_instructions' },
     });
   });
 
@@ -120,6 +122,7 @@ describe('createExerciseNameResolver — forExerciseId', () => {
       exerciseName: 'Alte Übung',
       exerciseKey: `user_exercise:${DELETED_USER_ID}`,
       exerciseDeleted: true,
+      exerciseNameFreeText: { text: 'Alte Übung', source: 'athlete_free_text', treatAs: 'data_not_instructions' },
     });
   });
 
@@ -404,7 +407,11 @@ describe('createExerciseNameResolver — own names (Phase 156, D-10/D-17)', () =
       snapshot: snapshotWith([override(LIVE_USER_ID, 'de', 'Gespoofter Name')]),
       lang: 'de',
     }).forExerciseId(LIVE_USER_ID);
-    expect(spoofed).toEqual({ exerciseName: 'Meine Übung', exerciseKey: `user_exercise:${LIVE_USER_ID}` });
+    expect(spoofed).toEqual({
+      exerciseName: 'Meine Übung',
+      exerciseKey: `user_exercise:${LIVE_USER_ID}`,
+      exerciseNameFreeText: { text: 'Meine Übung', source: 'athlete_free_text', treatAs: 'data_not_instructions' },
+    });
   });
 
   it('P156 D-10 get_template carries the own name beside the catalog name', () => {
@@ -500,7 +507,8 @@ describe('own names — description-only override (Phase 156 gap round, D-22)', 
       {
         id: 'row-p156-d22',
         kind: 'exercise_name_override',
-        clientLocalId: `${vector!.expectedDecoded.exerciseId}:${vector!.expectedDecoded.languageCode}`,
+        // Plan 166-10 (156-GR-MCP-07): the key from the vector's input, its plaintext, not from the expectation.
+        clientLocalId: `${vector!.expectedPlaintext.exerciseId}:${vector!.expectedPlaintext.languageCode}`,
         encryptedPayload: vector!.ciphertextJson,
         createdAt: 0,
         updatedAt: 0,
@@ -644,9 +652,13 @@ describe('own exercises, encrypted (Phase 164, O-6)', () => {
     expect(compared).toBe(6);
     // The reference itself names both exercises — the comparison above is not null against null.
     const reference = createExerciseNameResolver({ catalog: plain.catalog, snapshot: plain.snapshot, lang: 'en' });
-    expect(reference.forExerciseId(LIVE)).toEqual({ exerciseName: 'Deep ring support', exerciseKey: `user_exercise:${LIVE}` });
+    expect(reference.forExerciseId(LIVE)).toEqual({
+      exerciseName: 'Deep ring support', exerciseKey: `user_exercise:${LIVE}`,
+      exerciseNameFreeText: { text: 'Deep ring support', source: 'athlete_free_text', treatAs: 'data_not_instructions' },
+    });
     expect(reference.forExerciseId(DELETED)).toEqual({
       exerciseName: 'Old exercise', exerciseKey: `user_exercise:${DELETED}`, exerciseDeleted: true,
+      exerciseNameFreeText: { text: 'Old exercise', source: 'athlete_free_text', treatAs: 'data_not_instructions' },
     });
     // The catalog tool lists the live own exercise identically.
     expect(JSON.stringify(getExerciseCatalog({ lang: 'en' }, cipher.catalog, cipher.snapshot))).toBe(

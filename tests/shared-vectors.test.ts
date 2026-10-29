@@ -574,16 +574,23 @@ describe('shared coach-planning vector corpus', () => {
   /**
    * An `exercise_name_override` wire row for a cipher vector. Since 156-29 the decoder
    * checks `clientLocalId === "<exerciseId>:<languageCode>"` (§1.7 "Decoded rows", rule 5),
-   * so the row carries the key of the vector's own normal form, exactly as the app writes it.
+   * so the row carries the key the app writes for this payload. Since plan 166-10
+   * (156-GR-MCP-07) the key comes from the vector's INPUT, its decrypted ciphertext, and never
+   * from `expectedDecoded`: comparing the decoder's normal form against the expectation is then
+   * a real check. The rule "key = payload" itself (a key that names another exercise or
+   * language) is pinned by the decode vectors `clientLocalId-mismatch` and
+   * `clientLocalId-other-exercise` of `exerciseNameOverrideDecode`.
    */
   function overrideRowFromVector(vector: {
     name: string;
+    keyB64: string;
     ciphertextJson: string;
     expectedDecoded: Record<string, unknown>;
   }): MiscSyncRow {
+    const input = JSON.parse(decrypt(vector.ciphertextJson, vector.keyB64)) as { exerciseId?: unknown; languageCode?: unknown };
     return {
       ...miscRowFromVector(vector, 'exercise_name_override'),
-      clientLocalId: `${String(vector.expectedDecoded.exerciseId)}:${String(vector.expectedDecoded.languageCode)}`,
+      clientLocalId: `${String(input.exerciseId)}:${String(input.languageCode)}`,
     };
   }
 
