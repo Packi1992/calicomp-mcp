@@ -3,8 +3,9 @@
  * population for every count"): every function that computes a count of §1.11 reads the shared
  * population of `src/training-state/set-population.ts` and builds no resolution of its own.
  *
- * The list below is the one source of the counting functions. Plan 166-06 adds the readers of
- * `get_stats`, the capability balance and the suspect marks. For every listed function the test
+ * The list below is the one source of the counting functions. Plan 166-06 added the readers of
+ * `get_stats`, the capability balance and the suspect marks (`computeDataQuality` reads only
+ * `suspectMarksFor`, which is listed). For every listed function the test
  * reads its source from `src/` and requires
  *   - a call of `resolveSetPopulation(`, and
  *   - no own exercise resolution over the workout exercises (`new Map(` over `templateExercises`),
@@ -32,6 +33,8 @@ export const POPULATION_COUNT_FUNCTIONS: readonly { name: string; file: string }
   { name: 'getStatsByCapabilities', file: 'src/tools/get_stats.ts' },
   // Plan 166-06: get_training_state.capabilityBalance (STAT-03).
   { name: 'computeCapabilityBalance', file: 'src/training-state/capability-balance.ts' },
+  // Plan 166-06: the suspect marks (STAT-05), the source of get_history.suspect and dataQuality.
+  { name: 'suspectMarksFor', file: 'src/training-state/suspect-sets.ts' },
 ];
 
 /**

@@ -61,6 +61,7 @@ import {
 } from '../training-state/consistency.js';
 import { computeMuscleBalance, type MuscleBalanceWindow } from '../training-state/muscle-balance.js';
 import { computeCapabilityBalance, type CapabilityBalanceWindow } from '../training-state/capability-balance.js';
+import { computeDataQuality, type DataQuality } from '../training-state/suspect-sets.js';
 import { computeAdherence } from '../training-state/adherence.js';
 import {
   computeExerciseProgress,
@@ -264,6 +265,12 @@ export interface GetTrainingStateResult {
     last30Days: CapabilityBalanceWindow;
     allTime: CapabilityBalanceWindow;
   };
+  /**
+   * The summary of the suspect marks (Phase 166, plan 166-06, STAT-05; protocol 1.48 §1.11
+   * "Suspect sets"): `suspectSetCount`, `byReason` and at most 20 `newest` entries. A genuine
+   * addition, the last key, computed after `narrative`; read only, nothing is changed.
+   */
+  dataQuality: DataQuality;
 }
 
 // ---------------------------------------------------------------------------
@@ -465,6 +472,8 @@ export function getTrainingState(
   // addition computed AFTER narrative (protocol §1.11 "Existing fields that change meaning":
   // new keys stand at the end, the narrative reads none of them).
   const capabilityBalance = computeCapabilityBalance(snapshot, catalog, nowMs);
+  // Phase 166 (STAT-05, D-05, D-17): the summary of the suspect marks, the last key.
+  const dataQuality = computeDataQuality(snapshot, catalog, timeZoneId);
 
   return {
     timeZoneId,
@@ -483,6 +492,7 @@ export function getTrainingState(
     templateFeedbackSeries,
     foreignSport,
     capabilityBalance,
+    dataQuality,
   };
 }
 
@@ -631,7 +641,13 @@ export function registerToolGetTrainingState(
         'capability axis whose exercise has a rated link to it, one set once per axis) and ' +
         'weighted (the same sets weighted like the app, HAUPTREIZ 1, MITTRAINIERT 0.5, GERING ' +
         '0.25); it counts finished, undeleted sessions like muscleBalance, but includes ' +
-        'stretching on purpose.',
+        'stretching on purpose. ' +
+        'dataQuality (since phase 166, the last key) summarizes sets that are probably entry ' +
+        'errors: suspectSetCount, byReason (reps_on_time_station, zero_set, ' +
+        'measured_time_missing; a set with two reasons counts in both) and newest, at most 20 ' +
+        'entries { setLogId, date, reasons }, newest first; get_history carries the same marks ' +
+        'per set as suspect. It is only a hint: no tool changes or deletes a set, and the ' +
+        'athlete decides in the app whether to correct one.',
       inputSchema: GetTrainingStateSchema,
       annotations: { readOnlyHint: true },
     },

@@ -36,6 +36,14 @@
  * separately; newest first. The note and the name of an own type leave this tool only in
  * the athlete free-text envelope (`foreign-types.ts`).
  *
+ * Phase 166 (plan 166-06; protocol 1.48 §1.11 "Suspect sets", D-05, D-17, STAT-05): with the
+ * `catalog` (the registered handler passes `data.catalog`), every returned set-log that
+ * carries at least one suspect mark gets the key `suspect` — a list of `{ reason,
+ * explanation }` from `../training-state/suspect-sets.js` — and ONLY then; a set without a
+ * finding has no `suspect` key, never an empty list. A genuine addition (D-04 in the version
+ * E-15): no existing field changes. Read only — nothing is corrected or deleted. The
+ * `outputFile` branch writes the same result, so the file carries the same marks.
+ *
  * Exports:
  *   getHistory(args, snapshot)      — pure function; importable by Phase 121 WRITE tools
  *   registerToolGetHistory(server, cfg) — registers the tool with the MCP server
@@ -68,6 +76,7 @@ import { createExerciseNameResolver } from '../exercise-names.js';
 import type { ExerciseNameResolver, SetLogExerciseNameFields } from '../exercise-names.js';
 import { resolveForeignType, wrapFreeText } from '../foreign-types.js';
 import type { ForeignTypeFields } from '../foreign-types.js';
+import { suspectMarksFor, type SuspectMark } from '../training-state/suspect-sets.js';
 import type {
   AthleteFreeText,
   CatalogExercise,
@@ -105,8 +114,11 @@ export interface GetHistorySessionItem extends Omit<DecryptedSession, 'goalSnaps
   templateStatus?: TemplateStatus;
 }
 
-/** A history set-log, additively named when a resolver is supplied (Phase 150, D-15). */
-export type GetHistorySetLogItem = DecryptedSetLog & Partial<SetLogExerciseNameFields>;
+/**
+ * A history set-log, additively named when a resolver is supplied (Phase 150, D-15), and
+ * with `suspect` only when the set carries at least one suspect mark (Phase 166, STAT-05).
+ */
+export type GetHistorySetLogItem = DecryptedSetLog & Partial<SetLogExerciseNameFields> & { suspect?: SuspectMark[] };
 
 export interface GetHistoryResult {
   sessions:         GetHistorySessionItem[];
@@ -188,6 +200,8 @@ export interface GetHistoryForeignActivityItem extends ForeignTypeFields {
  *                 E-8/E-9) — the registered handler passes `foreignSportAvailability(snapshot,
  *                 report)`; omitted, the snapshot alone decides
  *                 (`foreignSportAvailability(snapshot, EMPTY_DECODE_REPORT)`).
+ * @param catalog  Optional catalog the tool receives (Phase 166, STAT-05) — with it, a set-log
+ *                 with a suspect mark carries `suspect`; omitted, no set-log carries it.
  */
 export function getHistory(
   args: GetHistoryArgs,
@@ -196,7 +210,6 @@ export function getHistory(
   foreignAvailability?: ForeignSportAvailability,
   catalog?: CatalogExercise[],
 ): GetHistoryResult {
-  void catalog; // stub of plan 166-06 (red commit): suspect marks follow
   const { from, to, exercise, templateId, sessionKind, limit } = args;
 
   // Step 1: ISO-date → UTC epoch bounds
@@ -236,10 +249,16 @@ export function getHistory(
 
   // Step 6: Collect all setLogs belonging to the retained sessions; additively name each
   // one when a resolver is supplied (Phase 150, D-15).
+  // Phase 166 (STAT-05): `suspect` only on a finding, as the last key of the set-log.
   const retainedSessionIds = new Set<string>(sessions.map(s => s.id));
+  const suspectMarks = catalog !== undefined ? suspectMarksFor(snapshot, catalog) : undefined;
   const setLogs: GetHistorySetLogItem[] = snapshot.setLogs
     .filter(sl => retainedSessionIds.has(sl.sessionId))
-    .map(sl => (resolver ? { ...sl, ...resolver.forSetLog(sl) } : sl));
+    .map(sl => {
+      const named: GetHistorySetLogItem = resolver ? { ...sl, ...resolver.forSetLog(sl) } : sl;
+      const suspect = suspectMarks?.get(sl.id);
+      return suspect !== undefined ? { ...named, suspect } : named;
+    });
 
   // Classify each retained session (D-01/D-02) — templateStatus needs the full template
   // index (including tombstones) to tell "deleted" apart from "unknown". `goalSnapshot`
@@ -480,7 +499,12 @@ export function registerToolGetHistory(
         '"foreign_rows_unreadable" (a foreign row could not be decoded); the sessions are ' +
         'complete either way. Whether a planned foreign appointment was fulfilled is not part ' +
         'of this tool: read it from get_adherence or get_training_state. Freshly recorded data ' +
-        'can be missing for up to 60 seconds (the cache).',
+        'can be missing for up to 60 seconds (the cache). ' +
+        'Since phase 166 a set-log that is probably an entry error carries suspect, a list of ' +
+        '{ reason, explanation } with reason reps_on_time_station, zero_set or ' +
+        'measured_time_missing; a set-log without a finding has no suspect key. It is only a ' +
+        'hint: this tool changes nothing, and the athlete decides in the app whether to correct ' +
+        'the set.',
       inputSchema: GetHistorySchema,
       annotations: { readOnlyHint: true },
     },
@@ -499,6 +523,7 @@ export function registerToolGetHistory(
           data.snapshot,
           resolver,
           foreignSportAvailability(data.snapshot, report),
+          data.catalog,
         );
         const unreadable: UnreadableRow[] = report.unreadable;
 
