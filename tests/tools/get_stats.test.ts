@@ -2,6 +2,8 @@
  * Tests for src/tools/get_stats.ts
  *
  * Coverage:
+ *   - Rule P (Phase 166, D-03, D-20): all three branches count over the shared population
+ *     of protocol §1.11 in their existing fields (see the describe block at the end)
  *   - Schema: unknown muscle key rejected; malformed exerciseId UUID rejected
  *   - by:'exercise': bestE1rm (Epley, app-consistent), total/avg volume, set/session counts
  *   - by:'muscle': aggregates exercises sharing muscleGroups[].key from catalog
@@ -30,6 +32,9 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { GetStatsSchema } from '../../src/schemas.js';
 import { getStats, registerToolGetStats } from '../../src/tools/get_stats.js';
 import type { GetStatsResult } from '../../src/tools/get_stats.js';
@@ -1046,5 +1051,204 @@ describe('get_stats — registered MCP handler (Phase 150, D-15/D-35 exercise na
       exerciseName: 'Balance Capability Exercise',
       exerciseKey: 'balance_capability_exercise',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rule P (Phase 166, plan 166-06; D-03, D-04 in the version E-15, D-20): get_stats counts
+// over the shared population of protocol §1.11 in its existing fields — no deleted set or
+// session, only finished sessions, the exercise resolved over workoutExerciseId too. The
+// expected numbers below are derived by hand from Rule P.
+// ---------------------------------------------------------------------------
+
+describe('get_stats — Rule P (Phase 166)', () => {
+  const T = (iso: string): number => Date.parse(iso);
+  const EX_PUSH = 'p166-gs-push';
+  const EX_STRETCH = 'p166-gs-stretch';
+  const TE_PUSH = 'p166-gs-te-push';
+  const S1 = 'p166-gs-s1';
+  const S2 = 'p166-gs-s2';
+  const S_UNFINISHED = 'p166-gs-s-unfinished';
+  const S_DELETED = 'p166-gs-s-deleted';
+
+  const catalogP: CatalogExercise[] = [
+    {
+      id: EX_PUSH, key: 'p166_gs_push', nameEn: 'P166 GS Push', mode: 'REPS', usesWeight: true,
+      lastModifiedAt: T('2026-01-01T00:00:00Z'), translations: [],
+      muscleGroups: [
+        { id: 'p166-gs-mg-chest', key: 'chest', translations: [], involvementLevel: 'PRIMARY' },
+        { id: 'p166-gs-mg-triceps', key: 'triceps', translations: [], involvementLevel: 'SECONDARY' },
+      ],
+      equipment: [],
+      capabilities: [{ id: 'p166-gs-ax-power', key: 'power', translations: [], capabilityLevel: 'MITTRAINIERT' }],
+      origin: 'CATALOG',
+    },
+    {
+      // Stretch-only (only mobility and flexibility rated): out of the strength heatmap by
+      // Rule S, but D-20 keeps it in get_stats by:"muscle".
+      id: EX_STRETCH, key: 'p166_gs_stretch', nameEn: 'P166 GS Stretch', mode: 'REPS', usesWeight: false,
+      lastModifiedAt: T('2026-01-01T00:00:00Z'), translations: [],
+      muscleGroups: [{ id: 'p166-gs-mg-hamstrings', key: 'hamstrings', translations: [], involvementLevel: 'PRIMARY' }],
+      equipment: [],
+      capabilities: [
+        { id: 'p166-gs-ax-mobility', key: 'mobility', translations: [], capabilityLevel: 'HAUPTREIZ' },
+        { id: 'p166-gs-ax-flexibility', key: 'flexibility', translations: [], capabilityLevel: 'GERING' },
+      ],
+      origin: 'CATALOG',
+    },
+  ];
+
+  const sessionP = (id: string, startIso: string, extra: { finished: boolean; deletedAt?: number }) => {
+    const startTime = T(startIso);
+    return {
+      id,
+      startTime,
+      ...(extra.finished ? { endTime: startTime + 3_600_000 } : {}),
+      ...(extra.deletedAt !== undefined ? { deletedAt: extra.deletedAt } : {}),
+      isManual: false,
+      isCorrected: false,
+      isQuickChallenge: false,
+      createdAt: startTime,
+      updatedAt: extra.deletedAt ?? startTime,
+    };
+  };
+
+  const setP = (
+    id: string,
+    sessionId: string,
+    createdIso: string,
+    values: { exerciseId?: string; workoutExerciseId?: string; reps: number; weight: number | null; deletedAt?: number },
+  ) => {
+    const createdAt = T(createdIso);
+    return {
+      id,
+      sessionId,
+      ...(values.exerciseId !== undefined ? { exerciseId: values.exerciseId } : {}),
+      ...(values.workoutExerciseId !== undefined ? { workoutExerciseId: values.workoutExerciseId } : {}),
+      exerciseSource: 'CATALOG',
+      completedReps: values.reps,
+      completedTimeSeconds: null,
+      weightUsed: values.weight,
+      startedAt: createdAt,
+      measuredTimeSeconds: null,
+      createdAt,
+      updatedAt: values.deletedAt ?? createdAt,
+      ...(values.deletedAt !== undefined ? { deletedAt: values.deletedAt } : {}),
+    };
+  };
+
+  const snapshotP: DecryptedSnapshot = {
+    syncedAt: T('2026-04-10T00:00:00Z'),
+    exercises: [],
+    exerciseTranslations: [],
+    templates: [],
+    blocks: [],
+    templateExercises: [
+      {
+        id: TE_PUSH, templateId: 'p166-gs-tpl', exerciseId: EX_PUSH, exerciseSource: 'CATALOG', mode: 'REPS',
+        targetReps: 10, restTimeSeconds: 60, sets: 3, orderIndex: 0,
+        createdAt: T('2026-01-01T00:00:00Z'), updatedAt: T('2026-01-01T00:00:00Z'),
+      },
+    ],
+    sessions: [
+      sessionP(S1, '2026-04-01T08:00:00Z', { finished: true }),
+      sessionP(S2, '2026-04-03T08:00:00Z', { finished: true }),
+      sessionP(S_DELETED, '2026-04-04T08:00:00Z', { finished: true, deletedAt: T('2026-04-04T12:00:00Z') }),
+      sessionP(S_UNFINISHED, '2026-04-05T08:00:00Z', { finished: false }),
+    ],
+    setLogs: [
+      // counts: finished live session, exerciseId set
+      setP('p166-gs-a1', S1, '2026-04-01T08:05:00Z', { exerciseId: EX_PUSH, reps: 10, weight: 20 }),
+      // excluded: the set itself is deleted
+      setP('p166-gs-a2', S1, '2026-04-01T08:06:00Z', { exerciseId: EX_PUSH, reps: 10, weight: 50, deletedAt: T('2026-04-01T09:00:00Z') }),
+      // counts: only workoutExerciseId, resolves to the push exercise
+      setP('p166-gs-a3', S2, '2026-04-03T08:05:00Z', { workoutExerciseId: TE_PUSH, reps: 8, weight: 30 }),
+      // excluded: session never finished
+      setP('p166-gs-a4', S_UNFINISHED, '2026-04-05T08:05:00Z', { exerciseId: EX_PUSH, reps: 5, weight: 100 }),
+      // excluded: session deleted
+      setP('p166-gs-a5', S_DELETED, '2026-04-04T08:05:00Z', { exerciseId: EX_PUSH, reps: 6, weight: 40 }),
+      // stretch-only exercise: one set in a finished session, one in a never finished one
+      setP('p166-gs-st1', S1, '2026-04-01T08:10:00Z', { exerciseId: EX_STRETCH, reps: 8, weight: null }),
+      setP('p166-gs-st2', S_UNFINISHED, '2026-04-05T08:10:00Z', { exerciseId: EX_STRETCH, reps: 8, weight: null }),
+    ],
+    hrSamples: [],
+    plannedWorkouts: [],
+    settings: [],
+  };
+  const dataP = { snapshot: snapshotP, catalog: catalogP };
+
+  it('P166 get_stats leaves out unfinished sessions and deleted sets and resolves via workoutExerciseId', () => {
+    const r = getStats({ by: 'exercise', exerciseId: EX_PUSH }, dataP);
+    // Rule P: a1 (S1) and a3 (S2, via workoutExerciseId); a2 deleted, a4 unfinished, a5 deleted session.
+    expect(r.setCount).toBe(2);
+    expect(r.sessionCount).toBe(2);
+    expect(r.totalVolume).toBe(10 * 20 + 8 * 30);
+    expect(r.avgVolumePerSession).toBe((10 * 20 + 8 * 30) / 2);
+    expect(r.firstSessionDate).toBe('2026-04-01');
+    expect(r.lastSessionDate).toBe('2026-04-03');
+    // e1RM (Epley): a1 20*(1+10/30) = 26.67, a3 30*(1+8/30) = 38; the deleted 50 kg set and
+    // the 100 kg set of the never finished session take no part.
+    expect(r.bestE1rm).toBeCloseTo(38, 6);
+    expect(r.trend?.points.map((p) => p.sessionId)).toEqual([S1, S2]);
+    expect(r.trend?.firstE1rm).toBeCloseTo(20 * (1 + 10 / 30), 6);
+    expect(r.trend?.lastE1rm).toBeCloseTo(38, 6);
+
+    const m = getStats({ by: 'muscle', muscle: 'chest' }, dataP);
+    expect(m.matchingExerciseIds).toEqual([EX_PUSH]);
+    expect(m.setCount).toBe(2);
+    expect(m.weightedSetCount).toBe(2);
+    expect(m.sessionCount).toBe(2);
+    expect(m.lastSessionDate).toBe('2026-04-03');
+
+    const tri = getStats({ by: 'muscle', muscle: 'triceps' }, dataP);
+    expect(tri.setCount).toBe(2);
+    expect(tri.weightedSetCount).toBe(1); // SECONDARY: 2 sets at 0.5
+  });
+
+  it('P166 get_stats capabilities axes count by rule P', () => {
+    const r = getStats({ by: 'capabilities' }, dataP);
+    expect(r.axes.map((a) => a.key)).toEqual(['power', 'mobility', 'flexibility']);
+    const axis = (key: string) => r.axes.find((a) => a.key === key)!;
+    // power: a1 and a3 of the push exercise, MITTRAINIERT (0.5).
+    expect(axis('power')).toMatchObject({
+      setCount: 2, weightedSetCount: 1, sessionCount: 2, contributingExerciseIds: [EX_PUSH], lastSessionDate: '2026-04-03',
+    });
+    // mobility / flexibility: only st1 (st2 sits in a never finished session).
+    expect(axis('mobility')).toMatchObject({
+      setCount: 1, weightedSetCount: 1, sessionCount: 1, contributingExerciseIds: [EX_STRETCH], lastSessionDate: '2026-04-01',
+    });
+    expect(axis('flexibility')).toMatchObject({
+      setCount: 1, weightedSetCount: 0.25, sessionCount: 1, contributingExerciseIds: [EX_STRETCH], lastSessionDate: '2026-04-01',
+    });
+  });
+
+  it('P166 get_stats by muscle keeps stretch-only exercises', () => {
+    // D-20: Rule S excludes this exercise from the strength heatmap, not from get_stats.
+    const r = getStats({ by: 'muscle', muscle: 'hamstrings' }, dataP);
+    expect(r.matchingExerciseIds).toEqual([EX_STRETCH]);
+    expect(r.setCount).toBe(1); // st1; st2 sits in a never finished session (Rule P)
+    expect(r.weightedSetCount).toBe(1);
+    expect(r.sessionCount).toBe(1);
+    expect(r.firstSessionDate).toBe('2026-04-01');
+  });
+
+  it('P166 getStats signature and result shape stay unchanged', () => {
+    // Signature: (args, data), two parameters, as Phase 121 and the characterization tests import it.
+    expect(getStats.length).toBe(2);
+    // Shape: key set and order as before 166 (the pins of characterization-166.json, written
+    // from the code before 166); no key comes, none goes.
+    const pins = JSON.parse(
+      readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'vectors', 'characterization-166.json'), 'utf8'),
+    ) as Record<string, Record<string, unknown>>;
+    const keysOf = (v: unknown) => Object.keys(v as Record<string, unknown>);
+    const ex = getStats({ by: 'exercise', exerciseId: EX_PUSH }, dataP);
+    const mu = getStats({ by: 'muscle', muscle: 'chest' }, dataP);
+    const ca = getStats({ by: 'capabilities' }, dataP);
+    expect(keysOf(ex)).toEqual(keysOf(pins.getStatsExercise));
+    expect(keysOf(mu)).toEqual(keysOf(pins.getStatsMuscle));
+    expect(keysOf(ca)).toEqual(keysOf(pins.getStatsCapabilities));
+    expect(keysOf(ex.trend)).toEqual(keysOf(pins.getStatsExercise.trend));
+    expect(keysOf(ex.trend!.points[0])).toEqual(keysOf((pins.getStatsExercise.trend as { points: unknown[] }).points[0]));
+    expect(keysOf(ca.axes[0])).toEqual(keysOf((pins.getStatsCapabilities.axes as unknown[])[0]));
   });
 });

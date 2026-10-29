@@ -245,6 +245,334 @@
       "rule": "M",
       "plan": "166-04",
       "why": "Rule M reads the population of rule P, whose resolved exercise must be a live exercise of the catalog the tool receives; the fixture's own exercise is not in its catalog, so its record goes (in production every live own exercise is in that catalog)."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsExercise",
+      "path": "/setCount",
+      "before": 11,
+      "after": 9,
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: the deleted set, the set of the deleted session and the set of the never finished session leave the population, and the set that carries only workoutExerciseId now resolves to the exercise: 11 - 3 + 1 = 9 sets."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsExercise",
+      "path": "/sessionCount",
+      "before": 6,
+      "after": 4,
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: the deleted session (2026-03-07) and the never finished session (2026-03-08) are no longer touched; main, old and both D-10 sessions remain."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsExercise",
+      "path": "/lastSessionDate",
+      "before": "2026-03-08",
+      "after": "2026-03-06",
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: the never finished session of 2026-03-08 and the deleted session of 2026-03-07 drop out, so the last touched session is the main session of 2026-03-06."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsExercise",
+      "path": "/trend/points",
+      "before": [
+        {
+          "date": "2026-02-20",
+          "sessionId": "char166-s-old",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-05",
+          "sessionId": "char166-s-d10-a",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-05",
+          "sessionId": "char166-s-d10-b",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-06",
+          "sessionId": "char166-s-main",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-07",
+          "sessionId": "char166-s-deleted",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-08",
+          "sessionId": "char166-s-unfinished",
+          "e1rm": null
+        }
+      ],
+      "after": [
+        {
+          "date": "2026-02-20",
+          "sessionId": "char166-s-old",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-05",
+          "sessionId": "char166-s-d10-a",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-05",
+          "sessionId": "char166-s-d10-b",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-06",
+          "sessionId": "char166-s-main",
+          "e1rm": null
+        }
+      ],
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: the trend has one point per touched session; the points of the deleted and of the never finished session go, the four finished live sessions keep theirs."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsMuscle",
+      "path": "/weightedSetCount",
+      "before": 11,
+      "after": 9,
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: chest is PRIMARY on the only matching exercise, so every one of its 9 sets of the population weighs 1 (D-20: no Rule S on this branch)."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsMuscle",
+      "path": "/setCount",
+      "before": 11,
+      "after": 9,
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: the deleted set, the set of the deleted session and the set of the never finished session leave the population, and the set that carries only workoutExerciseId now resolves to the exercise: 11 - 3 + 1 = 9 sets."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsMuscle",
+      "path": "/sessionCount",
+      "before": 6,
+      "after": 4,
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: the deleted session (2026-03-07) and the never finished session (2026-03-08) are no longer touched; main, old and both D-10 sessions remain."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsMuscle",
+      "path": "/lastSessionDate",
+      "before": "2026-03-08",
+      "after": "2026-03-06",
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: the never finished session of 2026-03-08 and the deleted session of 2026-03-07 drop out, so the last touched session is the main session of 2026-03-06."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsMuscle",
+      "path": "/trend/points",
+      "before": [
+        {
+          "date": "2026-02-20",
+          "sessionId": "char166-s-old",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-05",
+          "sessionId": "char166-s-d10-a",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-05",
+          "sessionId": "char166-s-d10-b",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-06",
+          "sessionId": "char166-s-main",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-07",
+          "sessionId": "char166-s-deleted",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-08",
+          "sessionId": "char166-s-unfinished",
+          "e1rm": null
+        }
+      ],
+      "after": [
+        {
+          "date": "2026-02-20",
+          "sessionId": "char166-s-old",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-05",
+          "sessionId": "char166-s-d10-a",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-05",
+          "sessionId": "char166-s-d10-b",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-06",
+          "sessionId": "char166-s-main",
+          "e1rm": null
+        }
+      ],
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: the trend has one point per touched session; the points of the deleted and of the never finished session go, the four finished live sessions keep theirs."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsCapabilities",
+      "path": "/axes/0/setCount",
+      "before": 13,
+      "after": 11,
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: power counts the 9 sets of the push exercise in the population plus the 2 sets of the mixed exercise (main and IN-02 session, both finished); before it also counted the 3 excluded push sets and missed the workoutExerciseId-only set."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsCapabilities",
+      "path": "/axes/0/weightedSetCount",
+      "before": 6,
+      "after": 5,
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: 9 push sets at MITTRAINIERT (0.5) plus 2 mixed sets at GERING (0.25) = 4.5 + 0.5 = 5."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsCapabilities",
+      "path": "/axes/0/sessionCount",
+      "before": 7,
+      "after": 5,
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: the deleted and the never finished session no longer touch power; main, old, both D-10 sessions and the IN-02 session remain."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsCapabilities",
+      "path": "/axes/0/lastSessionDate",
+      "before": "2026-03-08",
+      "after": "2026-03-06",
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: without the never finished session of 2026-03-08 the latest session touching power is the main session of 2026-03-06."
+    },
+    {
+      "pinFile": "characterization-150.json",
+      "pinKey": "getStatsExercise",
+      "path": "/sessionCount",
+      "before": 3,
+      "after": 2,
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: the set of the deleted session leaves the population and the set with only workoutExerciseId joins it in a session already touched, so the set count stays 3 and the deleted session is no longer touched."
+    },
+    {
+      "pinFile": "characterization-150.json",
+      "pinKey": "getStatsExercise",
+      "path": "/trend/points",
+      "before": [
+        {
+          "date": "2026-01-03",
+          "sessionId": "char150-session-tpl-live-1",
+          "e1rm": null
+        },
+        {
+          "date": "2026-01-04",
+          "sessionId": "char150-session-deleted",
+          "e1rm": null
+        },
+        {
+          "date": "2026-01-10",
+          "sessionId": "char150-session-tpl-live-2",
+          "e1rm": null
+        }
+      ],
+      "after": [
+        {
+          "date": "2026-01-03",
+          "sessionId": "char150-session-tpl-live-1",
+          "e1rm": null
+        },
+        {
+          "date": "2026-01-10",
+          "sessionId": "char150-session-tpl-live-2",
+          "e1rm": null
+        }
+      ],
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: the point of the deleted session of 2026-01-04 goes; both live template sessions keep theirs."
+    },
+    {
+      "pinFile": "characterization-150.json",
+      "pinKey": "getStatsMuscle",
+      "path": "/sessionCount",
+      "before": 3,
+      "after": 2,
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: as for getStatsExercise, chest matches only the push-up; the deleted session is no longer touched."
+    },
+    {
+      "pinFile": "characterization-150.json",
+      "pinKey": "getStatsMuscle",
+      "path": "/trend/points",
+      "before": [
+        {
+          "date": "2026-01-03",
+          "sessionId": "char150-session-tpl-live-1",
+          "e1rm": null
+        },
+        {
+          "date": "2026-01-04",
+          "sessionId": "char150-session-deleted",
+          "e1rm": null
+        },
+        {
+          "date": "2026-01-10",
+          "sessionId": "char150-session-tpl-live-2",
+          "e1rm": null
+        }
+      ],
+      "after": [
+        {
+          "date": "2026-01-03",
+          "sessionId": "char150-session-tpl-live-1",
+          "e1rm": null
+        },
+        {
+          "date": "2026-01-10",
+          "sessionId": "char150-session-tpl-live-2",
+          "e1rm": null
+        }
+      ],
+      "rule": "P",
+      "plan": "166-06",
+      "why": "Rule P: the point of the deleted session of 2026-01-04 goes; both live template sessions keep theirs."
     }
   ],
   "additions": []
