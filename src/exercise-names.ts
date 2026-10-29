@@ -8,8 +8,8 @@
  *   1. The merged catalog (`data.catalog` — curated exercises AND live, uncollided user
  *      exercises, both already projected by `cache.ts`'s `projectUserExerciseToCatalog`
  *      into `key: "user_exercise:<id>"`, D-15). A hit here returns the catalog name
- *      (translated for `lang`, English fallback, same rule as `get_exercise_catalog.ts`)
- *      and `key`.
+ *      (translated for the effective language, English fallback, same rule as
+ *      `get_exercise_catalog.ts`) and `key`.
  *   2. `snapshot.exercises` with `deletedAt` set — a user exercise the athlete deleted.
  *      Its name is never lost: this branch returns it (translated the same way, from
  *      `snapshot.exerciseTranslations`), the same `user_exercise:<id>` key, and
@@ -38,11 +38,13 @@
  *   - `exerciseOwnNameLanguage` — the language code of that override.
  *
  * The effective language is `lang` when the tool receives it, otherwise the app language
- * (`resolveAppLanguage`, the synchronized setting `default_language`); a language matches by
- * exact equality of the code. Without an override in that language — and always for a user
- * exercise, a deleted or an unknown exercise — both keys are ABSENT (never `null`), so every
- * output stays byte-identical to before Phase 156. `exerciseName` keeps its own rule (`lang`,
- * otherwise English) and never follows `default_language`. The own description is decoded
+ * (`effectiveNameLanguage` in `app-language.ts`: `default_language`, otherwise the device fact
+ * `effective_language`); a language matches by exact equality of the code. Without an override in
+ * that language — and always for a user exercise, a deleted or an unknown exercise — both keys are
+ * ABSENT (never `null`). Since Phase 166, gap plan 166-20 (E-16, protocol 1.50 §1.7 "Which
+ * language", D-04 in the version E-15: in place), `exerciseName` follows the SAME effective
+ * language: the translation in that language, otherwise `nameEn` (an own exercise: otherwise its
+ * `name`); without `lang` and without an app language it stays English as before. The own description is decoded
  * but never output (D-10 names the name only). An unreadable override row never reaches
  * `exerciseNameOverrides` (cache.ts), so it only takes away its own exercise's field.
  *
@@ -76,7 +78,7 @@ import type {
   SyncExerciseDto,
   SyncExerciseTranslationDto,
 } from './types.js';
-import { resolveAppLanguage } from './app-language.js';
+import { effectiveNameLanguage } from './app-language.js';
 import { wrapFreeText } from './foreign-types.js';
 
 /** The additive fields a name resolution can carry (`exerciseName`/`exerciseKey` always). */
@@ -137,13 +139,13 @@ export function buildOwnNameIndex(overrides: readonly DecryptedExerciseNameOverr
 }
 
 /**
- * The effective language of an own name (D-17): `lang` when the tool receives it, otherwise
- * the app language `default_language`; `null` when neither exists. Without any override it
- * is `null` too, so a call without own names never reads the setting.
+ * The effective language of an own name (D-17, E-16): `effectiveNameLanguage` — `lang` when the
+ * tool receives it, otherwise the app language; `null` when neither exists. Without any override it
+ * is `null` too, so a call without own names never needs the setting.
  */
 export function ownNameLanguageFor(index: OwnNameIndex, snapshot: DecryptedSnapshot, lang: string | undefined): string | null {
   if (index.size === 0) return null;
-  return lang ?? resolveAppLanguage(snapshot).languageCode;
+  return effectiveNameLanguage(snapshot, lang);
 }
 
 /**
@@ -187,10 +189,10 @@ export interface ExerciseNameResolver {
  * @param input.snapshot The decrypted snapshot — `exercises`/`exerciseTranslations` carry a
  *                        deleted user exercise's name even after it drops out of the catalog;
  *                        `templateExercises` (including tombstones) resolves `forSetLog`.
- * @param input.lang     Optional BCP-47-ish tag (same bound as `GetExerciseCatalogSchema`);
- *                        omitted or unmatched falls back to English, exactly like
- *                        `get_exercise_catalog.ts`. It is also the effective language of an
- *                        own name; without it the app language `default_language` is (D-17).
+ * @param input.lang     Optional BCP-47-ish tag (same bound as `GetExerciseCatalogSchema`).
+ *                        The effective language of every name is `lang`, otherwise the app
+ *                        language (E-16, protocol 1.50 §1.7); unmatched or neither falls back to
+ *                        English, exactly like `get_exercise_catalog.ts`.
  */
 export function createExerciseNameResolver(input: {
   catalog: CatalogExercise[];
@@ -215,6 +217,8 @@ export function createExerciseNameResolver(input: {
   // own name — `lang`, otherwise the app language. Built once per resolver, like every map above.
   const ownNameIndex = buildOwnNameIndex(snapshot.exerciseNameOverrides);
   const ownNameLanguage = ownNameLanguageFor(ownNameIndex, snapshot, lang);
+  // Phase 166, gap plan 166-20 (E-16): the effective language of the catalog and own-exercise names.
+  const nameLanguage = effectiveNameLanguage(snapshot, lang);
 
   /** The two own-name keys for a curated catalog exercise, or nothing (conditional spread). */
   function ownNameFields(ex: CatalogExercise): Pick<ExerciseNameFields, 'exerciseOwnName' | 'exerciseOwnNameLanguage'> {
@@ -224,18 +228,18 @@ export function createExerciseNameResolver(input: {
     return { exerciseOwnName: own.ownName, exerciseOwnNameLanguage: own.language };
   }
 
-  /** `get_exercise_catalog.ts`'s exact `lang` -> translation -> `nameEn` fallback rule. */
+  /** `get_exercise_catalog.ts`'s exact effective language -> translation -> `nameEn` fallback rule. */
   function catalogName(ex: CatalogExercise): string {
-    if (!lang) return ex.nameEn;
-    const translation = ex.translations.find((t) => t.languageCode === lang);
+    if (!nameLanguage) return ex.nameEn;
+    const translation = ex.translations.find((t) => t.languageCode === nameLanguage);
     return translation ? translation.name : ex.nameEn;
   }
 
   /** Same fallback rule, over a deleted user exercise's own translations (D-14/D-17). */
   function deletedUserExerciseName(ex: SyncExerciseDto): string {
-    if (!lang) return ex.name;
+    if (!nameLanguage) return ex.name;
     const translations = translationsByExerciseId.get(ex.id) ?? [];
-    const translation = translations.find((t) => t.languageCode === lang);
+    const translation = translations.find((t) => t.languageCode === nameLanguage);
     return translation ? translation.name : ex.name;
   }
 

@@ -13,7 +13,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { APP_LANGUAGE_SETTING_KEY, resolveAppLanguage } from '../src/app-language.js';
+import {
+  APP_LANGUAGE_SETTING_KEY,
+  EFFECTIVE_LANGUAGE_SETTING_KEY,
+  effectiveNameLanguage,
+  resolveAppLanguage,
+} from '../src/app-language.js';
 import type { DecryptedSnapshot } from '../src/types.js';
 
 function snapshotWithSettings(settings: DecryptedSnapshot['settings']): DecryptedSnapshot {
@@ -126,5 +131,22 @@ describe('resolveAppLanguage — unreadable setting (WR-MCP-04)', () => {
       languageCode: null,
       reason: 'setting_not_synced',
     });
+  });
+});
+
+describe('effective_language and the effective name language (Phase 166, gap plan 166-20, E-16)', () => {
+  it('P166 E-16 the app language falls back to the mirrored device fact and lang wins over both', () => {
+    expect(EFFECTIVE_LANGUAGE_SETTING_KEY).toBe('effective_language');
+    const mirrorOnly = snapshotWithSettings([TIME_ZONE_ROW, { key: 'effective_language', type: 's', value: 'fr' }]);
+    const both = snapshotWithSettings([
+      { key: 'default_language', type: 's', value: 'de' },
+      { key: 'effective_language', type: 's', value: 'fr' },
+    ]);
+    expect(resolveAppLanguage(mirrorOnly)).toEqual({ languageCode: 'fr' });
+    expect(resolveAppLanguage(both)).toEqual({ languageCode: 'de' });
+    expect(effectiveNameLanguage(mirrorOnly, undefined)).toBe('fr');
+    expect(effectiveNameLanguage(both, undefined)).toBe('de');
+    expect(effectiveNameLanguage(both, 'en')).toBe('en');
+    expect(effectiveNameLanguage(snapshotWithSettings([TIME_ZONE_ROW]), undefined)).toBeNull();
   });
 });
