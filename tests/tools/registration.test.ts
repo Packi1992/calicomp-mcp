@@ -332,17 +332,39 @@ const READ_TOOLS_WITH_HOLD_TIMES = ['get_history', 'get_progress', 'get_training
  */
 /**
  * Plan 166-10 (156-GR-MCP-05, 156-IN-MCP-04): the sentence every tool with own names carries.
- * Protocol §1.7 "Which language": without lang and without an app language there is no own-name
- * field, and the app syncs default_language only once the athlete has chosen a language.
+ * GEAENDERT in 166-20 (E-16, protocol 1.50 §1.7 "The app language"): since the app mirrors the
+ * language it uses as effective_language, the app language is unknown only when neither row is
+ * readable; through 166-14 the sentence said the athlete "never chose one in the app".
  */
 const OWN_NAME_APP_LANGUAGE_SENTENCE =
-  'Without lang, own names follow the app language: when it is missing (the athlete never chose ' +
-  'one in the app) or unreadable, no own name appears (get_training_state names the reason in ' +
-  'appLanguageUnavailableReason); call again with lang, for example "de", to see the own names ' +
-  'of that language.';
+  'Without lang, own names follow the app language too: when it is unknown (neither chosen in ' +
+  'the app nor synced by it) or unreadable, no own name appears (get_training_state names the ' +
+  'reason in appLanguageUnavailableReason); call again with lang, for example "de", to see the ' +
+  'own names of that language.';
+
+/**
+ * Plan 166-20 (E-16, protocol 1.50 §1.7 "Which language"): the one sentence every name tool
+ * carries (src/app-language.ts APP_LANGUAGE_NAMES_SENTENCE), the rule of every name field whose
+ * meaning changed in place.
+ */
+const APP_LANGUAGE_NAMES_SENTENCE =
+  'Without lang, every name follows the app language (appLanguage of get_training_state): ' +
+  'exerciseName, typeName, localizedName and the name of a catalog exercise in narrative use the ' +
+  'translation of that language, otherwise English; when the app language is unknown, every name ' +
+  'is English.';
+
+/** Plan 166-20 (E-16): wording of the tool texts through 166-14 that named English as the default without lang. */
+const ENGLISH_DEFAULT_WORDING: readonly RegExp[] = [
+  /default\s+English/i,
+  /English app name/i,
+  /unaffected by\s+lang/i,
+  /localizedName with lang, else nameEn/,
+  /the athlete never chose/i,
+];
 
 const NEW_FIELDS_166: Record<string, readonly string[]> = {
-  get_training_state: ['capabilityBalance', 'dataQuality', 'suspectSetCount', 'byReason', 'newest', 'carries key', 'exerciseNameFreeText'],
+  // Plan 166-20 (166-20-FUND-01): narrativeNames, the own exercise of the sentence as athlete free text.
+  get_training_state: ['capabilityBalance', 'dataQuality', 'suspectSetCount', 'byReason', 'newest', 'carries key', 'exerciseNameFreeText', 'narrativeNames'],
   get_history: ['suspect', 'reps_on_time_station', 'zero_set', 'measured_time_missing', 'CALICOMP_EXPORT_DIR', 'droppedValues', 'not_hh_mm', 'carries key', 'exerciseNameFreeText'],
   // Plan 166-10 (155-IN-06): a foreign time that is not HH:mm is dropped and named.
   get_planned_workouts: ['droppedValues', 'not_hh_mm'],
@@ -373,6 +395,19 @@ const CHANGED_MEANING_166: ReadonlyArray<{ tool: string; field: string; rule: st
   { tool: 'get_stats', field: 'by: "capabilities"', rule: 'only finished sessions, and a set without exerciseId is resolved over its workoutExerciseId' },
   { tool: 'get_adherence', field: 'matched pairs', rule: 'Since phase 166, when several finished sessions of the same template are candidates for one planned occurrence, the session with more live sets wins' },
   { tool: 'get_adherence', field: 'removedWithCompletedSessionCount', rule: 'since phase 166 it runs over every live recurring template root of the snapshot' },
+  // Plan 166-20 (E-16, D-04 in the version E-15): the name fields follow the app language without lang.
+  ...['get_template', 'get_history', 'get_progress', 'get_training_state', 'get_stats', 'get_suggestion'].map((tool) => ({
+    tool,
+    field: 'exerciseName',
+    rule: APP_LANGUAGE_NAMES_SENTENCE,
+  })),
+  ...['get_history', 'get_training_state', 'get_adherence', 'get_planned_workouts'].map((tool) => ({
+    tool,
+    field: 'typeName',
+    rule: APP_LANGUAGE_NAMES_SENTENCE,
+  })),
+  { tool: 'get_exercise_catalog', field: 'localizedName', rule: APP_LANGUAGE_NAMES_SENTENCE },
+  { tool: 'get_training_state', field: 'narrative', rule: APP_LANGUAGE_NAMES_SENTENCE },
 ];
 
 // ---------------------------------------------------------------------------
@@ -761,10 +796,40 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
       expect(description, `${tool} description should name the rule of ${field} since phase 166`).toContain(rule);
     }
     expect(CHANGED_MEANING_166.length, 'NICHT GEMESSEN: fewer changed fields than protocol §1.11 and §1.6 name').toBeGreaterThanOrEqual(6);
-    // Every tool of the table "Existing fields that change meaning" (§1.11) and of §1.6 is covered.
-    expect([...new Set(CHANGED_MEANING_166.map((c) => c.tool))].sort()).toStrictEqual(
-      ['get_adherence', 'get_stats', 'get_training_state'],
-    );
+    // Every tool of the table "Existing fields that change meaning" (§1.11), of §1.6 and of §1.7
+    // (E-16, 166-20) is covered. GEAENDERT in 166-20: through 166-14 the set was the first three.
+    expect([...new Set(CHANGED_MEANING_166.map((c) => c.tool))].sort()).toStrictEqual([
+      'get_adherence',
+      'get_exercise_catalog',
+      'get_history',
+      'get_planned_workouts',
+      'get_progress',
+      'get_stats',
+      'get_suggestion',
+      'get_template',
+      'get_training_state',
+    ]);
+  });
+
+  it('P166 E-16 no tool text names English as the default without lang', () => {
+    const tools = buildRegisteredServer();
+    const names = Object.keys(tools);
+    // NICHT GEMESSEN guard: every registered tool is read.
+    expect(names.length).toBeGreaterThanOrEqual(20);
+    for (const name of names) {
+      const description = tools[name]?.description ?? '';
+      for (const pattern of ENGLISH_DEFAULT_WORDING) {
+        expect(pattern.test(description), `${name} still names English as the default: ${String(pattern)}`).toBe(false);
+      }
+    }
+    // The name tools carry the rule instead, without a dash.
+    for (const name of ['get_template', 'get_history', 'get_progress', 'get_training_state', 'get_stats', 'get_suggestion', 'get_exercise_catalog', 'get_adherence', 'get_planned_workouts']) {
+      expect(tools[name]?.description, name).toContain(APP_LANGUAGE_NAMES_SENTENCE);
+    }
+    expect(APP_LANGUAGE_NAMES_SENTENCE).not.toMatch(/[\u2013\u2014]/);
+    expect(OWN_NAME_APP_LANGUAGE_SENTENCE).not.toMatch(/[\u2013\u2014]/);
+    // get_training_state says how an own exercise stands in narrative.
+    expect(tools.get_training_state?.description).toContain('an own exercise stands there only as its exerciseKey');
   });
 
   // Plan 166-10 (D-19, 156-GR-MCP-05 and 156-IN-MCP-04): without lang the own name follows the
