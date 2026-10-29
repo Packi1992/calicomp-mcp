@@ -79,6 +79,7 @@ import {
   CHAR_PLANNED_WORKOUTS_ARGS,
   CHAR_NEW_PLAN_ARGS,
 } from './characterization-150-fixture.js';
+import { applyDeclaredDeltas } from './characterization-166-deltas.js';
 
 // Teil-Mocks nur für die Handler von get_stats und get_suggestion (156-08): alles außer
 // getSnapshot bzw. fetchSuggestion bleibt die echte Implementierung.
@@ -140,6 +141,10 @@ export const CHAR_156_SNAPSHOT: DecryptedSnapshot = {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PIN_PATH = join(__dirname, 'vectors', 'characterization-150.json');
 const loadPins = (): Record<string, unknown> => JSON.parse(readFileSync(PIN_PATH, 'utf-8'));
+// Phase 166 (plan 166-04, D-04 in the version E-15): the same pins as characterization-150.test.ts,
+// read with the same declared deltas (same pin file, same pin keys), so one delta holds for both
+// fixtures; CHAR_156_SNAPSHOT differs from CHAR_SNAPSHOT only by its name overrides.
+const pinOf = (key: string): unknown => applyDeclaredDeltas('characterization-150.json', key, loadPins()[key]);
 
 describe('P156 SC4 characterization — overrides in the snapshot move no old output', () => {
   it('P156 SC4 the fixture carries overrides for catalog exercises used in templates and sessions', () => {
@@ -160,13 +165,11 @@ describe('P156 SC4 characterization — overrides in the snapshot move no old ou
   });
 
   it('P156 SC4 getHistory old keys unchanged with overrides', () => {
-    const pins = loadPins();
-    expectOldKeysUnchanged(getHistory(CHAR_HISTORY_ARGS, CHAR_156_SNAPSHOT), pins.getHistory);
+    expectOldKeysUnchanged(getHistory(CHAR_HISTORY_ARGS, CHAR_156_SNAPSHOT), pinOf('getHistory'));
   });
 
   it('P156 SC4 getHistory with exercise filter old keys unchanged with overrides', () => {
-    const pins = loadPins();
-    expectOldKeysUnchanged(getHistory(CHAR_HISTORY_ARGS_EXERCISE, CHAR_156_SNAPSHOT), pins.getHistoryExercise);
+    expectOldKeysUnchanged(getHistory(CHAR_HISTORY_ARGS_EXERCISE, CHAR_156_SNAPSHOT), pinOf('getHistoryExercise'));
   });
 
   it('P156 SC4 getTemplate old keys unchanged with overrides', () => {
@@ -179,45 +182,40 @@ describe('P156 SC4 characterization — overrides in the snapshot move no old ou
   });
 
   it('P156 SC4 getTrainingState old keys unchanged with overrides', () => {
-    const pins = loadPins();
     const actual = getTrainingState(
       CHAR_TRAINING_STATE_ARGS,
       { ...CHAR_TRAINING_STATE_DATA, snapshot: CHAR_156_SNAPSHOT },
       CHAR_NOW_MS,
     );
-    expectOldKeysUnchanged(actual, pins.getTrainingState);
-    expect(actual.narrative).toBe((pins.getTrainingState as { narrative: string }).narrative);
+    expectOldKeysUnchanged(actual, pinOf('getTrainingState'));
+    expect(actual.narrative).toBe((pinOf('getTrainingState') as { narrative: string }).narrative);
   });
 
   it('P156 SC4 getStats exercise old keys unchanged with overrides', () => {
-    const pins = loadPins();
     const actual = getStats(
       { by: 'exercise', exerciseId: CHAR_CATALOG_EX_PUSHUP },
       { ...CHAR_STATS_DATA, snapshot: CHAR_156_SNAPSHOT },
     );
-    expectOldKeysUnchanged(actual, pins.getStatsExercise);
+    expectOldKeysUnchanged(actual, pinOf('getStatsExercise'));
   });
 
   it('P156 SC4 getStats muscle old keys unchanged with overrides', () => {
-    const pins = loadPins();
     const actual = getStats({ by: 'muscle', muscle: 'chest' }, { ...CHAR_STATS_DATA, snapshot: CHAR_156_SNAPSHOT });
-    expectOldKeysUnchanged(actual, pins.getStatsMuscle);
+    expectOldKeysUnchanged(actual, pinOf('getStatsMuscle'));
   });
 
   it('P156 SC4 getStats capabilities old keys unchanged with overrides', () => {
-    const pins = loadPins();
     const actual = getStats({ by: 'capabilities' }, { ...CHAR_STATS_DATA, snapshot: CHAR_156_SNAPSHOT });
-    expectOldKeysUnchanged(actual, pins.getStatsCapabilities);
+    expectOldKeysUnchanged(actual, pinOf('getStatsCapabilities'));
   });
 
   it('P156 SC4 getAdherence old keys unchanged with overrides', () => {
-    const pins = loadPins();
     const actual = getAdherence(
       CHAR_ADHERENCE_ARGS,
       { ...CHAR_ADHERENCE_DATA, snapshot: CHAR_156_SNAPSHOT },
       CHAR_NOW_MS,
     );
-    expectOldKeysUnchanged(actual, pins.getAdherence);
+    expectOldKeysUnchanged(actual, pinOf('getAdherence'));
   });
 
   it('P156 SC4 getProgress all exercises old keys unchanged with overrides', () => {

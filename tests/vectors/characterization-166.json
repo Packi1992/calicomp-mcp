@@ -1,0 +1,901 @@
+{
+  "getTrainingState": {
+    "timeZoneId": "Europe/Berlin",
+    "appLanguage": null,
+    "appLanguageUnavailableReason": "setting_not_synced",
+    "asOfDate": "2026-03-10",
+    "parametersSource": "defaults",
+    "parameters": {
+      "toleranceDays": 1,
+      "adherenceWindowWeeks": 4,
+      "consistencyWindowWeeks": 12,
+      "exerciseTrendPoints": 10,
+      "recentExerciseCount": 5,
+      "matchThreshold": 0.542,
+      "uncertainThreshold": 0.454
+    },
+    "consistency": {
+      "currentStreakWeeks": 1,
+      "longestStreakWeeks": 1,
+      "trainingWeekCount": 2,
+      "sessionsThisIsoWeek": 0,
+      "sessionsLast4Weeks": 5,
+      "sessionsPrior4Weeks": 0,
+      "totalCompletedSessions": 5,
+      "sessionsByKind": {
+        "template": 4,
+        "templateless": 1,
+        "quick_challenge": 0
+      }
+    },
+    "muscleBalance": {
+      "last7Days": {
+        "setCounts": {
+          "chest": 8,
+          "triceps": 4,
+          "hamstrings": 2,
+          "lower_back": 1,
+          "quads": 2,
+          "glutes": 1,
+          "abs": 3
+        },
+        "radar": {
+          "chest": 1,
+          "shoulders": 0,
+          "back": 0.125,
+          "legs": 0.625,
+          "core": 0.375,
+          "arms": 0.5
+        }
+      },
+      "last30Days": {
+        "setCounts": {
+          "chest": 9,
+          "triceps": 4.5,
+          "hamstrings": 3,
+          "lower_back": 1.5,
+          "quads": 2,
+          "glutes": 1,
+          "abs": 3
+        },
+        "radar": {
+          "chest": 1,
+          "shoulders": 0,
+          "back": 0.16666666666666666,
+          "legs": 0.6666666666666666,
+          "core": 0.3333333333333333,
+          "arms": 0.5
+        }
+      },
+      "allTime": {
+        "setCounts": {
+          "chest": 9,
+          "triceps": 4.5,
+          "hamstrings": 3,
+          "lower_back": 1.5,
+          "quads": 2,
+          "glutes": 1,
+          "abs": 3
+        },
+        "radar": {
+          "chest": 1,
+          "shoulders": 0,
+          "back": 0.16666666666666666,
+          "legs": 0.6666666666666666,
+          "core": 0.3333333333333333,
+          "arms": 0.5
+        }
+      }
+    },
+    "adherence": {
+      "window": {
+        "from": "2026-02-10",
+        "to": "2026-03-10"
+      },
+      "toleranceDays": 1,
+      "plannedCount": 1,
+      "matchedCount": 1,
+      "uncertainCount": 0,
+      "missedCount": 0,
+      "removedOccurrenceCount": 0,
+      "adherenceRatio": 1,
+      "explanation": "removedOccurrenceCount counts how many planned occurrences the athlete removed from the calendar inside this window. The stored data carries no timestamp for a removal, so it cannot say whether a given occurrence was cancelled ahead of its date on purpose or cleaned up afterward because it was missed — ask the athlete rather than assuming either reading. A planned occurrence that was removed entirely (its whole recurring series, or its only single date) leaves no trace inside this window at all, and this calculation treats it exactly as if nothing had ever been planned on that day."
+    },
+    "recentExercises": [
+      {
+        "exerciseId": "char166-cat-push",
+        "exerciseName": "P166 Push",
+        "metric": "reps",
+        "lastTrainedOn": "2026-03-06",
+        "bestSetDirection": {
+          "label": "up",
+          "firstHalfMean": 8,
+          "secondHalfMean": 25,
+          "relativeChange": 2.125
+        },
+        "sessionTotalDirection": {
+          "label": "up",
+          "firstHalfMean": 8,
+          "secondHalfMean": 47,
+          "relativeChange": 4.875
+        },
+        "rule": "The series is split into a first half and a second half by position (for an odd number of points, the middle point falls into neither half). Null values are excluded when averaging each half. The relative change of the second half's mean versus the first half's mean is computed; a change within a 3% dead band counts as flat, below -3% as down, and above +3% as up. At least four usable (non-null) values are required overall — fewer, or a half with no usable values, yields insufficient-data."
+      },
+      {
+        "exerciseId": "char166-cat-stretch",
+        "exerciseName": "P166 Stretch",
+        "metric": "reps",
+        "lastTrainedOn": "2026-03-06",
+        "bestSetDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "sessionTotalDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "rule": "The series is split into a first half and a second half by position (for an odd number of points, the middle point falls into neither half). Null values are excluded when averaging each half. The relative change of the second half's mean versus the first half's mean is computed; a change within a 3% dead band counts as flat, below -3% as down, and above +3% as up. At least four usable (non-null) values are required overall — fewer, or a half with no usable values, yields insufficient-data."
+      },
+      {
+        "exerciseId": "char166-cat-mixed",
+        "exerciseName": "P166 Mixed",
+        "metric": "reps",
+        "lastTrainedOn": "2026-03-06",
+        "bestSetDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "sessionTotalDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "rule": "The series is split into a first half and a second half by position (for an odd number of points, the middle point falls into neither half). Null values are excluded when averaging each half. The relative change of the second half's mean versus the first half's mean is computed; a change within a 3% dead band counts as flat, below -3% as down, and above +3% as up. At least four usable (non-null) values are required overall — fewer, or a half with no usable values, yields insufficient-data."
+      },
+      {
+        "exerciseId": "char166-cat-hold",
+        "exerciseName": "P166 Hold",
+        "metric": "timeSeconds",
+        "lastTrainedOn": "2026-03-06",
+        "bestSetDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "sessionTotalDirection": {
+          "label": "insufficient-data",
+          "firstHalfMean": null,
+          "secondHalfMean": null,
+          "relativeChange": null
+        },
+        "rule": "The series is split into a first half and a second half by position (for an odd number of points, the middle point falls into neither half). Null values are excluded when averaging each half. The relative change of the second half's mean versus the first half's mean is computed; a change within a 3% dead band counts as flat, below -3% as down, and above +3% as up. At least four usable (non-null) values are required overall — fewer, or a half with no usable values, yields insufficient-data."
+      }
+    ],
+    "personalRecords": {
+      "maxReps": [
+        {
+          "exerciseId": "char166-cat-push",
+          "exerciseName": "P166 Push",
+          "value": 40,
+          "achievedOn": "2026-03-06"
+        },
+        {
+          "exerciseId": "char166-cat-hold",
+          "exerciseName": "P166 Hold",
+          "value": 15,
+          "achievedOn": "2026-03-06"
+        },
+        {
+          "exerciseId": "char166-cat-mixed",
+          "exerciseName": "P166 Mixed",
+          "value": 10,
+          "achievedOn": "2026-03-04"
+        },
+        {
+          "exerciseId": "char166-cat-stretch",
+          "exerciseName": "P166 Stretch",
+          "value": 8,
+          "achievedOn": "2026-03-06"
+        }
+      ],
+      "maxHoldSeconds": [
+        {
+          "exerciseId": "char166-cat-hold",
+          "exerciseName": "P166 Hold",
+          "value": 60,
+          "achievedOn": "2026-03-06"
+        }
+      ]
+    },
+    "narrative": "The current training streak is 1 week. 5 session(s) were logged in the last 4 weeks, versus none in the previous 4-week window. Adherence over the window is 100% (1 of 1 planned sessions matched). P166 Push is trending upward across recent sessions.",
+    "templateFeedbackSeries": [
+      {
+        "templateId": "char166-tpl-main",
+        "templateName": "P166 Template main",
+        "templateStatus": "live",
+        "sessions": [
+          {
+            "sessionId": "char166-s-main",
+            "date": "2026-03-06",
+            "execution": {
+              "value": null,
+              "state": "never_asked",
+              "setLaterAt": null
+            },
+            "feel": {
+              "value": null,
+              "state": "never_asked",
+              "setLaterAt": null
+            },
+            "goalAttainment": {
+              "achievedSets": 3,
+              "totalSets": 5,
+              "basis": "approximation_current_template"
+            },
+            "missedExercises": [
+              {
+                "exerciseId": "char166-cat-push",
+                "exerciseName": null,
+                "exerciseKey": null
+              }
+            ],
+            "hasComment": false
+          }
+        ]
+      },
+      {
+        "templateId": "char166-tpl-d10",
+        "templateName": "P166 Template D-10",
+        "templateStatus": "live",
+        "sessions": [
+          {
+            "sessionId": "char166-s-d10-b",
+            "date": "2026-03-05",
+            "execution": {
+              "value": null,
+              "state": "never_asked",
+              "setLaterAt": null
+            },
+            "feel": {
+              "value": null,
+              "state": "never_asked",
+              "setLaterAt": null
+            },
+            "goalAttainment": {
+              "achievedSets": 3,
+              "totalSets": 3,
+              "basis": "approximation_current_template"
+            },
+            "missedExercises": [],
+            "hasComment": false
+          },
+          {
+            "sessionId": "char166-s-d10-a",
+            "date": "2026-03-05",
+            "execution": {
+              "value": null,
+              "state": "never_asked",
+              "setLaterAt": null
+            },
+            "feel": {
+              "value": null,
+              "state": "never_asked",
+              "setLaterAt": null
+            },
+            "goalAttainment": {
+              "achievedSets": 0,
+              "totalSets": 1,
+              "basis": "approximation_current_template"
+            },
+            "missedExercises": [
+              {
+                "exerciseId": "char166-cat-push",
+                "exerciseName": null,
+                "exerciseKey": null
+              }
+            ],
+            "hasComment": false
+          }
+        ]
+      },
+      {
+        "templateId": "char166-tpl-in02",
+        "templateName": "P166 Template IN-02",
+        "templateStatus": "live",
+        "sessions": [
+          {
+            "sessionId": "char166-s-in02",
+            "date": "2026-03-04",
+            "execution": {
+              "value": null,
+              "state": "never_asked",
+              "setLaterAt": null
+            },
+            "feel": {
+              "value": null,
+              "state": "never_asked",
+              "setLaterAt": null
+            },
+            "goalAttainment": {
+              "achievedSets": 1,
+              "totalSets": 1,
+              "basis": "approximation_current_template"
+            },
+            "missedExercises": [],
+            "hasComment": false
+          }
+        ]
+      }
+    ],
+    "foreignSport": {
+      "available": false,
+      "reason": "server_without_foreign_sport",
+      "asOfDate": "2026-03-10",
+      "loadApproximation": {
+        "metric": "intensity_x_minutes",
+        "isApproximation": true,
+        "explanation": "intensityMinutes is a rough approximation, not a measurement: for each foreign sport activity the athlete's own intensity rating (1 = very easy to 5 = all out) is multiplied by its duration in minutes, and the products are summed. It is self-assessed and says nothing about physiological load (no heart rate, pace, power or recovery data), and it must not be compared with or added to the strength volume of template trainings (sets, repetitions, kilograms). An activity whose intensity could not be read is counted in activitiesWithoutIntensity instead of being added as zero."
+      }
+    }
+  },
+  "getStatsExercise": {
+    "by": "exercise",
+    "exerciseId": "char166-cat-push",
+    "bestE1rm": null,
+    "totalVolume": 0,
+    "avgVolumePerSession": 0,
+    "setCount": 11,
+    "sessionCount": 6,
+    "firstSessionDate": "2026-02-20",
+    "lastSessionDate": "2026-03-08",
+    "trend": {
+      "firstE1rm": null,
+      "lastE1rm": null,
+      "delta": null,
+      "points": [
+        {
+          "date": "2026-02-20",
+          "sessionId": "char166-s-old",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-05",
+          "sessionId": "char166-s-d10-a",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-05",
+          "sessionId": "char166-s-d10-b",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-06",
+          "sessionId": "char166-s-main",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-07",
+          "sessionId": "char166-s-deleted",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-08",
+          "sessionId": "char166-s-unfinished",
+          "e1rm": null
+        }
+      ]
+    }
+  },
+  "getStatsMuscle": {
+    "by": "muscle",
+    "muscle": "chest",
+    "matchingExerciseIds": [
+      "char166-cat-push"
+    ],
+    "weightedSetCount": 11,
+    "bestE1rm": null,
+    "totalVolume": 0,
+    "avgVolumePerSession": 0,
+    "setCount": 11,
+    "sessionCount": 6,
+    "firstSessionDate": "2026-02-20",
+    "lastSessionDate": "2026-03-08",
+    "trend": {
+      "firstE1rm": null,
+      "lastE1rm": null,
+      "delta": null,
+      "points": [
+        {
+          "date": "2026-02-20",
+          "sessionId": "char166-s-old",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-05",
+          "sessionId": "char166-s-d10-a",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-05",
+          "sessionId": "char166-s-d10-b",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-06",
+          "sessionId": "char166-s-main",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-07",
+          "sessionId": "char166-s-deleted",
+          "e1rm": null
+        },
+        {
+          "date": "2026-03-08",
+          "sessionId": "char166-s-unfinished",
+          "e1rm": null
+        }
+      ]
+    }
+  },
+  "getStatsCapabilities": {
+    "by": "capabilities",
+    "axes": [
+      {
+        "key": "power",
+        "nameEn": "power",
+        "nameDe": "power",
+        "setCount": 13,
+        "weightedSetCount": 6,
+        "sessionCount": 7,
+        "contributingExerciseIds": [
+          "char166-cat-push",
+          "char166-cat-mixed"
+        ],
+        "lastSessionDate": "2026-03-08"
+      },
+      {
+        "key": "mobility",
+        "nameEn": "mobility",
+        "nameDe": "mobility",
+        "setCount": 5,
+        "weightedSetCount": 5,
+        "sessionCount": 3,
+        "contributingExerciseIds": [
+          "char166-cat-stretch",
+          "char166-cat-mixed"
+        ],
+        "lastSessionDate": "2026-03-06"
+      },
+      {
+        "key": "flexibility",
+        "nameEn": "flexibility",
+        "nameDe": "flexibility",
+        "setCount": 3,
+        "weightedSetCount": 1.5,
+        "sessionCount": 2,
+        "contributingExerciseIds": [
+          "char166-cat-stretch"
+        ],
+        "lastSessionDate": "2026-03-06"
+      }
+    ]
+  },
+  "getHistory": {
+    "sessions": [
+      {
+        "id": "char166-s-unfinished",
+        "startTime": 1772956800000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1772956800000,
+        "updatedAt": 1772956800000,
+        "sessionKind": "templateless"
+      },
+      {
+        "id": "char166-s-deleted",
+        "startTime": 1772870400000,
+        "endTime": 1772874000000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1772870400000,
+        "updatedAt": 1772884800000,
+        "deletedAt": 1772884800000,
+        "sessionKind": "templateless"
+      },
+      {
+        "id": "char166-s-main",
+        "startTime": 1772784000000,
+        "endTime": 1772787600000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1772784000000,
+        "updatedAt": 1772784000000,
+        "templateId": "char166-tpl-main",
+        "sessionKind": "template",
+        "templateStatus": "live"
+      },
+      {
+        "id": "char166-s-d10-b",
+        "startTime": 1772704800000,
+        "endTime": 1772708400000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1772704800000,
+        "updatedAt": 1772704800000,
+        "templateId": "char166-tpl-d10",
+        "sessionKind": "template",
+        "templateStatus": "live"
+      },
+      {
+        "id": "char166-s-d10-a",
+        "startTime": 1772697600000,
+        "endTime": 1772701200000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1772697600000,
+        "updatedAt": 1772697600000,
+        "templateId": "char166-tpl-d10",
+        "sessionKind": "template",
+        "templateStatus": "live"
+      },
+      {
+        "id": "char166-s-in02",
+        "startTime": 1772611200000,
+        "endTime": 1772614800000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1772611200000,
+        "updatedAt": 1772611200000,
+        "templateId": "char166-tpl-in02",
+        "sessionKind": "template",
+        "templateStatus": "live"
+      },
+      {
+        "id": "char166-s-old",
+        "startTime": 1771574400000,
+        "endTime": 1771578000000,
+        "isManual": false,
+        "isCorrected": false,
+        "isQuickChallenge": false,
+        "createdAt": 1771574400000,
+        "updatedAt": 1771574400000,
+        "sessionKind": "templateless"
+      }
+    ],
+    "setLogs": [
+      {
+        "id": "char166-sl-push-1",
+        "sessionId": "char166-s-main",
+        "exerciseSource": "CATALOG",
+        "completedReps": 15,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772784300000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772784300000,
+        "updatedAt": 1772784300000,
+        "exerciseId": "char166-cat-push",
+        "workoutExerciseId": "char166-te-push-reps"
+      },
+      {
+        "id": "char166-sl-push-wid-only",
+        "sessionId": "char166-s-main",
+        "exerciseSource": "CATALOG",
+        "completedReps": 9,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772784360000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772784360000,
+        "updatedAt": 1772784360000,
+        "workoutExerciseId": "char166-te-push-reps"
+      },
+      {
+        "id": "char166-sl-push-time-station",
+        "sessionId": "char166-s-main",
+        "exerciseSource": "CATALOG",
+        "completedReps": 40,
+        "completedTimeSeconds": 30,
+        "weightUsed": null,
+        "startedAt": 1772784420000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772784420000,
+        "updatedAt": 1772784420000,
+        "exerciseId": "char166-cat-push",
+        "workoutExerciseId": "char166-te-push-time"
+      },
+      {
+        "id": "char166-sl-push-zero",
+        "sessionId": "char166-s-main",
+        "exerciseSource": "CATALOG",
+        "completedReps": 0,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772784480000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772784480000,
+        "updatedAt": 1772784480000,
+        "exerciseId": "char166-cat-push",
+        "workoutExerciseId": "char166-te-push-reps"
+      },
+      {
+        "id": "char166-sl-push-deleted",
+        "sessionId": "char166-s-main",
+        "exerciseSource": "CATALOG",
+        "completedReps": 25,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772784540000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772784540000,
+        "updatedAt": 1772784540000,
+        "exerciseId": "char166-cat-push",
+        "deletedAt": 1772791200000
+      },
+      {
+        "id": "char166-sl-stretch-1",
+        "sessionId": "char166-s-main",
+        "exerciseSource": "CATALOG",
+        "completedReps": 8,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772784600000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772784600000,
+        "updatedAt": 1772784600000,
+        "exerciseId": "char166-cat-stretch"
+      },
+      {
+        "id": "char166-sl-stretch-2",
+        "sessionId": "char166-s-main",
+        "exerciseSource": "CATALOG",
+        "completedReps": 8,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772784660000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772784660000,
+        "updatedAt": 1772784660000,
+        "exerciseId": "char166-cat-stretch"
+      },
+      {
+        "id": "char166-sl-mixed-1",
+        "sessionId": "char166-s-main",
+        "exerciseSource": "CATALOG",
+        "completedReps": 10,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772784720000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772784720000,
+        "updatedAt": 1772784720000,
+        "exerciseId": "char166-cat-mixed"
+      },
+      {
+        "id": "char166-sl-hold-max",
+        "sessionId": "char166-s-main",
+        "exerciseSource": "CATALOG",
+        "completedReps": 15,
+        "completedTimeSeconds": 50,
+        "weightUsed": null,
+        "startedAt": 1772784780000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772784780000,
+        "updatedAt": 1772784780000,
+        "exerciseId": "char166-cat-hold",
+        "workoutExerciseId": "char166-te-hold-max"
+      },
+      {
+        "id": "char166-sl-hold-reps",
+        "sessionId": "char166-s-main",
+        "exerciseSource": "CATALOG",
+        "completedReps": 12,
+        "completedTimeSeconds": 60,
+        "weightUsed": null,
+        "startedAt": 1772784840000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772784840000,
+        "updatedAt": 1772784840000,
+        "exerciseId": "char166-cat-hold",
+        "workoutExerciseId": "char166-te-hold-reps"
+      },
+      {
+        "id": "char166-sl-hold-time",
+        "sessionId": "char166-s-main",
+        "exerciseSource": "CATALOG",
+        "completedReps": null,
+        "completedTimeSeconds": 45,
+        "weightUsed": null,
+        "startedAt": 1772784900000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772784900000,
+        "updatedAt": 1772784900000,
+        "exerciseId": "char166-cat-hold"
+      },
+      {
+        "id": "char166-sl-push-unfinished",
+        "sessionId": "char166-s-unfinished",
+        "exerciseSource": "CATALOG",
+        "completedReps": 20,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772957100000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772957100000,
+        "updatedAt": 1772957100000,
+        "exerciseId": "char166-cat-push"
+      },
+      {
+        "id": "char166-sl-push-in-deleted-session",
+        "sessionId": "char166-s-deleted",
+        "exerciseSource": "CATALOG",
+        "completedReps": 30,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772870700000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772870700000,
+        "updatedAt": 1772870700000,
+        "exerciseId": "char166-cat-push"
+      },
+      {
+        "id": "char166-sl-stretch-old",
+        "sessionId": "char166-s-old",
+        "exerciseSource": "CATALOG",
+        "completedReps": 6,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1771574700000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1771574700000,
+        "updatedAt": 1771574700000,
+        "exerciseId": "char166-cat-stretch"
+      },
+      {
+        "id": "char166-sl-push-old",
+        "sessionId": "char166-s-old",
+        "exerciseSource": "CATALOG",
+        "completedReps": 11,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1771574760000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1771574760000,
+        "updatedAt": 1771574760000,
+        "exerciseId": "char166-cat-push"
+      },
+      {
+        "id": "char166-sl-d10-few-1",
+        "sessionId": "char166-s-d10-a",
+        "exerciseSource": "CATALOG",
+        "completedReps": 5,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772697900000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772697900000,
+        "updatedAt": 1772697900000,
+        "exerciseId": "char166-cat-push",
+        "workoutExerciseId": "char166-te-d10-push"
+      },
+      {
+        "id": "char166-sl-d10-many-1",
+        "sessionId": "char166-s-d10-b",
+        "exerciseSource": "CATALOG",
+        "completedReps": 10,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772705100000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772705100000,
+        "updatedAt": 1772705100000,
+        "exerciseId": "char166-cat-push",
+        "workoutExerciseId": "char166-te-d10-push"
+      },
+      {
+        "id": "char166-sl-d10-many-2",
+        "sessionId": "char166-s-d10-b",
+        "exerciseSource": "CATALOG",
+        "completedReps": 10,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772705160000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772705160000,
+        "updatedAt": 1772705160000,
+        "exerciseId": "char166-cat-push",
+        "workoutExerciseId": "char166-te-d10-push"
+      },
+      {
+        "id": "char166-sl-d10-many-3",
+        "sessionId": "char166-s-d10-b",
+        "exerciseSource": "CATALOG",
+        "completedReps": 10,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772705220000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772705220000,
+        "updatedAt": 1772705220000,
+        "exerciseId": "char166-cat-push",
+        "workoutExerciseId": "char166-te-d10-push"
+      },
+      {
+        "id": "char166-sl-in02-1",
+        "sessionId": "char166-s-in02",
+        "exerciseSource": "CATALOG",
+        "completedReps": 10,
+        "completedTimeSeconds": null,
+        "weightUsed": null,
+        "startedAt": 1772611500000,
+        "measuredTimeSeconds": null,
+        "createdAt": 1772611500000,
+        "updatedAt": 1772611500000,
+        "exerciseId": "char166-cat-mixed",
+        "workoutExerciseId": "char166-te-in02-mixed"
+      }
+    ],
+    "matchingSessions": 7,
+    "truncated": false,
+    "foreignActivities": null,
+    "matchingForeignActivities": 0,
+    "foreignActivitiesTruncated": false,
+    "foreignUnavailableReason": "server_without_foreign_sport"
+  },
+  "getAdherence": {
+    "window": {
+      "from": "2026-03-02",
+      "to": "2026-03-08"
+    },
+    "toleranceDays": 1,
+    "plannedCount": 1,
+    "matchedCount": 1,
+    "missedCount": 0,
+    "uncertainCount": 0,
+    "removedOccurrenceCount": 0,
+    "adherenceRatio": 1,
+    "matches": [
+      {
+        "date": "2026-03-05",
+        "rootId": "char166-pw-d10",
+        "templateId": "char166-tpl-d10",
+        "sessionId": "char166-s-d10-a",
+        "sessionDate": "2026-03-05",
+        "dateDistanceDays": 0,
+        "via": "templateId",
+        "similarity": null,
+        "confidence": "matched"
+      }
+    ],
+    "missed": [],
+    "unplannedSessionIds": [
+      "char166-s-main",
+      "char166-s-d10-b",
+      "char166-s-in02"
+    ],
+    "explanation": "removedOccurrenceCount counts how many planned occurrences the athlete removed from the calendar inside this window. The stored data carries no timestamp for a removal, so it cannot say whether a given occurrence was cancelled ahead of its date on purpose or cleaned up afterward because it was missed — ask the athlete rather than assuming either reading. A planned occurrence that was removed entirely (its whole recurring series, or its only single date) leaves no trace inside this window at all, and this calculation treats it exactly as if nothing had ever been planned on that day.",
+    "removedWithCompletedSessionCount": 0,
+    "removedWithCompletedSessionDates": [],
+    "removedWithCompletedSessionExplanation": "removedWithCompletedSessionCount counts the dates in this window that stand in the removed dates of a recurring template appointment although a finished session of the same template lies on that calendar day. Until the app fix of phase 155 the app wrote such a date when the athlete completed a series appointment, so these dates are included in removedOccurrenceCount although they were done, not cancelled. removedOccurrenceCount itself is unchanged; read these dates as completed rather than cancelled.",
+    "foreignSport": {
+      "available": false,
+      "reason": "server_without_foreign_sport",
+      "explanation": "A planned foreign sport appointment counts as fulfilled when an activity of the same type, compared by type id and never by name, is recorded on the same calendar day. One activity fulfils at most one appointment. An appointment today without an activity is upcoming until the day ends and counts as missed from the next day on. fulfilmentRatio is fulfilled divided by fulfilled plus missed; upcoming and cancelled appointments are not in the denominator. These numbers are separate from the template adherence fields (plannedCount, matchedCount and the others), which count template trainings only; toleranceDays does not apply to foreign sport."
+    }
+  }
+}

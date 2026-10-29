@@ -72,6 +72,7 @@ import {
   CHAR_PLANNED_WORKOUTS_ARGS,
   CHAR_NEW_PLAN_ARGS,
 } from './characterization-150-fixture.js';
+import { applyDeclaredDeltas } from './characterization-166-deltas.js';
 
 // ---------------------------------------------------------------------------
 // Fixture: CHAR_SNAPSHOT plus Fremddaten (feste Ids, feste Zeitstempel).
@@ -230,6 +231,9 @@ export function collectForeignOutputs(): Record<string, unknown> {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PIN_PATH = join(__dirname, 'vectors', 'characterization-150.json');
 const loadPins = (): Record<string, unknown> => JSON.parse(readFileSync(PIN_PATH, 'utf-8'));
+// Phase 166 (plan 166-04, D-04 in the version E-15): pins of get_training_state, get_stats,
+// get_history and get_adherence are read with their declared deltas applied (pin files unchanged).
+const pinOf = (key: string): unknown => applyDeclaredDeltas('characterization-150.json', key, loadPins()[key]);
 
 describe('P155 SC2 characterization — foreign data moves no old number', () => {
   it('P155 SC2 the fixture carries foreign data on template and session days', () => {
@@ -245,13 +249,11 @@ describe('P155 SC2 characterization — foreign data moves no old number', () =>
   });
 
   it('P155 SC2 getHistory old keys unchanged with foreign data', () => {
-    const pins = loadPins();
-    expectOldKeysUnchanged(getHistory(CHAR_HISTORY_ARGS, CHAR_155_SNAPSHOT), pins.getHistory);
+    expectOldKeysUnchanged(getHistory(CHAR_HISTORY_ARGS, CHAR_155_SNAPSHOT), pinOf('getHistory'));
   });
 
   it('P155 SC2 getHistory with exercise filter old keys unchanged with foreign data', () => {
-    const pins = loadPins();
-    expectOldKeysUnchanged(getHistory(CHAR_HISTORY_ARGS_EXERCISE, CHAR_155_SNAPSHOT), pins.getHistoryExercise);
+    expectOldKeysUnchanged(getHistory(CHAR_HISTORY_ARGS_EXERCISE, CHAR_155_SNAPSHOT), pinOf('getHistoryExercise'));
   });
 
   it('P155 SC2 getTemplate old keys unchanged with foreign data', () => {
@@ -264,45 +266,40 @@ describe('P155 SC2 characterization — foreign data moves no old number', () =>
   });
 
   it('P155 SC2 getTrainingState old keys unchanged with foreign data', () => {
-    const pins = loadPins();
     const actual = getTrainingState(
       CHAR_TRAINING_STATE_ARGS,
       { ...CHAR_TRAINING_STATE_DATA, snapshot: CHAR_155_SNAPSHOT },
       CHAR_NOW_MS,
     );
-    expectOldKeysUnchanged(actual, pins.getTrainingState);
-    expect(actual.narrative).toBe((pins.getTrainingState as { narrative: string }).narrative);
+    expectOldKeysUnchanged(actual, pinOf('getTrainingState'));
+    expect(actual.narrative).toBe((pinOf('getTrainingState') as { narrative: string }).narrative);
   });
 
   it('P155 SC2 getStats exercise old keys unchanged with foreign data', () => {
-    const pins = loadPins();
     const actual = getStats(
       { by: 'exercise', exerciseId: CHAR_CATALOG_EX_PUSHUP },
       { ...CHAR_STATS_DATA, snapshot: CHAR_155_SNAPSHOT },
     );
-    expectOldKeysUnchanged(actual, pins.getStatsExercise);
+    expectOldKeysUnchanged(actual, pinOf('getStatsExercise'));
   });
 
   it('P155 SC2 getStats muscle old keys unchanged with foreign data', () => {
-    const pins = loadPins();
     const actual = getStats({ by: 'muscle', muscle: 'chest' }, { ...CHAR_STATS_DATA, snapshot: CHAR_155_SNAPSHOT });
-    expectOldKeysUnchanged(actual, pins.getStatsMuscle);
+    expectOldKeysUnchanged(actual, pinOf('getStatsMuscle'));
   });
 
   it('P155 SC2 getStats capabilities old keys unchanged with foreign data', () => {
-    const pins = loadPins();
     const actual = getStats({ by: 'capabilities' }, { ...CHAR_STATS_DATA, snapshot: CHAR_155_SNAPSHOT });
-    expectOldKeysUnchanged(actual, pins.getStatsCapabilities);
+    expectOldKeysUnchanged(actual, pinOf('getStatsCapabilities'));
   });
 
   it('P155 SC2 getAdherence old keys unchanged with foreign data', () => {
-    const pins = loadPins();
     const actual = getAdherence(
       CHAR_ADHERENCE_ARGS,
       { ...CHAR_ADHERENCE_DATA, snapshot: CHAR_155_SNAPSHOT },
       CHAR_NOW_MS,
     );
-    expectOldKeysUnchanged(actual, pins.getAdherence);
+    expectOldKeysUnchanged(actual, pinOf('getAdherence'));
   });
 
   it('P155 SC2 getProgress all exercises old keys unchanged with foreign data', () => {
@@ -342,7 +339,7 @@ if (!process.env.CHAR_155_PIN_GENERATE) {
       const actual = JSON.parse(JSON.stringify(collectForeignOutputs())) as Record<string, unknown>;
       expect(Object.keys(actual)).toEqual(Object.keys(pins));
       for (const tool of Object.keys(pins)) {
-        expect(actual[tool], tool).toEqual(pins[tool]);
+        expect(actual[tool], tool).toEqual(applyDeclaredDeltas('characterization-155.json', tool, pins[tool]));
       }
     });
   });
