@@ -330,6 +330,17 @@ const READ_TOOLS_WITH_HOLD_TIMES = ['get_history', 'get_progress', 'get_training
  * export directory of D-21; the named top-level exerciseId of an exercise_update in
  * get_suggestion, plan 166-08).
  */
+/**
+ * Plan 166-10 (156-GR-MCP-05, 156-IN-MCP-04): the sentence every tool with own names carries.
+ * Protocol §1.7 "Which language": without lang and without an app language there is no own-name
+ * field, and the app syncs default_language only once the athlete has chosen a language.
+ */
+const OWN_NAME_APP_LANGUAGE_SENTENCE =
+  'Without lang, own names follow the app language: when it is missing (the athlete never chose ' +
+  'one in the app) or unreadable, no own name appears (get_training_state names the reason in ' +
+  'appLanguageUnavailableReason); call again with lang, for example "de", to see the own names ' +
+  'of that language.';
+
 const NEW_FIELDS_166: Record<string, readonly string[]> = {
   get_training_state: ['capabilityBalance', 'dataQuality', 'suspectSetCount', 'byReason', 'newest', 'carries key'],
   get_history: ['suspect', 'reps_on_time_station', 'zero_set', 'measured_time_missing', 'CALICOMP_EXPORT_DIR', 'droppedValues', 'not_hh_mm', 'carries key'],
@@ -751,6 +762,17 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     expect([...new Set(CHANGED_MEANING_166.map((c) => c.tool))].sort()).toStrictEqual(
       ['get_adherence', 'get_stats', 'get_training_state'],
     );
+  });
+
+  // Plan 166-10 (D-19, 156-GR-MCP-05 and 156-IN-MCP-04): without lang the own name follows the
+  // app language (protocol §1.7 "Which language"); when that setting is missing (never chosen) or
+  // unreadable, every tool with own names says so and how to get them, instead of leaving the
+  // own names out without a word.
+  it.each([
+    'get_template', 'get_history', 'get_progress', 'get_training_state', 'get_stats', 'get_suggestion', 'get_exercise_catalog',
+  ] as const)('P166 GR-MCP-05 %s explains that without lang a missing or unreadable app language leaves own names out', (name) => {
+    const description = buildRegisteredServer()[name]?.description ?? '';
+    expect(description).toContain(OWN_NAME_APP_LANGUAGE_SENTENCE);
   });
 
   it.each(['get_template', 'get_suggestion', 'get_exercise_catalog'] as const)(

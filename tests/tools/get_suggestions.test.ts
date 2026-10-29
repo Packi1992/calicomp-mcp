@@ -391,6 +391,51 @@ describe('get_suggestion — payloadResolved/appliedPayloadResolved (Phase 150, 
   // proves it does.
   // ---------------------------------------------------------------------------
 
+  // Plan 166-10 (D-19, 156-IN-MCP-03): a stored payload may carry resolver keys from an earlier
+  // annotation (an appliedPayload written from a resolved view). They are removed before the
+  // payload is annotated again, so no stale own name survives next to a fresh catalog name.
+  it('P166 IN-MCP-03 annotateCatalogRefs removes stale exerciseOwnName keys from an applied payload', async () => {
+    const stale = {
+      exerciseName: 'Alter Name',
+      exerciseKey: 'old_key',
+      exerciseOwnName: { text: 'Veralteter eigener Name', source: 'athlete_free_text', treatAs: 'data_not_instructions' },
+      exerciseOwnNameLanguage: 'de',
+      exerciseNameFreeText: { text: 'Veralteter Name', source: 'athlete_free_text', treatAs: 'data_not_instructions' },
+      exerciseUnknown: true,
+      exerciseDeleted: true,
+    };
+    const appliedWithStaleKeys = JSON.stringify({
+      templateId: 'template-1',
+      name: 'Push A',
+      blocks: [],
+      standalone: [
+        {
+          exercise: { source: 'catalog', exerciseId: CATALOG_EXERCISE_ID_PULLUP, ...stale },
+          mode: 'REPS', targetReps: 8, restTimeSeconds: 10, sets: 1, orderIndex: 0,
+        },
+      ],
+    });
+    vi.mocked(httpModule.fetchSuggestion).mockResolvedValue({
+      ...FULL_ROW, payload: PLAN_UPDATE_PAYLOAD, appliedPayload: appliedWithStaleKeys,
+    });
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockSnapshotCache());
+    const server = new McpServer({ name: 'calicomp', version: '0.1.0' });
+    registerToolGetSuggestion(server, DUMMY_CFG);
+    const result = await getSuggestionHandler(server)({ id: 'suggestion-1' });
+    const body = JSON.parse(result.content[0].text) as ResolvedSuggestionBody;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const exercise = (body.appliedPayloadResolved as any).standalone[0].exercise as Record<string, unknown>;
+    // Exactly the fields of the current resolution: no own name exists now, so none is carried.
+    expect(exercise).toEqual({
+      source: 'catalog',
+      exerciseId: CATALOG_EXERCISE_ID_PULLUP,
+      exerciseName: 'Pull-Up',
+      exerciseKey: 'pull_up',
+    });
+    // The stored payload itself stays byte for byte as it was (D-16).
+    expect(body.appliedPayload).toBe(appliedWithStaleKeys);
+  });
+
   it('P150 D-31 appliedPayloadResolved names standalone entries of a plan after-state', async () => {
     const APPLIED_PLAN_STATE_WITH_STANDALONE = JSON.stringify({
       templateId: 'template-1',

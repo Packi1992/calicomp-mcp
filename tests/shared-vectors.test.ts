@@ -587,6 +587,26 @@ describe('shared coach-planning vector corpus', () => {
     };
   }
 
+  // Plan 166-10 (D-19, 156-GR-MCP-07): the row key of a cipher vector comes from the vector's
+  // INPUT (its ciphertext, decrypted), never from expectedDecoded — otherwise a decoder that
+  // swapped exerciseId and languageCode would still meet a key built from the expectation.
+  it('P166 GR-MCP-07 the corpus test derives clientLocalId from the input not from the expectation', () => {
+    let checked = 0;
+    for (const vector of [...corpus.exerciseNameOverrideCipher, ...corpus.exerciseNameOverrideCipherV2]) {
+      const plain = JSON.parse(decrypt(vector.ciphertextJson, vector.keyB64)) as { exerciseId: string; languageCode: string };
+      const fromInput = `${plain.exerciseId}:${plain.languageCode}`;
+      expect(overrideRowFromVector(vector).clientLocalId, vector.name).toBe(fromInput);
+      // Planted control: a tampered expectation must not move the key.
+      const tampered = {
+        ...vector,
+        expectedDecoded: { ...vector.expectedDecoded, exerciseId: '00000000-0000-4000-8000-000000000000', languageCode: 'xx' },
+      };
+      expect(overrideRowFromVector(tampered).clientLocalId, vector.name).toBe(fromInput);
+      checked += 1;
+    }
+    expect(checked, 'NICHT GEMESSEN: no cipher vector of exerciseNameOverride').toBeGreaterThanOrEqual(4);
+  });
+
   describe('exerciseNameOverrideCipher vectors', () => {
     it('P156 exerciseNameOverrideCipher section is non-empty', () => {
       expect(corpus.exerciseNameOverrideCipher.length).toBeGreaterThan(0);
