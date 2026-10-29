@@ -615,13 +615,29 @@ describe('propose_plan_update — G-136-R2-7a Task 2: fail-closed invariant guar
 // ---------------------------------------------------------------------------
 
 describe('propose_plan_update — block ops (166-08, D-12)', () => {
+  // The fixture's template and block ids are not RFC 4122 UUIDs (variant nibble c/d), which the
+  // schema's UUID_STRING refuses; the app writes random v4 ids. This block therefore runs the
+  // Push Day template under valid ids, every other field of the fixture unchanged.
+  const PUSH_TEMPLATE_ID = '16608000-0000-4000-8000-000000000001';
+  const PUSH_BLOCK_ID = '16608000-0000-4000-8000-000000000011';
+  const remap = (value: unknown): unknown => {
+    if (value === TEMPLATE_ID_PUSH) return PUSH_TEMPLATE_ID;
+    if (value === BLOCK_ID_PUSH_A) return PUSH_BLOCK_ID;
+    if (Array.isArray(value)) return value.map(remap);
+    if (value !== null && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, remap(v)]));
+    }
+    return value;
+  };
+  const pushSnapshot = remap(mockSnapshot) as DecryptedSnapshot;
+
   beforeEach(() => {
-    vi.mocked(cacheModule.getSnapshot).mockResolvedValue(MOCK_CACHE);
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, snapshot: pushSnapshot });
     vi.mocked(httpModule.postSuggest).mockReset();
   });
 
   const BLOCK_OPS = [
-    { op: 'updateBlock', blockId: BLOCK_ID_PUSH_A, rounds: 4 },
+    { op: 'updateBlock', blockId: PUSH_BLOCK_ID, rounds: 4 },
     {
       op: 'addBlock',
       rounds: 3,
@@ -654,7 +670,7 @@ describe('propose_plan_update — block ops (166-08, D-12)', () => {
     const handler = getHandler(server);
 
     const args = ProposePlanUpdateSchema.parse({
-      templateId: TEMPLATE_ID_PUSH,
+      templateId: PUSH_TEMPLATE_ID,
       rationale: 'one more round and a finisher block',
       newExercises: [{ tempId: 't-hollow', name: 'Hollow Hold Variant', mode: 'TIME', usesWeight: false }],
       ops: BLOCK_OPS,
@@ -665,7 +681,8 @@ describe('propose_plan_update — block ops (166-08, D-12)', () => {
     expect(httpModule.postSuggest).toHaveBeenCalledTimes(1);
     const [body] = vi.mocked(httpModule.postSuggest).mock.calls[0];
     expect(body.type).toBe('plan_update');
-    expect(body.planHash).toBe(computePlanHash(TEMPLATE_ID_PUSH, mockSnapshot));
+    expect(body.planHash).toBe(computePlanHash(PUSH_TEMPLATE_ID, pushSnapshot));
+    expect(body.planHash).not.toBe(computePlanHash(PUSH_TEMPLATE_ID, mockSnapshot));
     const payload = JSON.parse(body.payload) as { ops: unknown[]; newExercises: { tempId: string }[] };
     expect(payload.ops).toStrictEqual(BLOCK_OPS);
     expect(payload.newExercises.map((e) => e.tempId)).toStrictEqual(['t-hollow']);
@@ -673,7 +690,7 @@ describe('propose_plan_update — block ops (166-08, D-12)', () => {
 
   it('P166 a deduped tempId inside addBlock is rewritten to the catalog exercise', () => {
     const args = ProposePlanUpdateSchema.parse({
-      templateId: TEMPLATE_ID_PUSH,
+      templateId: PUSH_TEMPLATE_ID,
       rationale: 'dedupe inside a new block',
       newExercises: [{ tempId: 't-push', name: '  PUSH-UP  ', mode: 'REPS', usesWeight: false }],
       ops: [
