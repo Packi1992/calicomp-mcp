@@ -101,14 +101,15 @@ function compareStrings(a: string, b: string): number {
  * @param from       First day of the window (`YYYY-MM-DD`, inclusive).
  * @param to         Last day of the window (`YYYY-MM-DD`, inclusive) — `asOfDate` in the tool.
  * @param types      The decoded own type rows, for the type fields of `byType`.
- * @param lang       Optional language tag; predefined type names in `lang`, English without it.
+ * @param nameLanguage The effective name language (`lang`, otherwise the app language; protocol
+ *                     1.50 §1.7, E-16); predefined type names in it, English without one.
  */
 export function computeForeignLoadWindow(
   activities: readonly DecryptedForeignActivity[],
   from: string,
   to: string,
   types: DecryptedForeignActivityType[] | undefined,
-  lang: string | undefined,
+  nameLanguage: string | null | undefined,
 ): ForeignLoadWindow {
   const total = emptyCounters();
   const perType = new Map<string, Counters>();
@@ -128,7 +129,7 @@ export function computeForeignLoadWindow(
     const c = perType.get(typeId)!;
     return {
       typeId,
-      ...resolveForeignType(typeId, lang, types),
+      ...resolveForeignType(typeId, nameLanguage, types),
       activityCount: c.activityCount,
       totalMinutes: c.totalMinutes,
       intensityMinutes: c.intensityMinutes,

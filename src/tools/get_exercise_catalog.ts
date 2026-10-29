@@ -2,7 +2,9 @@
  * get_exercise_catalog — exercise catalog read tool.
  *
  * Returns the full exercise catalog from cache (populated by the unauthenticated
- * GET /api/exercises endpoint). Optionally localizes names via the `lang` param;
+ * GET /api/exercises endpoint). Localizes names (`localizedName`) in the effective language:
+ * the `lang` param, otherwise the app language (Phase 166, gap plan 166-20, E-16, protocol 1.50
+ * §1.7 "Which language"); without either the catalog array comes back unchanged;
  * always includes `muscleGroups[].key` for cross-referencing with `get_stats { by: 'muscle' }`.
  *
  * Own exercises (Phase 164, CRYPT-01; protocol 1.45 §1.9): the athlete's own exercises stand in
@@ -16,12 +18,13 @@
  * Phase 156 (D-10, D-17; protocol §1.7 "Which language" and "Tool outputs"): an entry of a
  * curated catalog exercise (its key does not start with `user_exercise:`) that has a live
  * override (`snapshot.exerciseNameOverrides`) in the EFFECTIVE language — `lang`, otherwise
- * the app language `default_language` (`resolveAppLanguage`), exact code equality — and that
+ * the app language (`effectiveNameLanguage`: `default_language`, otherwise the device fact
+ * `effective_language`), exact code equality — and that
  * override carries an own name (not a version-2 `name: null`, D-22) gets two new keys by
  * conditional spread: `ownName`, the own name inside the free-text envelope
  * (`wrapFreeText`, data, never instructions), and `ownNameLanguage`, that override's language.
  * Without an override in that language the entry, and without any such entry the whole
- * result (the unchanged catalog array when `lang` is absent), stays byte-identical to before
+ * result (the unchanged catalog array without an effective language), stays byte-identical to before
  * Phase 156. The own description is never output (D-10 names the name only); an own name is
  * athlete free text and is never logged (T-156-70).
  *
@@ -45,15 +48,16 @@ import {
   ownNameLanguageFor,
 } from '../exercise-names.js';
 import { wrapFreeText } from '../foreign-types.js';
+import { effectiveNameLanguage } from '../app-language.js';
 import type { AthleteFreeText, CatalogExercise, DecryptedSnapshot } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/** Exercise from the catalog with an optional localized name added when `lang` is provided. */
+/** Exercise from the catalog with an optional localized name added when there is an effective language (E-16). */
 export interface CatalogExerciseWithLocale extends CatalogExercise {
-  /** Localized display name for the requested language; falls back to `nameEn` when absent. */
+  /** Display name in the effective language (`lang`, otherwise the app language); falls back to `nameEn`. */
   localizedName?: string;
   /**
    * Phase 156 (D-10): the athlete's own name of this catalog exercise in the effective
@@ -101,21 +105,22 @@ function ownNamesFor(
 /**
  * Return the exercise catalog, optionally with a localized name field.
  *
- * Algorithm:
- *   - If `args.lang` is not provided: return the catalog array unchanged.
+ * Algorithm (protocol 1.50 §1.7 "Which language", E-16):
+ *   - The effective language is `args.lang`, otherwise the app language of `snapshot`.
+ *   - Without an effective language: return the catalog array unchanged.
  *     (muscleGroups[].key is always present — no projection needed.)
- *   - If `args.lang` is provided: for each exercise, look up the matching
- *     translation in `ex.translations` by `languageCode === args.lang`.
+ *   - With one: for each exercise, look up the matching translation in
+ *     `ex.translations` by `languageCode === effective language`.
  *     Add `localizedName = translation.name ?? ex.nameEn` (fallback to English
- *     when no translation exists for the requested language).
+ *     when no translation exists for that language).
  *   - `muscleGroups` are always returned in full (key + translations[] + id) so the
  *     LLM can cross-reference `muscleGroups[].key` with `get_stats { by: 'muscle' }`.
  *
  * @param args     Validated args (GetExerciseCatalogSchema — optional lang BCP-47 tag).
  * @param catalog  Cached exercise catalog array from the cache layer.
  * @param snapshot Optional decrypted snapshot (Phase 156) — its `exerciseNameOverrides` and
- *                 `default_language` decide `ownName`/`ownNameLanguage`. Omitted, the result
- *                 is exactly the pre-156 one.
+ *                 its app language decide `ownName`/`ownNameLanguage` and, without `lang`,
+ *                 `localizedName` (166-20, E-16). Omitted, the result is exactly the pre-156 one.
  */
 export function getExerciseCatalog(
   args: { lang?: string },
@@ -123,14 +128,16 @@ export function getExerciseCatalog(
   snapshot?: DecryptedSnapshot,
 ): CatalogExerciseWithLocale[] {
   let entries: CatalogExerciseWithLocale[];
-  if (!args.lang) {
-    // No localization requested — return catalog as-is.
+  // Phase 166, gap plan 166-20 (E-16): lang, otherwise the app language.
+  const nameLanguage = snapshot ? effectiveNameLanguage(snapshot, args.lang) : (args.lang ?? null);
+  if (!nameLanguage) {
+    // No effective language — return catalog as-is.
     // CatalogExercise already carries muscleGroups[] including .key.
     entries = catalog as CatalogExerciseWithLocale[];
   } else {
-    // Localization requested: add localizedName with fallback to nameEn.
+    // An effective language: add localizedName with fallback to nameEn.
     entries = catalog.map(ex => {
-      const translation = ex.translations.find(t => t.languageCode === args.lang);
+      const translation = ex.translations.find(t => t.languageCode === nameLanguage);
       return {
         ...ex,
         localizedName: translation ? translation.name : ex.nameEn,
@@ -139,7 +146,7 @@ export function getExerciseCatalog(
   }
 
   // Phase 166 (plan 166-10, 156-IN-MCP-06): the name of an own exercise is the athlete's free
-  // text; `nameFreeText` carries the shown name (`localizedName` with lang, else `nameEn`) in the
+  // text; `nameFreeText` carries the shown name (`localizedName` with an effective language, else `nameEn`) in the
   // envelope beside the unchanged name fields. Curated entries stay exactly as before.
   if (entries.some((ex) => ex.key.startsWith(USER_EXERCISE_KEY_PREFIX))) {
     entries = entries.map((ex) => {

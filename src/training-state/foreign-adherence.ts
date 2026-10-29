@@ -315,13 +315,14 @@ export function expandForeignRoots(
 /**
  * One entry per `typeId` that has at least one occurrence in the window, sorted by `typeId`
  * (plain string order). The type fields come from `resolveForeignType`: a predefined type as a
- * plain string in `lang` (English without `lang`), an own type in the free-text envelope (also
+ * plain string in the effective name language (`lang`, otherwise the app language; English
+ * without one; protocol 1.50 §1.7, E-16), an own type in the free-text envelope (also
  * when archived), an unknown id with `typeName: null`, `typeUnknown: true` (E-15).
  */
 function buildByType(
   occurrences: readonly ForeignOccurrenceInput[],
   assignment: ForeignAssignment,
-  lang: string | undefined,
+  nameLanguage: string | null | undefined,
   snapshot: DecryptedSnapshot,
 ): ForeignAdherenceByType[] {
   const counters = new Map<string, { planned: number; fulfilled: number; missed: number; upcoming: number }>();
@@ -342,7 +343,7 @@ function buildByType(
     const c = counters.get(typeId)!;
     return {
       typeId,
-      ...resolveForeignType(typeId, lang, snapshot.foreignActivityTypes),
+      ...resolveForeignType(typeId, nameLanguage, snapshot.foreignActivityTypes),
       plannedCount: c.planned,
       fulfilledCount: c.fulfilled,
       missedCount: c.missed,
@@ -364,12 +365,13 @@ function buildByType(
  * complete activity input (tolerance 0, §1.6), and the day rule assigns them.
  *
  * @param args  `from`/`to` — the SAME window as the template adherence; `asOfDate` — the
- *              athlete's today (`toCalendarDay(now, training_timezone_id)`); `lang` — unused
- *              by `get_adherence` (no `lang` parameter, English names).
+ *              athlete's today (`toCalendarDay(now, training_timezone_id)`); `nameLanguage` — the
+ *              effective name language of the type names (`get_adherence` has no `lang` and
+ *              passes the app language; protocol 1.50 §1.7, E-16), English without one.
  * @param data  The decrypted snapshot and the foreign availability of this read.
  */
 export function computeForeignAdherence(
-  args: { from: string; to: string; asOfDate: string; lang?: string },
+  args: { from: string; to: string; asOfDate: string; nameLanguage?: string | null },
   data: { snapshot: DecryptedSnapshot; availability: ForeignSportAvailability },
 ): ForeignAdherenceResult {
   const { from, to, asOfDate } = args;
@@ -419,7 +421,7 @@ export function computeForeignAdherence(
     upcomingCount,
     removedOccurrenceCount: expanded.removed.length,
     fulfilmentRatio: foreignFulfilmentRatio(fulfilledCount, missedCount),
-    byType: buildByType(expanded.occurrences, assignment, args.lang, snapshot),
+    byType: buildByType(expanded.occurrences, assignment, args.nameLanguage, snapshot),
     fulfilled: assignment.fulfilled,
     missed: assignment.missed,
     upcoming: assignment.upcoming,

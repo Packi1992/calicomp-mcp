@@ -68,7 +68,7 @@ import {
   type ExerciseProgressMetric,
   type DirectionOutcome,
 } from '../training-state/exercise-progress.js';
-import { buildNarrative } from '../training-state/narrative.js';
+import { buildNarrative, chooseTrendingExercise } from '../training-state/narrative.js';
 import { computeTemplateFeedbackSeries, type TemplateFeedbackSeries } from '../training-state/template-feedback-series.js';
 import { computeForeignLoadWindow, FOREIGN_LOAD_EXPLANATION, type ForeignLoadWindow } from '../training-state/foreign-load.js';
 import { computeForeignAdherence } from '../training-state/foreign-adherence.js';
@@ -81,9 +81,14 @@ import {
   type ForeignSportAvailability,
   type ForeignUnavailableReason,
 } from '../read-guard.js';
-import { createExerciseNameResolver, type ExerciseNameFields, type ExerciseNameResolver } from '../exercise-names.js';
-import { resolveAppLanguage, type AppLanguageUnavailableReason } from '../app-language.js';
-import type { DecodeReport, DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
+import {
+  createExerciseNameResolver,
+  USER_EXERCISE_KEY_PREFIX,
+  type ExerciseNameFields,
+  type ExerciseNameResolver,
+} from '../exercise-names.js';
+import { effectiveNameLanguage, resolveAppLanguage, type AppLanguageUnavailableReason } from '../app-language.js';
+import type { AthleteFreeText, DecodeReport, DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -242,6 +247,14 @@ export interface GetTrainingStateResult {
   personalRecords: GetTrainingStatePersonalRecords;
   narrative: string;
   /**
+   * Phase 166, gap plan 166-20 (166-20-FUND-01, protocol 1.50 §1.7 "Tool outputs"): present only
+   * when `narrative` names an own exercise. The sentence then carries its `exerciseKey`; this list
+   * carries `{ ref, name }` with `ref` = that key and `name` = its name in the effective language
+   * as the free-text envelope (data, never instructions). A genuine addition, directly after
+   * `narrative`.
+   */
+  narrativeNames?: NarrativeName[];
+  /**
    * Per-template feedback and goal-attainment series (Phase 151, FB-12, D-27/D-28/D-29) —
    * computed and appended strictly AFTER `narrative` is built (see below), so the narrative
    * never sees it and every field above stays byte-identical to before this field existed.
@@ -307,8 +320,9 @@ export function getTrainingState(
     /**
      * Optional exercise-name resolver (Phase 150, D-16) — the registered handler below
      * always supplies one, built from `catalog`/`snapshot`/`args.lang`. Omitting it keeps
-     * `recentExercises`/`personalRecords` byte-identical to before this plan; it is
-     * NEVER consulted while building `narrative` (D-03 — see below).
+     * `recentExercises`/`personalRecords` byte-identical to before this plan. Since 166-20
+     * (E-16, 166-20-FUND-01) it also names the exercise of `narrative`; without it a resolver
+     * over the same `catalog`/`snapshot`/`args.lang` does that alone.
      */
     nameResolver?: ExerciseNameResolver;
     /**
@@ -417,7 +431,19 @@ export function getTrainingState(
   // corrected in place — records split by the mode the set was trained in, same entry form.
   const personalRecords = computePersonalRecords(snapshot, catalog, timeZoneId);
 
-  // The narrative sees ONLY already-computed numbers — never the snapshot itself (D-18).
+  // Phase 166, gap plan 166-20 (E-16, 166-20-FUND-01, protocol 1.50 §1.7): the name the sentence
+  // inserts — a catalog exercise's name in the effective language (`lang`, otherwise the app
+  // language), a live own exercise's `exerciseKey` (never its free-text name), otherwise the
+  // existing value (an exercise outside the catalog: `null`, then the id).
+  const narrativeNamer = nameResolver ?? createExerciseNameResolver({ catalog, snapshot, lang: args.lang });
+  const narrativeExercises = recentExercises.map((e) => ({
+    exerciseId: e.exerciseId,
+    exerciseName: narrativeNameOf(e.exerciseId, e.exerciseName, narrativeNamer),
+    lastTrainedOn: e.lastTrainedOn,
+    direction: e.bestSetDirection.label,
+  }));
+
+  // The narrative sees ONLY already-computed numbers and names — never the snapshot itself (D-18).
   const narrative = buildNarrative({
     currentStreakWeeks: consistency.currentStreakWeeks,
     sessionsLast4Weeks: consistency.sessionsLast4Weeks,
@@ -430,19 +456,16 @@ export function getTrainingState(
             matchedCount: adherence.matchedCount,
             adherenceRatio: adherence.adherenceRatio,
           },
-    recentExercises: recentExercises.map((e) => ({
-      exerciseId: e.exerciseId,
-      exerciseName: e.exerciseName,
-      lastTrainedOn: e.lastTrainedOn,
-      direction: e.bestSetDirection.label,
-    })),
+    recentExercises: narrativeExercises,
   });
+  const narrativeNames = narrativeNamesFor(chooseTrendingExercise(narrativeExercises), narrativeNamer);
 
-  // Phase 150 (D-03/D-16): enrichment happens AFTER the narrative is built, from the
-  // SAME unenriched recentExercises/personalRecords values the narrative already
-  // consumed above — the narrative therefore never sees a resolver-derived name, and
-  // stays byte-identical whether or not `lang` is set. Without a resolver, both stay
-  // byte-identical to before this plan (`nameResolver` is `undefined` in that case).
+  // Phase 150 (D-16): enrichment happens AFTER the narrative is built, from the SAME
+  // unenriched recentExercises/personalRecords values. Since 166-20 (E-16, D-04 in the version
+  // E-15, which replaces 150 D-03's byte-identical sentence) the narrative names its exercise
+  // through the resolver too (`narrativeExercises` above): a catalog exercise in the effective
+  // language, an own exercise only by its key with the name in `narrativeNames`. Without a
+  // resolver, recentExercises and personalRecords stay byte-identical to before this plan.
   const enrichedRecentExercises: GetTrainingStateRecentExercise[] = nameResolver
     ? recentExercises.map((e) => ({ ...e, ...nameResolver.forExerciseId(e.exerciseId) }))
     : recentExercises;
@@ -466,7 +489,14 @@ export function getTrainingState(
   const foreignAdherenceFrom = formatIsoDate(
     plusDays(parseIsoDate(asOfDate), -coachParameters.adherenceWindowWeeks * 7),
   );
-  const foreignSport = buildForeignSport(snapshot, asOfDate, foreignAdherenceFrom, args.lang, foreignAvailability);
+  // Phase 166, gap plan 166-20 (E-16): the type names follow lang, otherwise the app language.
+  const foreignSport = buildForeignSport(
+    snapshot,
+    asOfDate,
+    foreignAdherenceFrom,
+    effectiveNameLanguage(snapshot, args.lang),
+    foreignAvailability,
+  );
 
   // Phase 166 (STAT-03, D-03, D-04 in the version E-15): the capability balance, a genuine
   // addition computed AFTER narrative (protocol §1.11 "Existing fields that change meaning":
@@ -489,11 +519,39 @@ export function getTrainingState(
     recentExercises: enrichedRecentExercises,
     personalRecords: enrichedPersonalRecords,
     narrative,
+    ...(narrativeNames !== null ? { narrativeNames } : {}),
     templateFeedbackSeries,
     foreignSport,
     capabilityBalance,
     dataQuality,
   };
+}
+
+/** One own exercise the sentence `narrative` names by its key (166-20-FUND-01). */
+export interface NarrativeName {
+  /** The `exerciseKey` (`user_exercise:<id>`) the sentence carries. */
+  ref: string;
+  /** The own exercise's name in the effective language, as athlete free text. */
+  name: AthleteFreeText;
+}
+
+/** The name `narrative` inserts for one exercise (protocol 1.50 §1.7, E-16, 166-20-FUND-01). */
+function narrativeNameOf(exerciseId: string, existing: string | null, namer: ExerciseNameResolver): string | null {
+  const fields = namer.forExerciseId(exerciseId);
+  if (fields.exerciseKey === null || fields.exerciseDeleted === true) return existing;
+  if (fields.exerciseKey.startsWith(USER_EXERCISE_KEY_PREFIX)) return fields.exerciseKey;
+  return fields.exerciseName;
+}
+
+/** `narrativeNames` for the exercise the sentence names, or `null` when it names no own exercise. */
+function narrativeNamesFor(
+  chosen: { exerciseId: string; exerciseName: string | null } | null,
+  namer: ExerciseNameResolver,
+): NarrativeName[] | null {
+  if (chosen === null || chosen.exerciseName === null || !chosen.exerciseName.startsWith(USER_EXERCISE_KEY_PREFIX)) return null;
+  const fields = namer.forExerciseId(chosen.exerciseId);
+  if (fields.exerciseNameFreeText === undefined || fields.exerciseKey !== chosen.exerciseName) return null;
+  return [{ ref: chosen.exerciseName, name: fields.exerciseNameFreeText }];
 }
 
 /** A fresh marking object per result (D-16) — never a shared mutable constant. */
@@ -513,11 +571,11 @@ function buildForeignSport(
   snapshot: DecryptedSnapshot,
   asOfDate: string,
   adherenceFrom: string,
-  lang: string | undefined,
+  nameLanguage: string | null,
   availability: ForeignSportAvailability,
 ): TrainingStateForeignSport {
   const adherence = computeForeignAdherence(
-    { from: adherenceFrom, to: asOfDate, asOfDate, lang },
+    { from: adherenceFrom, to: asOfDate, asOfDate, nameLanguage },
     { snapshot, availability },
   );
   if (!adherence.available) {
@@ -531,8 +589,8 @@ function buildForeignSport(
     available: true,
     asOfDate,
     windows: {
-      last7Days: computeForeignLoadWindow(activities, formatIsoDate(plusDays(today, -6)), asOfDate, types, lang),
-      last28Days: computeForeignLoadWindow(activities, formatIsoDate(plusDays(today, -27)), asOfDate, types, lang),
+      last7Days: computeForeignLoadWindow(activities, formatIsoDate(plusDays(today, -6)), asOfDate, types, nameLanguage),
+      last28Days: computeForeignLoadWindow(activities, formatIsoDate(plusDays(today, -27)), asOfDate, types, nameLanguage),
     },
     adherence: {
       window: adherence.window,

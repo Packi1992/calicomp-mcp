@@ -66,6 +66,7 @@ import {
 } from '../read-guard.js';
 import type { DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
 import type { CoachParameters } from '../coach-parameters.js';
+import { effectiveNameLanguage } from '../app-language.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -142,8 +143,9 @@ export function getAdherence(
 
   // Phase 155 (FA-06, protocol §1.6 "It is its own pass"): the foreign pass runs FIRST, over
   // the same window, shares no input with the template passes and writes nothing back.
+  // Phase 166, gap plan 166-20 (E-16): no lang parameter, so the type names follow the app language.
   const foreignSport = computeForeignAdherence(
-    { from, to, asOfDate },
+    { from, to, asOfDate, nameLanguage: effectiveNameLanguage(data.snapshot, undefined) },
     {
       snapshot: data.snapshot,
       availability: data.foreignAvailability ?? foreignSportAvailability(data.snapshot, EMPTY_DECODE_REPORT),

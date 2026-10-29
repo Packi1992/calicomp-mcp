@@ -75,6 +75,7 @@ import type { SessionKind, TemplateStatus } from '../session-kind.js';
 import { createExerciseNameResolver } from '../exercise-names.js';
 import type { ExerciseNameResolver, SetLogExerciseNameFields } from '../exercise-names.js';
 import { resolveForeignType, wrapFreeText } from '../foreign-types.js';
+import { effectiveNameLanguage } from '../app-language.js';
 import type { ForeignTypeFields } from '../foreign-types.js';
 import { suspectMarksFor, type SuspectMark } from '../training-state/suspect-sets.js';
 import type {
@@ -145,7 +146,8 @@ export interface GetHistoryResult {
 
 /**
  * One foreign sport activity in `get_history` (protocol §1.6 "Tool outputs"). The type fields
- * come from `resolveForeignType` (a predefined name as a plain string in `lang`, an own name
+ * come from `resolveForeignType` (a predefined name as a plain string in the effective name
+ * language, `lang`, otherwise the app language, protocol 1.50 §1.7, E-16; an own name
  * in the free-text envelope, an unknown id with `typeUnknown`); `note` is the envelope or
  * `null` — athlete free text never leaves this tool unmarked (D-14).
  */
@@ -357,6 +359,8 @@ function buildForeignActivities(
   }
 
   const { from, to, limit, lang } = args;
+  // Phase 166, gap plan 166-20 (E-16): the type names follow lang, otherwise the app language.
+  const nameLanguage = effectiveNameLanguage(snapshot, lang);
   const inWindow = (snapshot.foreignActivities ?? []).filter(
     (a) => a.performedOn >= from && a.performedOn <= to,
   );
@@ -367,7 +371,7 @@ function buildForeignActivities(
     .map((a) => ({
       id: a.id,
       typeId: a.typeId,
-      ...resolveForeignType(a.typeId, lang, snapshot.foreignActivityTypes),
+      ...resolveForeignType(a.typeId, nameLanguage, snapshot.foreignActivityTypes),
       performedOn: a.performedOn,
       performedTime: a.performedTime,
       durationMinutes: a.durationMinutes,

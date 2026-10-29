@@ -60,6 +60,7 @@ import {
 } from '../read-guard.js';
 import type { ForeignSportAvailability, ForeignUnavailableReason } from '../read-guard.js';
 import { resolveForeignType, wrapFreeText } from '../foreign-types.js';
+import { effectiveNameLanguage } from '../app-language.js';
 import type { ForeignTypeFields } from '../foreign-types.js';
 import { expandForeignRoots } from '../training-state/foreign-adherence.js';
 import type { AthleteFreeText, DecryptedSnapshot, UnreadableRow } from '../types.js';
@@ -144,7 +145,8 @@ export interface GetPlannedWorkoutsResult {
 
 /**
  * One expanded foreign appointment (protocol §1.6). The type fields come from
- * `resolveForeignType` with English names (this tool has no `lang`); `note` is the athlete
+ * `resolveForeignType` in the app language, otherwise English (this tool has no `lang`;
+ * protocol 1.50 §1.7, E-16); `note` is the athlete
  * free-text envelope or `null` (D-14). Deliberately no fulfilment field (E-7).
  */
 export interface ForeignOccurrenceOut extends ForeignTypeFields {
@@ -340,11 +342,13 @@ function buildForeignPlanned(
   }
 
   const types = snapshot.foreignActivityTypes;
+  // Phase 166, gap plan 166-20 (E-16): no lang parameter, so the type names follow the app language.
+  const nameLanguage = effectiveNameLanguage(snapshot, undefined);
   const foreignOccurrences: ForeignOccurrenceOut[] = expanded.occurrences.map((occ) => ({
     date: occ.date,
     rootId: occ.rootId,
     typeId: occ.typeId,
-    ...resolveForeignType(occ.typeId, undefined, types),
+    ...resolveForeignType(occ.typeId, nameLanguage, types),
     scheduledTime: occ.scheduledTime,
     note: wrapFreeText(occ.note),
     isRecurring: occ.isRecurring,
@@ -364,7 +368,7 @@ function buildForeignPlanned(
       return {
         id: root.id,
         typeId: root.typeId,
-        ...resolveForeignType(root.typeId, undefined, types),
+        ...resolveForeignType(root.typeId, nameLanguage, types),
         scheduledDate: formatIsoDate(epochMsToUtcCalDate(root.scheduledDate)),
         scheduledTime: root.scheduledTime,
         note: wrapFreeText(root.note),

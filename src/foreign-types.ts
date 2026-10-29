@@ -56,7 +56,7 @@ export function wrapFreeText(text: string | null | undefined): AthleteFreeText |
 export interface ForeignTypeFields {
   /** The key of a predefined type (`running`, `bouldering`, `cycling`), else `null`. */
   typeKey: string | null;
-  /** Predefined: plain string in `lang`; own: the free-text envelope; unknown: `null`. */
+  /** Predefined: plain string in the effective language (§1.7, E-16); own: the free-text envelope; unknown: `null`. */
   typeName: string | AthleteFreeText | null;
   typeSource: 'builtin' | 'custom' | 'unknown';
   /** An own type whose row carries `deletedAt` (154 D-10). */
@@ -65,9 +65,9 @@ export interface ForeignTypeFields {
   typeUnknown: boolean;
 }
 
-/** `de`, `de-AT`, `de_CH`, … → German; everything else English (the protocol's fallback). */
-function isGerman(lang: string | undefined): boolean {
-  return lang !== undefined && lang.toLowerCase().startsWith('de');
+/** `de`, `de-AT`, `de_CH`, … → German; everything else, and no language, English (the protocol's fallback). */
+function isGerman(nameLanguage: string | null | undefined): boolean {
+  return typeof nameLanguage === 'string' && nameLanguage.toLowerCase().startsWith('de');
 }
 
 /**
@@ -75,21 +75,23 @@ function isGerman(lang: string | undefined): boolean {
  * and built in, so they resolve even when `types` is missing); otherwise the delivered own
  * type rows are searched, archived ones included; otherwise the type is unknown.
  *
- * @param typeId The type id an activity or appointment references.
- * @param lang   Optional language tag of the tool call; no `lang` → English names.
+ * @param typeId       The type id an activity or appointment references.
+ * @param nameLanguage The effective name language of the tool call (`effectiveNameLanguage` in
+ *                     `app-language.ts`: `lang`, otherwise the app language; protocol 1.50 §1.7,
+ *                     E-16); none → English names.
  * @param types  The decoded own type rows (`snapshot.foreignActivityTypes`), or `undefined`
  *               when foreign sport is unavailable — an own type then resolves as unknown.
  */
 export function resolveForeignType(
   typeId: string,
-  lang: string | undefined,
+  nameLanguage: string | null | undefined,
   types: DecryptedForeignActivityType[] | undefined,
 ): ForeignTypeFields {
   const builtin = BUILTIN_BY_ID.get(typeId);
   if (builtin) {
     return {
       typeKey: builtin.key,
-      typeName: isGerman(lang) ? builtin.nameDe : builtin.nameEn,
+      typeName: isGerman(nameLanguage) ? builtin.nameDe : builtin.nameEn,
       typeSource: 'builtin',
       typeArchived: false,
       typeUnknown: false,

@@ -46,6 +46,11 @@ import type { DirectionLabel } from './exercise-progress.js';
 /** One recently trained exercise, narrowed to exactly what the narrative may reference. */
 export interface NarrativeRecentExercise {
   exerciseId: string;
+  /**
+   * The name the sentence inserts, chosen by the caller (protocol 1.50 §1.7, E-16, 166-20-FUND-01):
+   * a catalog exercise's name in the effective language, a live own exercise's `exerciseKey`
+   * (`user_exercise:<id>`, never its free-text name), otherwise `null` (then the id).
+   */
   exerciseName: string | null;
   /** The calendar day (YYYY-MM-DD) of the exercise's most recent session — used only to pick a deterministic exercise when several qualify, never rendered as its own clause. */
   lastTrainedOn: string;
@@ -141,14 +146,12 @@ function adherenceClause(adherence: NarrativeAdherence | null): string {
 }
 
 /**
- * Names ONE recently trained exercise whose direction label is `up`, if any exist — never
- * a verdict on the athlete's training, just a pointer at a series someone might want to
- * look at via `get_progress`. When several qualify, the choice is deterministic: the one
- * with the most recent `lastTrainedOn`, tied broken by `exerciseId` ascending. Returns
- * `null` (no clause) when nothing qualifies — the plan does not require this absence to
- * be named, unlike the streak/adherence clauses above.
+ * The ONE recently trained exercise the progress clause names: direction label `up`; when
+ * several qualify, the one with the most recent `lastTrainedOn`, tied broken by `exerciseId`
+ * ascending; `null` when nothing qualifies. Exported so `get_training_state` knows which
+ * exercise the sentence names (`narrativeNames`, 166-20-FUND-01) without a second rule.
  */
-function progressClause(recentExercises: NarrativeRecentExercise[]): string | null {
+export function chooseTrendingExercise(recentExercises: readonly NarrativeRecentExercise[]): NarrativeRecentExercise | null {
   const trendingUp = recentExercises.filter((e) => e.direction === 'up');
   if (trendingUp.length === 0) return null;
 
@@ -156,7 +159,26 @@ function progressClause(recentExercises: NarrativeRecentExercise[]): string | nu
     if (a.lastTrainedOn !== b.lastTrainedOn) return a.lastTrainedOn < b.lastTrainedOn ? 1 : -1;
     return a.exerciseId.localeCompare(b.exerciseId);
   });
-  const chosen = trendingUp[0];
+  return trendingUp[0];
+}
+
+/**
+ * Names ONE recently trained exercise whose direction label is `up`, if any exist — never
+ * a verdict on the athlete's training, just a pointer at a series someone might want to
+ * look at via `get_progress` (the choice: `chooseTrendingExercise`). Returns `null` (no
+ * clause) when nothing qualifies — the plan does not require this absence to be named,
+ * unlike the streak/adherence clauses above.
+ *
+ * Since Phase 166, gap plan 166-20 (E-16, protocol 1.50 §1.7; D-04 in the version E-15, which
+ * replaces 150 D-03's byte-identical sentence): the inserted name follows the effective
+ * language of the tool call (the caller passes the catalog name in it), the prose stays
+ * English. An own exercise is inserted only as its `exerciseKey`, never as its name
+ * (166-20-FUND-01: no athlete free text unwrapped in a text field); its name travels in the
+ * envelope of `narrativeNames` beside the sentence.
+ */
+function progressClause(recentExercises: NarrativeRecentExercise[]): string | null {
+  const chosen = chooseTrendingExercise(recentExercises);
+  if (chosen === null) return null;
   const name = chosen.exerciseName ?? chosen.exerciseId;
   return `${name} is trending upward across recent sessions.`;
 }
