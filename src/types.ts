@@ -980,6 +980,36 @@ export interface NewExerciseDef {
   // Phase 134 (G-134-12): widened to `| null` — see schemas.ts's NewExerciseDefSchema
   // KDoc for why.
   description?: string | null;
+  // Phase 166 (plan 166-08, D-11): protocol §2.7, each absent unless set, never empty.
+  translations?: ExerciseTranslationInput[];
+  muscleGroups?: MuscleLinkInput[];
+  capabilities?: CapabilityLinkInput[];
+  equipment?: EquipmentLinkInput[];
+}
+
+/** Protocol §2.7: one translation of a proposed exercise (`en` only in exercise_update). */
+export interface ExerciseTranslationInput {
+  languageCode: string;
+  name: string;
+  description?: string | null;
+}
+
+/** Protocol §2.7: a muscle link by muscle key; an absent level is an unrated link. */
+export interface MuscleLinkInput {
+  key: string;
+  level?: MuscleInvolvementLevel;
+}
+
+/** Protocol §2.7: a capability link by catalog key; the level is required. */
+export interface CapabilityLinkInput {
+  key: string;
+  level: CapabilityInvolvementLevel;
+}
+
+/** Protocol §2.7: an equipment link by catalog key; absent `optional` means false. */
+export interface EquipmentLinkInput {
+  key: string;
+  optional?: boolean;
 }
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@
 import { z } from 'zod';
 import { CoachParametersSchema } from './coach-parameters.js';
 import { SESSION_KINDS } from './session-kind.js';
+import { isBlankOverrideText } from './row-decode.js';
 
 // ---------------------------------------------------------------------------
 // Primitive helpers
@@ -433,6 +434,128 @@ export const PlanOpSchema = z.discriminatedUnion('op', [
   }),
 ]);
 
+// ---------------------------------------------------------------------------
+// Phase 166 (plan 166-08, MCP-06, D-11, D-15): protocol §2.7 "Exercise Proposals". Four
+// optional fields of new_exercise and newExercises[] (translations, muscleGroups, capabilities,
+// equipment) and three of exercise_update (translations, muscleGroups, capabilities). Every list
+// is optional, never empty when present, and refused (never cut, trimmed or repaired) outside its
+// form; the app treats the same payload as malformed (only Reject stays available). Muscle keys
+// are checked here (MUSCLE_KEY); capability and equipment keys against the loaded catalog in the
+// tools (`findUnknownLinkKey`, propose_new_exercise.ts), because the catalog is their vocabulary.
+// ---------------------------------------------------------------------------
+
+/** §1.9 `NAME_MAX` / `DESCRIPTION_MAX` in UTF-16 code units (`String.length`), the widths the app stores. */
+export const EXERCISE_TEXT_NAME_MAX = 255;
+export const EXERCISE_TEXT_DESCRIPTION_MAX = 1000;
+/** §2.7 list bounds. */
+export const TRANSLATIONS_MAX = 10;
+export const MUSCLE_LINKS_MAX = 18;
+export const CAPABILITY_LINKS_MAX = 7;
+export const EQUIPMENT_LINKS_MAX = 20;
+
+/** A translation name: 1 to 255 code units, never blank by the set W of §1.7 (never trimmed). */
+const TRANSLATION_NAME = z
+  .string()
+  .min(1)
+  .max(EXERCISE_TEXT_NAME_MAX)
+  .refine((v) => !isBlankOverrideText(v), { message: 'A translation name must not be blank (protocol §1.7 set W)' });
+
+const TranslationEntrySchema = z.object({
+  languageCode: LANG.describe('Language code of this translation, for example de.'),
+  name: TRANSLATION_NAME.describe('The exercise name in this language, 1 to 255 characters, never blank.'),
+  description: z.string().max(EXERCISE_TEXT_DESCRIPTION_MAX).nullable().optional().describe(
+    'The description in this language, at most 1000 characters; null or absent for none.',
+  ),
+});
+
+/** Refuses a list whose `key(entry)` repeats; names the field and the repeated key. */
+function uniqueBy<T>(field: string, key: (entry: T) => string) {
+  return (list: T[], ctx: z.RefinementCtx): void => {
+    const seen = new Set<string>();
+    for (const entry of list) {
+      const k = key(entry);
+      if (seen.has(k)) ctx.addIssue({ code: 'custom', message: `${field} must not repeat a key (${k})` });
+      seen.add(k);
+    }
+  };
+}
+
+/**
+ * `translations` of new_exercise and newExercises[]: `en` is the base language (`name` and
+ * `description`), so an `en` entry is refused here (§2.7, assumption A2).
+ */
+export const NewExerciseTranslationsSchema = z
+  .array(TranslationEntrySchema)
+  .min(1)
+  .max(TRANSLATIONS_MAX)
+  .superRefine(uniqueBy('translations[].languageCode', (t) => t.languageCode))
+  .superRefine((list, ctx) => {
+    if (list.some((t) => t.languageCode === 'en')) {
+      ctx.addIssue({ code: 'custom', message: 'translations must not name en: the base name is name, the base description description' });
+    }
+  });
+
+/** `translations` of exercise_update: may name `en` (for an own exercise it changes the base name). */
+export const ExerciseUpdateTranslationsSchema = z
+  .array(TranslationEntrySchema)
+  .min(1)
+  .max(TRANSLATIONS_MAX)
+  .superRefine(uniqueBy('translations[].languageCode', (t) => t.languageCode));
+
+export const MuscleLinksSchema = z
+  .array(
+    z.object({
+      key: MUSCLE_KEY,
+      level: z.enum(['PRIMARY', 'SECONDARY', 'STABILIZER']).optional().describe(
+        'PRIMARY, SECONDARY or STABILIZER; absent for an unrated link.',
+      ),
+    }),
+  )
+  .min(1)
+  .max(MUSCLE_LINKS_MAX)
+  .superRefine(uniqueBy('muscleGroups[].key', (m) => m.key));
+
+export const CapabilityLinksSchema = z
+  .array(
+    z.object({
+      key: z.string().min(1).max(64).describe('A capability key of the catalog (get_exercise_catalog), for example mobility.'),
+      level: z.enum(['HAUPTREIZ', 'MITTRAINIERT', 'GERING']).describe(
+        'Required: HAUPTREIZ, MITTRAINIERT or GERING. An unrated capability link weighs nothing and is never proposed.',
+      ),
+    }),
+  )
+  .min(1)
+  .max(CAPABILITY_LINKS_MAX)
+  .superRefine(uniqueBy('capabilities[].key', (c) => c.key));
+
+export const EquipmentLinksSchema = z
+  .array(
+    z.object({
+      key: z.string().min(1).max(64).describe('An equipment key of the catalog (get_exercise_catalog), for example kettlebell.'),
+      optional: z.boolean().optional().describe('Whether the equipment is optional; absent means false.'),
+    }),
+  )
+  .min(1)
+  .max(EQUIPMENT_LINKS_MAX)
+  .superRefine(uniqueBy('equipment[].key', (e) => e.key));
+
+/** The four optional fields of new_exercise and newExercises[] (§2.7), shared by both schemas. */
+const NEW_EXERCISE_LINK_FIELDS = {
+  translations: NewExerciseTranslationsSchema.optional().describe(
+    'Optional. Names and descriptions in languages other than en (name and description are the ' +
+      'base language en), up to 10 entries, one per language.',
+  ),
+  muscleGroups: MuscleLinksSchema.optional().describe(
+    'Optional. Muscle links by muscle key, up to 18, each with an optional level.',
+  ),
+  capabilities: CapabilityLinksSchema.optional().describe(
+    'Optional. Capability links by catalog key, up to 7, each with a required level.',
+  ),
+  equipment: EquipmentLinksSchema.optional().describe(
+    'Optional. Equipment links by catalog key, up to 20, each with an optional flag.',
+  ),
+};
+
 /** A brand-new exercise defined inline within a proposal (never a direct catalog write). */
 export const NewExerciseDefSchema = z.object({
   tempId: z.string().min(1).max(64),
@@ -444,6 +567,7 @@ export const NewExerciseDefSchema = z.object({
   // the shared formatProposal corpus's tempId vector encodes an absent description
   // as literal `null`, not an omitted key.
   description: z.string().max(2000).nullable().optional(),
+  ...NEW_EXERCISE_LINK_FIELDS,
 });
 
 // ---------------------------------------------------------------------------
@@ -939,6 +1063,7 @@ export const ProposeNewExerciseSchema = z.object({
   usesWeight: z.boolean(),
   rationale: z.string().min(1).max(2000),
   description: z.string().max(2000).optional(),
+  ...NEW_EXERCISE_LINK_FIELDS,
 });
 
 // ---------------------------------------------------------------------------

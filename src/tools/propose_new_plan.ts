@@ -43,6 +43,7 @@ import { findCatalogMatch } from '../dedupe.js';
 import { computeChangeHash } from '../hash.js';
 import { getSourceLlm } from '../source_llm.js';
 import { postSuggest, HttpError } from '../http.js';
+import { catalogLinkVocabulary, findUnknownLinkKey } from './propose_new_exercise.js';
 import type { CatalogExercise, ExerciseRef, NewExerciseDef, RoundTargetInput } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -116,7 +117,7 @@ export function buildNewPlanPayload(
   const remainingNewExercises: NewExerciseDef[] = [];
 
   for (const entry of args.newExercises ?? []) {
-    const match = findCatalogMatch(entry.name, catalog);
+    const match = findCatalogMatch(entry.name, catalog, (entry.translations ?? []).map((t) => t.name));
     if (match) {
       tempIdToUuid.set(entry.tempId, match.id);
     } else {
@@ -188,6 +189,9 @@ export function registerToolProposeNewPlan(
         'Never creates it directly — the proposal is transported to the coach inbox for ' +
         'accept/reject. Inline `newExercises[]` entries that match an existing catalog exercise ' +
         'are automatically resolved to that catalog UUID instead of being proposed as duplicates. ' +
+        'newExercises[] entries take the same optional fields as propose_new_exercise ' +
+        '(translations, muscleGroups, capabilities, equipment); none is required, and an unknown ' +
+        'capability or equipment key is refused with an error that names it. ' +
         'A block is an exercise list that is run through rounds times; in a circuit each exercise ' +
         'typically has sets: 1. A standalone entry (standalone[]) is one exercise with all its ' +
         'sets done back to back. A block with rounds: 1 makes no sense — use standalone entries ' +
@@ -208,6 +212,15 @@ export function registerToolProposeNewPlan(
         const typedArgs = args as ProposeNewPlanArgs;
 
         const data       = await getSnapshot(pat, keyB64, serverUrl);
+        // Phase 166 (plan 166-08, D-11, T-166-25): capability and equipment keys of every
+        // newExercises[] entry against the loaded catalog, before any hashing/network call.
+        const vocabulary = catalogLinkVocabulary(data.catalog);
+        for (const entry of typedArgs.newExercises ?? []) {
+          const unknownKey = findUnknownLinkKey(entry, vocabulary);
+          if (unknownKey !== undefined) {
+            return { isError: true, content: [{ type: 'text' as const, text: unknownKey }] };
+          }
+        }
         const payload    = buildNewPlanPayload(typedArgs, data.catalog);
         const changeHash = computeChangeHash('new_plan', payload);
         const sourceLlm  = getSourceLlm(server);

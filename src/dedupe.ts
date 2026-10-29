@@ -52,24 +52,29 @@ export function normalizeExerciseName(name: string): string {
 
 /**
  * Find a catalog exercise whose English name or any translation name normalizes
- * equal to the proposed name.
+ * equal to the proposed name or to one of `otherNames`.
  *
- * Returns `undefined` for an empty/whitespace-only proposed name (no meaningful key
- * to match against) and for no match found.
+ * Phase 166 (plan 166-08, D-11, protocol §2.7 "Dedupe"): `otherNames` carries the
+ * `translations[].name` of the proposal, so a proposal is matched in every language it names,
+ * not only by its base name. A name that normalizes to the empty string is skipped.
+ *
+ * Returns `undefined` when no proposed name yields a meaningful key and when no match is found.
  *
  * @param proposedName  The LLM-proposed exercise name (any language).
  * @param catalog       The full cached exercise catalog.
+ * @param otherNames    Further proposed names (the translation names), default none.
  */
 export function findCatalogMatch(
   proposedName: string,
   catalog: CatalogExercise[],
+  otherNames: readonly string[] = [],
 ): CatalogExercise | undefined {
-  const key = normalizeExerciseName(proposedName);
-  if (!key) return undefined;
+  const keys = new Set([proposedName, ...otherNames].map(normalizeExerciseName).filter((k) => k.length > 0));
+  if (keys.size === 0) return undefined;
   return catalog.find(
     (ex) =>
       ex.origin === 'CATALOG' &&
-      (normalizeExerciseName(ex.nameEn) === key ||
-        ex.translations.some((t) => normalizeExerciseName(t.name) === key)),
+      (keys.has(normalizeExerciseName(ex.nameEn)) ||
+        ex.translations.some((t) => keys.has(normalizeExerciseName(t.name)))),
   );
 }

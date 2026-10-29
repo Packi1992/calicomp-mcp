@@ -6,13 +6,19 @@
  * `getSnapshot().catalog` source `get_exercise_catalog` reads — functionally
  * equivalent to calling that handler, no redundant round-trip). On a match,
  * returns `{ dedupedTo: <existingUuid> }` without POSTing. On no match, builds
- * an allowlisted payload (name/mode/usesWeight/description only — never a
- * spread CatalogExercise), computes `changeHash`, stamps `sourceLlm`, and POSTs
+ * an allowlisted payload (name/mode/usesWeight/description, since Phase 166 plus the
+ * optional translations/muscleGroups/capabilities/equipment of protocol §2.7, each only when
+ * set — never a spread CatalogExercise), computes `changeHash`, stamps `sourceLlm`, and POSTs
  * a `new_exercise` proposal (no stale-guard hash is sent — a brand-new exercise
  * has nothing to stale-guard against).
  *
  * Exports:
  *   registerToolProposeNewExercise(server, cfg)   — registers the tool with the MCP server
+ *   buildNewExercisePayload(args)                 — pure payload builder (corpus replay)
+ *   catalogLinkVocabulary(catalog), findUnknownLinkKey(def, vocabulary)
+ *                                                 — the key check of protocol §2.7, also used by
+ *                                                   propose_plan_update, propose_new_plan and
+ *                                                   propose_exercise_update
  *
  * Security (threat model):
  *   T-121-02: payload carries only allowlisted fields; matches referenced by `.id` only.
@@ -32,7 +38,13 @@ import { findCatalogMatch } from '../dedupe.js';
 import { computeChangeHash } from '../hash.js';
 import { getSourceLlm } from '../source_llm.js';
 import { postSuggest, HttpError } from '../http.js';
-import type { CatalogExercise } from '../types.js';
+import type {
+  CapabilityLinkInput,
+  CatalogExercise,
+  EquipmentLinkInput,
+  ExerciseTranslationInput,
+  MuscleLinkInput,
+} from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Pure helpers (Phase 166, plan 166-08) — importable for the corpus replay
@@ -44,6 +56,10 @@ export interface ProposeNewExerciseArgs {
   usesWeight: boolean;
   rationale?: string;
   description?: string;
+  translations?: ExerciseTranslationInput[];
+  muscleGroups?: MuscleLinkInput[];
+  capabilities?: CapabilityLinkInput[];
+  equipment?: EquipmentLinkInput[];
 }
 
 /** The capability and equipment keys of the loaded catalog (protocol §2.7 "Keys, never ids"). */
@@ -52,23 +68,57 @@ export interface LinkVocabulary {
   equipmentKeys: ReadonlySet<string>;
 }
 
-/** STUB (red commit of 166-08): no vocabulary yet. */
-export function catalogLinkVocabulary(_catalog: CatalogExercise[]): LinkVocabulary {
-  return { capabilityKeys: new Set(), equipmentKeys: new Set() };
+/**
+ * The capability and equipment vocabulary of the catalog the MCP loaded: every key that a
+ * catalog entry (curated or own) carries, the same keys `get_exercise_catalog` shows the coach.
+ */
+export function catalogLinkVocabulary(catalog: CatalogExercise[]): LinkVocabulary {
+  const capabilityKeys = new Set<string>();
+  const equipmentKeys = new Set<string>();
+  for (const ex of catalog) {
+    for (const c of ex.capabilities) capabilityKeys.add(c.key);
+    for (const e of ex.equipment) equipmentKeys.add(e.key);
+  }
+  return { capabilityKeys, equipmentKeys };
 }
 
-/** STUB (red commit of 166-08): checks nothing yet. */
-export function findUnknownLinkKey(_def: object, _vocabulary: LinkVocabulary): string | undefined {
+/**
+ * The first capability or equipment key of `def` the vocabulary does not know, as a tool error
+ * text that names only the key (T-166-25: never the payload); `undefined` when every key is known.
+ * Muscle keys are not checked here: the schema checks them against `MUSCLE_KEY`.
+ */
+export function findUnknownLinkKey(
+  def: { capabilities?: { key: string }[]; equipment?: { key: string }[] },
+  vocabulary: LinkVocabulary,
+): string | undefined {
+  for (const c of def.capabilities ?? []) {
+    if (!vocabulary.capabilityKeys.has(c.key)) {
+      return `UNKNOWN_CAPABILITY_KEY: "${c.key}" is not a capability key of the catalog (see get_exercise_catalog).`;
+    }
+  }
+  for (const e of def.equipment ?? []) {
+    if (!vocabulary.equipmentKeys.has(e.key)) {
+      return `UNKNOWN_EQUIPMENT_KEY: "${e.key}" is not an equipment key of the catalog (see get_exercise_catalog).`;
+    }
+  }
   return undefined;
 }
 
-/** The allowlisted `new_exercise` payload (T-121-02): name, mode, usesWeight, description. */
+/**
+ * The allowlisted `new_exercise` payload (T-121-02): name, mode, usesWeight, description, and
+ * since Phase 166 the four optional fields of protocol §2.7, each only when set. A payload without
+ * them is the 1.48 payload key for key, so its bytes and its `changeHash` stay the same.
+ */
 export function buildNewExercisePayload(args: ProposeNewExerciseArgs): Record<string, unknown> {
   return {
     name:       args.name,
     mode:       args.mode,
     usesWeight: args.usesWeight,
     ...(args.description ? { description: args.description } : {}),
+    ...(args.translations !== undefined ? { translations: args.translations } : {}),
+    ...(args.muscleGroups !== undefined ? { muscleGroups: args.muscleGroups } : {}),
+    ...(args.capabilities !== undefined ? { capabilities: args.capabilities } : {}),
+    ...(args.equipment !== undefined ? { equipment: args.equipment } : {}),
   };
 }
 
@@ -95,22 +145,34 @@ export function registerToolProposeNewExercise(
       description:
         'Propose a brand-new custom exercise for human review. Never creates it directly — ' +
         'the proposal is transported to the coach inbox for accept/reject. If the name matches ' +
-        'an existing catalog exercise, returns the existing UUID instead of proposing a duplicate.',
+        'an existing catalog exercise, returns the existing UUID instead of proposing a duplicate. ' +
+        'Optional fields, none of them required: translations (name and description in languages ' +
+        'other than en; name and description themselves are the base language en), muscleGroups ' +
+        '(muscle keys, each with an optional level PRIMARY, SECONDARY or STABILIZER), capabilities ' +
+        '(capability keys, each with a required level HAUPTREIZ, MITTRAINIERT or GERING) and ' +
+        'equipment (equipment keys, each with an optional flag optional). Use the keys ' +
+        'get_exercise_catalog shows; an unknown capability or equipment key is refused with an error ' +
+        'that names it. Leave out a field you do not want to set; never send an empty list. The ' +
+        'duplicate check compares the name and every translation name with the catalog names of ' +
+        'every language. The athlete can change every field when accepting in the app.',
       inputSchema: ProposeNewExerciseSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
     async (args) => {
       try {
-        const typedArgs = args as {
-          name: string;
-          mode: 'REPS' | 'TIME' | 'MAX';
-          usesWeight: boolean;
-          rationale: string;
-          description?: string;
-        };
+        const typedArgs = args as ProposeNewExerciseArgs & { rationale: string };
 
         const data  = await getSnapshot(pat, keyB64, serverUrl);
-        const match = findCatalogMatch(typedArgs.name, data.catalog);
+        // Phase 166 (D-11, T-166-25): capability and equipment keys against the loaded catalog.
+        const unknownKey = findUnknownLinkKey(typedArgs, catalogLinkVocabulary(data.catalog));
+        if (unknownKey !== undefined) {
+          return { isError: true, content: [{ type: 'text' as const, text: unknownKey }] };
+        }
+        const match = findCatalogMatch(
+          typedArgs.name,
+          data.catalog,
+          (typedArgs.translations ?? []).map((t) => t.name),
+        );
         if (match) {
           return {
             content: [{ type: 'text' as const, text: JSON.stringify({ dedupedTo: match.id }) }],
