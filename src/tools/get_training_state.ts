@@ -58,6 +58,7 @@ import {
   computePersonalRecords,
   type ConsistencyResult,
   type PersonalRecord,
+  type RepsInTimeRecord,
 } from '../training-state/consistency.js';
 import { computeMuscleBalance, type MuscleBalanceWindow } from '../training-state/muscle-balance.js';
 import { computeCapabilityBalance, type CapabilityBalanceWindow } from '../training-state/capability-balance.js';
@@ -147,10 +148,18 @@ export interface GetTrainingStateRecentExercise extends Partial<Pick<ExerciseNam
 /** One personal record, additively named (Phase 150, D-16; Phase 156, D-10) — same additivity story as above. */
 export type PersonalRecordWithName = PersonalRecord & Partial<Pick<ExerciseNameFields, OwnNamePick>>;
 
-/** `computePersonalRecords`'s result shape, additively named (Phase 150, D-16). */
+/** One record of repetitions in time (protocol 1.52, gap plan 166-22, E-17), additively named like the other two lists. */
+export type RepsInTimeRecordWithName = RepsInTimeRecord & Partial<Pick<ExerciseNameFields, OwnNamePick>>;
+
+/**
+ * `computePersonalRecords`'s result shape, additively named (Phase 150, D-16). Since protocol 1.52 (gap plan 166-22,
+ * E-17) `maxHoldSeconds` leaves out station sets, in place, and `repsInTime` is the genuine addition of the third
+ * record kind, the last key.
+ */
 export interface GetTrainingStatePersonalRecords {
   maxReps: PersonalRecordWithName[];
   maxHoldSeconds: PersonalRecordWithName[];
+  repsInTime: RepsInTimeRecordWithName[];
 }
 
 /**
@@ -428,7 +437,9 @@ export function getTrainingState(
   });
 
   // Since Phase 166 (protocol §1.11 Rule M; D-02, D-04 in the version E-15): the existing field,
-  // corrected in place — records split by the mode the set was trained in, same entry form.
+  // corrected in place — records split by the mode the set was trained in, same entry form. Since
+  // protocol 1.52 (gap plan 166-22, E-17) maxHoldSeconds leaves out station sets and repsInTime
+  // carries their repetitions per exercise, duration and weight class.
   const personalRecords = computePersonalRecords(snapshot, catalog, timeZoneId);
 
   // Phase 166, gap plan 166-20 (E-16, 166-20-FUND-01, protocol 1.50 §1.7): the name the sentence
@@ -473,6 +484,7 @@ export function getTrainingState(
     ? {
         maxReps: personalRecords.maxReps.map((r) => ({ ...r, ...nameResolver.forExerciseId(r.exerciseId) })),
         maxHoldSeconds: personalRecords.maxHoldSeconds.map((r) => ({ ...r, ...nameResolver.forExerciseId(r.exerciseId) })),
+        repsInTime: personalRecords.repsInTime.map((r) => ({ ...r, ...nameResolver.forExerciseId(r.exerciseId) })),
       }
     : personalRecords;
 

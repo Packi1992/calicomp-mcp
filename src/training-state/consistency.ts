@@ -42,7 +42,7 @@
  *   trainingWeekKeys — sessions → distinct, ascending week keys (excludes soft-deleted)
  *   computeStreaks    — sessions + zone + now → { currentStreakWeeks, longestStreakWeeks, trainingWeekCount }
  *   computeFrequency  — sessions + zone + now → four session counts (ISO week, two 4-week windows, all-time)
- *   computePersonalRecords — snapshot + catalog + zone → all-time max reps / hold-time per exercise (Rule M since 166)
+ *   computePersonalRecords — snapshot + catalog + zone → all-time max reps / hold-time per exercise (Rule M since 166) and repetitions in time per exercise, duration and weight class (since protocol 1.52)
  *   computeConsistency — snapshot + catalog + zone + now → the streak fields plus the frequency fields, in one object
  */
 
@@ -271,10 +271,27 @@ export interface PersonalRecord {
   achievedOn: string;
 }
 
+/**
+ * One record of the third kind, repetitions in time (protocol 1.52 §1.11 Rule M step 5, gap plan 166-22, E-17):
+ * the largest `completedReps` of the station sets of one exercise at one duration and one weight class.
+ * `durationSeconds` is the station sets' own `completedTimeSeconds`, `weightKg` the weight class
+ * (`round(weightUsed × 100)` hundredths of a kilogram) divided by 100, or `null` for the class without weight.
+ */
+export interface RepsInTimeRecord {
+  exerciseId: string;
+  exerciseName: string | null;
+  durationSeconds: number;
+  weightKg: number | null;
+  value: number;
+  achievedOn: string;
+}
+
 /** Result shape for `computePersonalRecords`. */
 export interface PersonalRecordsResult {
   maxReps: PersonalRecord[];
   maxHoldSeconds: PersonalRecord[];
+  /** Since protocol 1.52 (166-22, E-17): a genuine addition, one exercise may stand several times. */
+  repsInTime: RepsInTimeRecord[];
 }
 
 interface RecordCandidate {
@@ -325,15 +342,24 @@ function toSortedRecords(
  *   - **Mode:** the mode the set was trained in — the workout exercise's `mode`, also of a
  *     soft-deleted one, otherwise the catalog mode (`trainingModeOf`). A set records a time when
  *     that mode is `TIME`, or `MAX` on a `TIME` catalog exercise (`recordsTime`).
- *   - **Two records:** `maxReps` is the largest `completedReps` among the sets that do NOT
- *     record a time, `maxHoldSeconds` the largest `completedTimeSeconds` among the sets that do.
+ *   - **Station set (protocol 1.52, gap plan 166-22, E-17):** a set that records a time, whose
+ *     catalog mode is not `TIME` and whose `completedReps` is set (also `0`): a repetition exercise
+ *     at a `TIME` station with its counted repetitions.
+ *   - **Three records:** `maxReps` is the largest `completedReps` among the sets that do NOT
+ *     record a time (a station set records one and never counts there), `maxHoldSeconds` the
+ *     largest `completedTimeSeconds` among the sets that do and are no station sets (since 1.52,
+ *     in place, D-04 in the version E-15), and `repsInTime` the largest `completedReps` of the
+ *     station sets per exercise, duration (the set's `completedTimeSeconds` when greater than 0;
+ *     a station set without a duration takes part in no record) and weight class
+ *     (`round(weightUsed × 100)` when greater than 0, otherwise the class without weight).
  *     `null` takes no part, `0` is a value. A tie keeps the earlier set.
  *
  * Before 166 the hold list asked only the catalog mode and the repetition list asked no mode at
  * all. The entry form (`exerciseId`, `exerciseName`, `value`, `achievedOn`), the ordering and
  * the signature are unchanged. An exercise with no usable value never appears in that list —
- * never with a `null` value standing in for "no record". The corpus section
- * `personalRecordsByTrainingMode` (docs/coach-planning-vectors.json) proves the rule.
+ * never with a `null` value standing in for "no record". `repsInTime` is ordered by
+ * `exerciseId`, then `durationSeconds`, then `weightKg` (the class without weight first). The
+ * corpus section `personalRecordsByTrainingMode` (docs/coach-planning-vectors.json) proves the rule.
  */
 export function computePersonalRecords(
   snapshot: DecryptedSnapshot,
@@ -344,22 +370,71 @@ export function computePersonalRecords(
 
   const maxRepsByExercise = new Map<string, RecordCandidate>();
   const maxHoldByExercise = new Map<string, RecordCandidate>();
+  const repsInTimeByClass = new Map<string, RecordCandidate>();
+  const repsInTimeClasses = new Map<string, { exerciseId: string; durationSeconds: number; weightHundredths: number | null }>();
 
   for (const entry of resolveSetPopulation(snapshot, catalogById, { requireFinishedSession: false })) {
     const { setLog, exerciseId } = entry;
-    if (entry.recordsTime) {
+    if (!entry.recordsTime) {
+      if (setLog.completedReps !== null) {
+        trackBest(maxRepsByExercise, exerciseId, setLog.completedReps, setLog.createdAt);
+      }
+      continue;
+    }
+    const isStationSet = entry.exercise.mode !== 'TIME' && setLog.completedReps !== null;
+    if (!isStationSet) {
       if (setLog.completedTimeSeconds !== null) {
         trackBest(maxHoldByExercise, exerciseId, setLog.completedTimeSeconds, setLog.createdAt);
       }
-    } else if (setLog.completedReps !== null) {
-      trackBest(maxRepsByExercise, exerciseId, setLog.completedReps, setLog.createdAt);
+      continue;
     }
+    const durationSeconds = setLog.completedTimeSeconds;
+    if (durationSeconds === null || !(durationSeconds > 0) || setLog.completedReps === null) continue;
+    const weightHundredths = weightClassOf(setLog.weightUsed);
+    const classKey = JSON.stringify([exerciseId, durationSeconds, weightHundredths]);
+    repsInTimeClasses.set(classKey, { exerciseId, durationSeconds, weightHundredths });
+    trackBest(repsInTimeByClass, classKey, setLog.completedReps, setLog.createdAt);
   }
+
+  // Order of protocol 1.52: exerciseId, then durationSeconds, then the weight class (without weight first).
+  const repsInTime: RepsInTimeRecord[] = [...repsInTimeClasses.entries()]
+    .sort(
+      ([, a], [, b]) =>
+        a.exerciseId.localeCompare(b.exerciseId) ||
+        a.durationSeconds - b.durationSeconds ||
+        (a.weightHundredths ?? -1) - (b.weightHundredths ?? -1),
+    )
+    .flatMap(([classKey, cls]) => {
+      const candidate = repsInTimeByClass.get(classKey);
+      if (candidate === undefined) return [];
+      return [
+        {
+          exerciseId: cls.exerciseId,
+          exerciseName: catalogById.get(cls.exerciseId)?.nameEn ?? null,
+          durationSeconds: cls.durationSeconds,
+          weightKg: cls.weightHundredths === null ? null : cls.weightHundredths / 100,
+          value: candidate.value,
+          achievedOn: toCalendarDay(candidate.achievedAtMs, timeZoneId),
+        },
+      ];
+    });
 
   return {
     maxReps: toSortedRecords(maxRepsByExercise, catalogById, timeZoneId),
     maxHoldSeconds: toSortedRecords(maxHoldByExercise, catalogById, timeZoneId),
+    repsInTime,
   };
+}
+
+/**
+ * The weight class of a station set (protocol 1.52 §1.11 Rule M step 5): `round(weightUsed × 100)`, the weight in
+ * hundredths of a kilogram, when that is greater than 0; otherwise (`null` or `0`) `null`, the class without weight.
+ * `Math.round` agrees with SQLite's `ROUND(x)` for positive numbers, so the app and the MCP form the same classes.
+ */
+function weightClassOf(weightUsed: number | null): number | null {
+  if (weightUsed === null) return null;
+  const hundredths = Math.round(weightUsed * 100);
+  return hundredths > 0 ? hundredths : null;
 }
 
 // ---------------------------------------------------------------------------
