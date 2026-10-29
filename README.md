@@ -322,6 +322,11 @@ after it.
 | `get_history`, `get_progress`, `get_stats`, `get_training_state`, `get_adherence`, `get_planned_workouts` | `key` on an `unreadable` entry with `entity: "exerciseNameOverride"`: the row's plaintext routing key `"<exerciseId>:<languageCode>"`, so the coach knows whose own name is missing |
 | `get_history`, `get_planned_workouts` | `droppedValues` after `unreadable`, only when a stored foreign `performedTime` or `scheduledTime` is not `HH:mm`: that time reads as `null`, the row stays readable, and the entry names `entity`, `id`, `field` and `reason: "not_hh_mm"`, never the value |
 
+Since protocol 1.51 (gap plan 166-21) `reps_on_time_station` marks only repetitions on an exercise
+whose catalog mode is `TIME` (repetitions of a repetition exercise at a `TIME` station are real
+counts, recorded before app plan 165-02), and `zero_set` falls back to the other value when the
+value of the set's kind is absent.
+
 The marks are hints only: no tool changes or deletes a set, the athlete decides in the app.
 
 ### New proposals

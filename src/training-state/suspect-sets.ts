@@ -13,15 +13,18 @@
  *
  * | Reason                  | A set carries the mark when | Exception |
  * |-------------------------|-----------------------------|-----------|
- * | `reps_on_time_station`  | it records a time and `completedReps > 0` | its workout exercise has `targetReps > 0` |
+ * | `reps_on_time_station`  | it records a time, the catalog mode of its exercise is `TIME`, and `completedReps > 0` | its workout exercise has `targetReps > 0` |
  * | `zero_set`              | its value is `0`: the value of its kind (`completedTimeSeconds` if it records a time, otherwise `completedReps`), or, when that value is absent, the other value | none |
  * | `measured_time_missing` | it records a time, `completedTimeSeconds` is set and `measuredTimeSeconds` is not, it was created after the first set of the same exercise that has a `measuredTimeSeconds`, and at least 80 % of the timed sets of that exercise created after that first measured set have one | manual sessions and quick challenges, which never measure; both also take no part in the first measured set and in the share |
  *
- * `zero_set` since protocol 1.51 (gap plan 166-21, finding 166-17-FUND-01): before app plan
- * 165-02 the app chose the input field by the catalog mode, so a repetition exercise at a TIME
- * station took the counted repetitions. Rule M reads such a set as one that records a time, and
- * its zero stands in `completedReps` without a time; the mark therefore falls back to the other
- * value when the value of the set's kind is absent.
+ * Both rules since protocol 1.51 (gap plan 166-21, findings 166-17-FUND-01 and 166-17-FUND-02):
+ * before app plan 165-02 the app chose the input field by the catalog mode, so a repetition
+ * exercise at a TIME station took the counted repetitions. Rule M reads such a set as one that
+ * records a time (unchanged). Its repetitions are real counts, so only `reps_on_time_station`
+ * asks the catalog mode of the resolved exercise: on an exercise whose catalog mode is TIME the
+ * app never offered a repetition field outside the exception (166-17-FUND-02). Its zero stands
+ * in `completedReps` without a time, so `zero_set` falls back to the other value when the value
+ * of the set's kind is absent (166-17-FUND-01).
  *
  * The thresholds of `measured_time_missing` are chosen values (Claude's Discretion to D-05,
  * assumption A5 of Phase 166), not measurements. A set can carry more than one reason; the
@@ -120,13 +123,15 @@ function measuredTimeBaselines(population: PopulationSet[]): Map<string, { first
 
 /** The reasons of one set, in table order. */
 function reasonsOf(entry: PopulationSet, baselines: ReturnType<typeof measuredTimeBaselines>): SuspectReason[] {
-  const { setLog, recordsTime, workoutExercise } = entry;
+  const { setLog, recordsTime, workoutExercise, exercise } = entry;
   const reasons: SuspectReason[] = [];
 
   const reps = setLog.completedReps;
   const time = setLog.completedTimeSeconds;
 
-  if (recordsTime && reps !== null && reps !== undefined && reps > 0) {
+  // reps_on_time_station (protocol 1.51, 166-17-FUND-02): only on an exercise whose catalog mode
+  // is TIME; repetitions of a repetition exercise at a TIME station are real counts.
+  if (recordsTime && exercise.mode === 'TIME' && reps !== null && reps !== undefined && reps > 0) {
     const targetReps = workoutExercise?.targetReps;
     if (!(targetReps !== undefined && targetReps !== null && targetReps > 0)) reasons.push('reps_on_time_station');
   }
