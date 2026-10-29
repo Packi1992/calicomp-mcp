@@ -251,8 +251,14 @@ export function foreignFulfilmentRatio(fulfilledCount: number, missedCount: numb
  * Expansion is `expandDates` with `epochMsToUtcCalDate(scheduledDate)` as DTSTART and the
  * parsed `deletedOccurrences` as the excluded set — exactly what `getPlannedWorkouts` does for
  * template roots. `removed` holds every date of a root's `deletedOccurrences` that lies in the
- * window, counted the same way step 2 of `computeAdherence` counts the template side.
- * Occurrences come back in occurrence order `(date, scheduledTime null last, rootId)`,
+ * window, over EVERY live foreign root passed in. This is deliberately NOT the way step 2 of
+ * `computeAdherence` counts the template side: the template `removedOccurrenceCount` counts only
+ * over the roots with at least one live occurrence in the window (`denom.roots`, the gap D-07 of
+ * Phase 155), so a weekly series whose only date in the window is cancelled reports 1 here and 0
+ * there. The difference is wanted and stays (Phase 166, D-08, review finding IN-01 of
+ * `155-REVIEW.md`): the template count is a measuring figure of the adherence, the foreign count
+ * the more complete one. See protocol §1.6 "Removed occurrences: why the two sides count
+ * differently". Occurrences come back in occurrence order `(date, scheduledTime null last, rootId)`,
  * `removed` in `(date, rootId)` order.
  *
  * @throws RecurrenceRuleError for a recurrence rule the expander refuses (INTERVAL < 1,
