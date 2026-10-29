@@ -601,6 +601,32 @@
       "rule": "D-10",
       "plan": "166-07",
       "why": "Rule D-10: the losing candidate char166-s-d10-a takes the place of char166-s-d10-b among the unplanned sessions; the list keeps the snapshot order of the candidate sessions."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getAdherence",
+      "path": "/removedWithCompletedSessionCount",
+      "before": 0,
+      "after": 1,
+      "rule": "IN-02",
+      "plan": "166-07",
+      "why": "Rule IN-02 (protocol 1.49, section 1.6 Removed occurrences: why the two sides count differently): step 2b runs over every live template root with a recurrence rule. The weekly IN-02 series has its only date in the window, 2026-03-04, cancelled, so it has no live occurrence and was missing from denom.roots; the finished session of the same template on that calendar day now counts. removedOccurrenceCount keeps its root set and stays 0."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getAdherence",
+      "path": "/removedWithCompletedSessionDates",
+      "before": [],
+      "after": [
+        {
+          "date": "2026-03-04",
+          "rootId": "char166-pw-in02",
+          "templateId": "char166-tpl-in02"
+        }
+      ],
+      "rule": "IN-02",
+      "plan": "166-07",
+      "why": "Rule IN-02: the dates follow the same root set as the count; the one date is 2026-03-04 of the IN-02 series with its root and template."
     }
   ],
   "additions": [

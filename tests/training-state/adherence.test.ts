@@ -752,6 +752,52 @@ describe('computeAdherence — removedWithCompletedSessionCount (Phase 155, D-07
     expect(result.explanation).toBe(ADHERENCE_EXPLANATION);
   });
 
+  // Phase 166 (MCP-09, IN-02 of 155-REVIEW.md, protocol §1.6 "Removed occurrences: why the
+  // two sides count differently"): step 2b runs over every live template root of the snapshot
+  // with a non-empty recurrenceRule, not only over the roots with a live occurrence in the
+  // window. A weekly series whose only date in the window was written as cancelled although it
+  // was done has no live occurrence there and is missing from denom.roots.
+  const onlyDateCancelledRoot = root({
+    id: 'r-only-date',
+    scheduledDate: epochMs(2026, 6, 2, 0, 0),
+    recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU',
+    deletedOccurrencesRaw: '["2026-06-02"]',
+  });
+  const shortArgs = { from: '2026-06-01', to: '2026-06-07', ...ARGS };
+
+  it('P166 a weekly series whose only occurrence in the window was cancelled and done still counts in removedWithCompletedSessionCount', () => {
+    const snapshot = snapshotWith({
+      plannedWorkouts: [onlyDateCancelledRoot],
+      sessions: [session({ id: 's-done', startTime: epochMs(2026, 6, 2, 8), endTime: epochMs(2026, 6, 2, 9) })],
+    });
+    // The root has no live occurrence in the window: it is not among the emitted roots.
+    expect(getPlannedWorkouts({ from: shortArgs.from, to: shortArgs.to }, snapshot).roots).toEqual([]);
+    const result = computeAdherence(shortArgs, { snapshot, catalog: mockCatalog, timeZoneId: TZ });
+    expect(result.removedWithCompletedSessionCount).toBe(1);
+    expect(result.removedWithCompletedSessionDates).toEqual([
+      { date: '2026-06-02', rootId: 'r-only-date', templateId: TEMPLATE_ID_PUSH },
+    ]);
+  });
+
+  it('P166 removedOccurrenceCount on the template side keeps its counting set', () => {
+    const snapshot = snapshotWith({
+      plannedWorkouts: [onlyDateCancelledRoot, seriesRoot],
+      sessions: [session({ id: 's-done', startTime: epochMs(2026, 6, 2, 8), endTime: epochMs(2026, 6, 2, 9) })],
+    });
+    const result = computeAdherence(shortArgs, { snapshot, catalog: mockCatalog, timeZoneId: TZ });
+    // D-08: the template count stays over the roots with a live occurrence in the window
+    // (denom.roots, the gap D-07 of Phase 155): seriesRoot has 06-02 live and no removed date
+    // in this window, r-only-date is not emitted. Counted independently, both must agree.
+    const denom = getPlannedWorkouts({ from: shortArgs.from, to: shortArgs.to }, snapshot);
+    const independent = denom.roots
+      .flatMap((r) => r.deletedOccurrences)
+      .filter((d) => d >= shortArgs.from && d <= shortArgs.to).length;
+    expect(denom.roots.map((r) => r.id)).toEqual(['r-series']);
+    expect(independent).toBe(0);
+    expect(result.removedOccurrenceCount).toBe(independent);
+    expect(result.plannedCount).toBe(1);
+  });
+
   it('P155 D-07 the explanation is verbatim in the protocol', () => {
     expect(REMOVED_WITH_COMPLETED_SESSION_EXPLANATION).toBe(
       protocolExplanation('REMOVED_WITH_COMPLETED_SESSION_EXPLANATION'),
