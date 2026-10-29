@@ -4,6 +4,11 @@
  * Phase 166 (plan 166-08, D-15) adds the twentieth tool, `propose_exercise_update`, a propose-only
  * WRITE tool with the same annotation shape as the other propose tools (19 -> 20).
  *
+ * Phase 166 (plan 166-09, MCP-09) adds the claim gate: no description may claim that its tool
+ * reads no encrypted data while the static import chain of the tool's module under `src/`
+ * reaches decryption (`createDecipheriv`, today only `src/crypto.ts`). It reads the module
+ * sources, not the handlers, so this file still needs no mocks.
+ *
  * Endstand dieser Phase (137): 14 tools existed before Phase 137; this phase adds FIVE new
  * tools per D-22 (`get_training_state`, `get_coach_parameters`, `set_coach_parameters`,
  * `get_adherence`, `get_progress`) — NOT six, because `get_exercise_progress` and
@@ -39,6 +44,9 @@
 
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { registerToolGetHistory }         from '../../src/tools/get_history.js';
@@ -136,9 +144,11 @@ const UNREADABLE_CARRYING_TOOL_NAMES = [
 ] as const;
 
 /**
- * Phase 150, D-33 — the four tools that never read encrypted training data (templates,
- * catalog, profile are plaintext/unauthenticated-catalog reads) and therefore say so
- * explicitly instead of carrying an `unreadable` field.
+ * Phase 150, D-33 — the four tools without an `unreadable` field; they say so explicitly.
+ * Phase 166-09 (MCP-09, GR-MCP-02): they no longer claim to read no encrypted data. Each of
+ * them loads the decrypted snapshot (its module reaches `src/crypto.ts` through `src/cache.ts`),
+ * and `get_template` and `get_exercise_catalog` output own names and own exercises from it;
+ * the claim gate below holds that class.
  */
 const UNREADABLE_EXEMPT_TOOL_NAMES = [
   'list_templates',
@@ -154,7 +164,19 @@ const UNREADABLE_EXEMPT_TOOL_NAMES = [
  */
 const OVERRIDE_UNREADABLE_SENTENCE =
   'An entry with entity "exerciseNameOverride" only takes away that exercise\'s own name; ' +
-  'every other field is complete.';
+  'it affects no other field.';
+
+/**
+ * Phase 166-09 (GR-MCP-04): the two calendar tools output no exercise and therefore no own name;
+ * for them an unreadable override affects nothing. Until 166-09 they carried the sentence above
+ * ("... every other field is complete."), which suggested own names they never output.
+ */
+const OVERRIDE_UNREADABLE_SENTENCE_CALENDAR =
+  'An entry with entity "exerciseNameOverride" concerns only an own exercise name, which this ' +
+  'tool does not output; it affects nothing here.';
+
+/** Phase 166-09 (GR-MCP-04): the four unreadable-list tools that do output own names. */
+const OWN_NAME_UNREADABLE_TOOL_NAMES = ['get_history', 'get_stats', 'get_progress', 'get_training_state'] as const;
 
 /** Phase 150, D-29 — the two calendar tools that point to `get_template` for exercises. */
 const CALENDAR_TOOL_NAMES = ['get_planned_workouts', 'get_adherence'] as const;
@@ -168,6 +190,111 @@ const EXERCISE_ID_NAMING_TOOL_NAMES = [
   'get_stats',
   'get_suggestion',
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Phase 166 (166-09, MCP-09, GR-MCP-02): the claim gate. A tool description must not claim that
+// the tool reads no encrypted data while the import chain of its module reaches decryption.
+// ---------------------------------------------------------------------------
+
+const SRC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../src');
+
+/** The claim family the gate looks for (the wording tools used before 166-09). */
+const NO_ENCRYPTED_DATA_CLAIMS: readonly RegExp[] = [
+  /reads no encrypted/i,
+  /never reads encrypted/i,
+  /does not read encrypted/i,
+  /no encrypted training data/i,
+];
+
+/**
+ * The relative VALUE imports and re-exports of one module source, as written. `import type` and
+ * `export type` carry no runtime code and are left out; a mixed `import { type A, b }` counts as
+ * a value import (the stricter reading). Package specifiers (`node:…`, `zod`, the SDK) are not
+ * under `src/` and are not followed.
+ */
+function relativeValueImports(source: string): string[] {
+  const out: string[] = [];
+  const re = /(?:^|\n)[ \t]*(?:import|export)[ \t]+(type[ \t]+)?(?:[^'";]*?[\s}*]from[ \t]+)?['"](\.{1,2}\/[^'"]+)['"]/g;
+  for (const m of source.matchAll(re)) {
+    if (m[1] !== undefined) continue;
+    out.push(m[2]);
+  }
+  return out;
+}
+
+/** `./x.js` from a module path to the `.ts` file under `src/`, or `null` when it does not exist. */
+function resolveSpecifier(fromPath: string, specifier: string, exists: (p: string) => boolean): string | null {
+  const base = resolve(dirname(fromPath), specifier);
+  for (const candidate of [base.replace(/\.js$/, '.ts'), `${base}.ts`, join(base, 'index.ts')]) {
+    if (exists(candidate)) return candidate;
+  }
+  return null;
+}
+
+/** A decryption sink: the module that actually runs AES-GCM decryption. */
+function isDecryptionSink(source: string): boolean {
+  return /\bcreateDecipheriv\s*\(/.test(source);
+}
+
+interface ModuleReader {
+  read: (path: string) => string;
+  exists: (path: string) => boolean;
+}
+
+const FS_READER: ModuleReader = {
+  read: (p) => readFileSync(p, 'utf8'),
+  exists: (p) => existsSync(p),
+};
+
+/**
+ * Whether the static import chain of `modulePath` reaches a decryption sink. Throws on an
+ * import it cannot resolve, so an unresolved chain is never read as "decrypts nothing".
+ */
+function reachesDecryption(modulePath: string, reader: ModuleReader, visited = new Set<string>()): boolean {
+  if (visited.has(modulePath)) return false;
+  visited.add(modulePath);
+  const source = reader.read(modulePath);
+  if (isDecryptionSink(source)) return true;
+  for (const specifier of relativeValueImports(source)) {
+    const target = resolveSpecifier(modulePath, specifier, reader.exists);
+    if (target === null) throw new Error(`claim gate: cannot resolve ${specifier} from ${modulePath}`);
+    if (reachesDecryption(target, reader, visited)) return true;
+  }
+  return false;
+}
+
+interface ClaimGateResult {
+  measured: number;
+  decrypting: string[];
+  notDecrypting: string[];
+  violations: string[];
+}
+
+/** The gate over a list of tools: name, description, module path. */
+function claimGate(
+  tools: Array<{ name: string; description: string; modulePath: string }>,
+  reader: ModuleReader,
+): ClaimGateResult {
+  const result: ClaimGateResult = { measured: 0, decrypting: [], notDecrypting: [], violations: [] };
+  for (const tool of tools) {
+    const decrypts = reachesDecryption(tool.modulePath, reader);
+    result.measured += 1;
+    (decrypts ? result.decrypting : result.notDecrypting).push(tool.name);
+    if (decrypts && NO_ENCRYPTED_DATA_CLAIMS.some((re) => re.test(tool.description))) {
+      result.violations.push(tool.name);
+    }
+  }
+  return result;
+}
+
+/** Every registered tool with its description and the module file named like the tool. */
+function registeredToolsWithModules(tools: RegisteredToolMap): Array<{ name: string; description: string; modulePath: string }> {
+  return Object.entries(tools).map(([name, tool]) => ({
+    name,
+    description: tool.description ?? '',
+    modulePath: join(SRC_DIR, 'tools', `${name}.ts`),
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // Registration tests
@@ -326,7 +453,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     }
   });
 
-  it.each(UNREADABLE_CARRYING_TOOL_NAMES)(
+  it.each(OWN_NAME_UNREADABLE_TOOL_NAMES)(
     "P156 WR-MCP-02 %s says an exerciseNameOverride entry only takes away that exercise's own name",
     (name) => {
       // Protocol 1.29 §1.7 "Tool outputs": an unreadable override row stands in unreadable with
@@ -343,6 +470,24 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
       );
     },
   );
+
+  it.each(CALENDAR_TOOL_NAMES)(
+    'P166 GR-MCP-04 %s says an exerciseNameOverride entry affects nothing in a tool without own names',
+    (name) => {
+      const description = buildRegisteredServer()[name]?.description;
+      expect(description, `${name} description should carry the unreadable list`).toContain(
+        'Every result carries unreadable',
+      );
+      expect(description).toContain(OVERRIDE_UNREADABLE_SENTENCE_CALENDAR);
+      expect(description).not.toContain('every other field is complete');
+    },
+  );
+
+  it('P166 GR-MCP-04 the six unreadable-list tools are split into own-name and calendar tools', () => {
+    expect([...OWN_NAME_UNREADABLE_TOOL_NAMES, ...CALENDAR_TOOL_NAMES].sort()).toStrictEqual(
+      [...UNREADABLE_CARRYING_TOOL_NAMES].sort(),
+    );
+  });
 
   // ---------------------------------------------------------------------------
   // Phase 150-08 (COACH-05, D-18/D-19/D-20/D-21/D-36/D-38): block-form meaning in
@@ -417,4 +562,95 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
       ['capabilities', 'exerciseId', 'muscleGroups', 'rationale', 'translations'],
     );
   });
+
+  // ---------------------------------------------------------------------------
+  // Phase 166-09 (MCP-09, GR-MCP-02, GR-MCP-06): tool texts against behaviour.
+  // ---------------------------------------------------------------------------
+
+  it('P166 no tool claims to read no encrypted data while its resolver decrypts', () => {
+    const tools = registeredToolsWithModules(buildRegisteredServer());
+    for (const tool of tools) {
+      expect(existsSync(tool.modulePath), `module of ${tool.name} should exist at ${tool.modulePath}`).toBe(true);
+    }
+    const result = claimGate(tools, FS_READER);
+    // NICHT GEMESSEN: the gate measured nothing, or could not tell decrypting from plain tools.
+    expect(result.measured, 'NICHT GEMESSEN: not every registered tool was measured').toBe(20);
+    expect(result.decrypting.length, 'NICHT GEMESSEN: no tool reaches decryption').toBeGreaterThanOrEqual(10);
+    expect(result.notDecrypting.length, 'NICHT GEMESSEN: every tool reaches decryption').toBeGreaterThanOrEqual(1);
+    // The resolvers of the snapshot tools reach src/crypto.ts through src/cache.ts.
+    for (const name of ['get_template', 'get_suggestion', 'get_exercise_catalog', 'get_history', 'get_profile']) {
+      expect(result.decrypting, `${name} reaches decryption`).toContain(name);
+    }
+    expect(result.violations, 'tools that claim to read no encrypted data while they decrypt').toStrictEqual([]);
+  });
+
+  it('P166 the claim gate reports a planted tool that decrypts and makes the claim', () => {
+    const planted: Record<string, string> = {
+      [join(SRC_DIR, 'tools', 'planted_decrypting.ts')]:
+        "import { getSnapshot } from '../cache.js';\nexport const x = getSnapshot;\n",
+      [join(SRC_DIR, 'tools', 'planted_type_only.ts')]:
+        "import type { SnapshotCache } from '../cache.js';\nexport type X = SnapshotCache;\n",
+      [join(SRC_DIR, 'tools', 'planted_plain.ts')]:
+        "import { fetchSuggestions } from '../http.js';\nexport const y = fetchSuggestions;\n",
+    };
+    const reader: ModuleReader = {
+      read: (p) => planted[p] ?? readFileSync(p, 'utf8'),
+      exists: (p) => p in planted || existsSync(p),
+    };
+    const claim = 'Return something. This tool reads no encrypted training data and therefore carries no unreadable list.';
+    const result = claimGate(
+      [
+        { name: 'planted_decrypting', description: claim, modulePath: join(SRC_DIR, 'tools', 'planted_decrypting.ts') },
+        { name: 'planted_type_only', description: claim, modulePath: join(SRC_DIR, 'tools', 'planted_type_only.ts') },
+        { name: 'planted_plain', description: claim, modulePath: join(SRC_DIR, 'tools', 'planted_plain.ts') },
+      ],
+      reader,
+    );
+    expect(result.measured).toBe(3);
+    expect(result.decrypting).toStrictEqual(['planted_decrypting']);
+    expect(result.violations).toStrictEqual(['planted_decrypting']);
+    // An unresolvable import is never read as "decrypts nothing".
+    const broken: ModuleReader = {
+      read: () => "import { gone } from './does_not_exist.js';\n",
+      exists: (p) => p === join(SRC_DIR, 'tools', 'planted_broken.ts'),
+    };
+    expect(() =>
+      claimGate([{ name: 'planted_broken', description: claim, modulePath: join(SRC_DIR, 'tools', 'planted_broken.ts') }], broken),
+    ).toThrow(/cannot resolve/);
+  });
+
+  it('P166 get_exercise_catalog describes own exercises with links origin CUSTOM and key user_exercise', () => {
+    const description = buildRegisteredServer().get_exercise_catalog?.description ?? '';
+    for (const part of [
+      'origin',
+      '"CUSTOM"',
+      'user_exercise:<id>',
+      'since phase 164',
+      'muscle groups, equipment and capability ratings the athlete set',
+      'not rated',
+      'an own exercise that cannot be read is left out',
+      'carries no unreadable list',
+    ]) {
+      expect(description, `get_exercise_catalog description should contain "${part}"`).toContain(part);
+    }
+    // The pre-164 sentence is gone (GR-MCP-06 class: stale texts).
+    expect(description).not.toContain('carries no muscle-group, equipment or capability-axis rating');
+    expect(description).not.toContain('never contributes to a weighted evaluation');
+  });
+
+  it.each(['get_template', 'get_suggestion', 'get_exercise_catalog'] as const)(
+    'P166 GR-MCP-02 %s says when an own name is missing although it carries no unreadable list',
+    (name) => {
+      const description = buildRegisteredServer()[name]?.description ?? '';
+      for (const part of [
+        'encrypted data',
+        'up to 60 seconds',
+        'cannot be read',
+        'carries no unreadable list',
+        'get_training_state',
+      ]) {
+        expect(description, `${name} description should contain "${part}"`).toContain(part);
+      }
+    },
+  );
 });
