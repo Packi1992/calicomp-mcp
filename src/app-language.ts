@@ -45,6 +45,26 @@ export const APP_LANGUAGE_SETTING_KEY = 'default_language';
  */
 export const EFFECTIVE_LANGUAGE_SETTING_KEY = 'effective_language';
 
+/**
+ * Plan 166-20 (E-16, MCP-09; protocol 1.50 §1.7 "Which language"): the one sentence every name tool
+ * carries in its description (nine tools). English and without a dash, like every tool text.
+ */
+export const APP_LANGUAGE_NAMES_SENTENCE =
+  'Without lang, every name follows the app language (appLanguage of get_training_state): ' +
+  'exerciseName, typeName, localizedName and the name of a catalog exercise in narrative use the ' +
+  'translation of that language, otherwise English; when the app language is unknown, every name ' +
+  'is English.';
+
+/**
+ * Plan 166-10 (156-GR-MCP-05), reworded in 166-20 (E-16, protocol 1.50 §1.7 "The app language"):
+ * the sentence every tool with own names carries (seven tools).
+ */
+export const OWN_NAMES_WITHOUT_LANG_SENTENCE =
+  'Without lang, own names follow the app language too: when it is unknown (neither chosen in ' +
+  'the app nor synced by it) or unreadable, no own name appears (get_training_state names the ' +
+  'reason in appLanguageUnavailableReason); call again with lang, for example "de", to see the ' +
+  'own names of that language.';
+
 /** The language code of the app, or `null` with the reason it is not available. */
 export type AppLanguageResolution =
   | { languageCode: string }

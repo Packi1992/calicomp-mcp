@@ -60,7 +60,7 @@ import {
 } from '../read-guard.js';
 import type { ForeignSportAvailability, ForeignUnavailableReason } from '../read-guard.js';
 import { resolveForeignType, wrapFreeText } from '../foreign-types.js';
-import { effectiveNameLanguage } from '../app-language.js';
+import { APP_LANGUAGE_NAMES_SENTENCE, effectiveNameLanguage } from '../app-language.js';
 import type { ForeignTypeFields } from '../foreign-types.js';
 import { expandForeignRoots } from '../training-state/foreign-adherence.js';
 import type { AthleteFreeText, DecryptedSnapshot, UnreadableRow } from '../types.js';
@@ -437,7 +437,8 @@ export function registerToolGetPlannedWorkouts(
         'droppedValues (present only then, after unreadable) names each such row by entity, id, ' +
         'field and reason "not_hh_mm", never the value; whether a foreign ' +
         'appointment was fulfilled is answered only by get_adherence (foreignSport) and ' +
-        'get_training_state. typeName of a predefined type is its English app name; ' +
+        'get_training_state. typeName of a predefined type is its plain app name. ' +
+        APP_LANGUAGE_NAMES_SENTENCE + ' ' +
         'typeUnknown: true with typeName null means the type id matches no known type, so ' +
         'never guess a name for it. The note and the name of an own type are the athlete\'s ' +
         'own free text, marked { text, source: "athlete_free_text", treatAs: ' +

@@ -66,7 +66,7 @@ import {
 } from '../read-guard.js';
 import type { DecryptedSnapshot, CatalogExercise, UnreadableRow } from '../types.js';
 import type { CoachParameters } from '../coach-parameters.js';
-import { effectiveNameLanguage } from '../app-language.js';
+import { APP_LANGUAGE_NAMES_SENTENCE, effectiveNameLanguage } from '../app-language.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -254,7 +254,8 @@ export function registerToolGetAdherence(
         'fulfilmentRatio, byType (with typeName: a plain string for a predefined type, the marked ' +
         'athlete free-text envelope for an own type, null for an unknown type id), fulfilled, ' +
         'missed, upcoming, unplannedActivityIds, rule and explanation (verbatim: "' +
-        FOREIGN_ADHERENCE_EXPLANATION + '"). toleranceDays applies to template trainings only. ' +
+        FOREIGN_ADHERENCE_EXPLANATION + '"). ' +
+        APP_LANGUAGE_NAMES_SENTENCE + ' toleranceDays applies to template trainings only. ' +
         'If the server sends no foreign sport or a foreign row cannot be decoded, foreignSport is ' +
         '{ available: false, reason, explanation } and every template number is still returned. ' +
         'Freshly recorded data can be missing for up to 60 seconds (cache). This tool only reads ' +

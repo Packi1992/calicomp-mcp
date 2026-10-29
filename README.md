@@ -193,8 +193,9 @@ encrypted: it replaces the name, the description or both of one catalog exercise
 travels through the athlete's encrypted sync, and the server only ever holds ciphertext.
 Since 1.3.0 the coach sees the own name next to the catalog name. Every field below is a **new
 key**; every existing key keeps its value, with one exception: `unreadable` can additionally name
-an unreadable override row (below). Above all, `exerciseName` stays the catalog name, byte for
-byte as before.
+an unreadable override row (below). Above all, `exerciseName` stays the catalog name, never the
+own name; since phase 166 (protocol 1.50) the catalog name follows the effective language, see
+[Names without `lang`](#names-without-lang).
 
 | Tool | New keys |
 |---|---|
@@ -209,14 +210,17 @@ byte as before.
 - **Which language.** An override applies to one language. The effective language is `lang` when
   the tool receives it, otherwise the app language, the synchronized setting `default_language`.
   Language codes match exactly (`de` does not match `de-DE`). `exerciseOwnNameLanguage` and
-  `ownNameLanguage` name the language of the own name; `exerciseName` keeps its own rule (`lang`,
-  otherwise English) and never follows `default_language`.
-- **The app language.** `appLanguage` is the value of `default_language` when it is a code of two
-  to three lower-case letters, for example `de`. Otherwise it is `null`, and
-  `appLanguageUnavailableReason` says why: `setting_not_synced` (the setting row is missing; the
-  app syncs the setting only once the athlete has chosen a language), `setting_unreadable` (the
-  setting arrived but could not be decrypted or decoded) or `setting_unrecognized` (readable, but
-  not such a code). The tool never fails because of it.
+  `ownNameLanguage` name the language of the own name. Since phase 166 `exerciseName` follows the
+  same effective language (its catalog translation, otherwise English), see
+  [Names without `lang`](#names-without-lang).
+- **The app language.** `appLanguage` is the value of `default_language`, the athlete's explicit
+  choice, when it is a code of two to three lower-case letters, for example `de`; otherwise, since
+  phase 166 (protocol 1.50), the value of `effective_language`, a device fact the app writes on
+  every sync run (the choice, otherwise the device language, as a code of the app's language list,
+  otherwise `en`). Otherwise it is `null`, and `appLanguageUnavailableReason` says why, over both
+  rows: `setting_unreadable` (a row arrived but could not be decrypted or decoded), otherwise
+  `setting_unrecognized` (readable, but not such a code), otherwise `setting_not_synced` (neither
+  row: an older app without a choice). The tool never fails because of it.
 - **Absent, not null.** Without an override in the effective language, with a description-only
   override (see below), for the athlete's own exercises, a deleted or unknown exercise, and
   against a server older than phase 156, the new name fields are missing; nothing else in the
@@ -235,7 +239,7 @@ byte as before.
   descriptions of those six tools say the same (`get_adherence` and `get_planned_workouts` output
   no exercise names, so there it affects nothing). `get_template`, `get_suggestion` and
   `get_exercise_catalog` carry no `unreadable` list: there an unreadable override, or without
-  `lang` an unreadable `default_language`, only leaves the own name out. Call `get_history` or
+  `lang` an unreadable app language, only leaves the own name out. Call `get_history` or
   `get_training_state` to see the entry.
 - **No own description.** An overridden description is decoded but not output by any tool of
   this version; a readable description-only override therefore changes no tool output.
@@ -313,7 +317,8 @@ after it.
 | `get_history` | `suspect` on a set-log that is probably an entry error: a list of `{ reason, explanation }` with `reps_on_time_station`, `zero_set` or `measured_time_missing`; absent on a set without a finding |
 | `get_suggestion` | for an `exercise_update` proposal, the top-level `exerciseId` of the resolved copy is named like every other exercise reference |
 | `get_template`, `get_history`, `get_progress`, `get_training_state`, `get_stats`, `get_suggestion` | `exerciseNameFreeText` beside `exerciseName` of an own exercise (key `user_exercise:<id>`, live or deleted): its shown name in the free-text envelope, because that name is the athlete's free text; `exerciseName` keeps its value |
-| `get_exercise_catalog` | `nameFreeText` on an entry with `origin: "CUSTOM"`: its shown name (`localizedName` with `lang`, else `nameEn`) in the free-text envelope; `nameEn` and `localizedName` keep their values |
+| `get_exercise_catalog` | `nameFreeText` on an entry with `origin: "CUSTOM"`: its shown name (`localizedName` when present, else `nameEn`) in the free-text envelope; `nameEn` and `localizedName` keep their values |
+| `get_training_state` | `narrativeNames` directly after `narrative`, only when the sentence names an own exercise: `[{ ref, name }]` with `ref` = its `exerciseKey` in the sentence and `name` = its name in the free-text envelope (see [Names without `lang`](#names-without-lang)) |
 | `get_history`, `get_progress`, `get_stats`, `get_training_state`, `get_adherence`, `get_planned_workouts` | `key` on an `unreadable` entry with `entity: "exerciseNameOverride"`: the row's plaintext routing key `"<exerciseId>:<languageCode>"`, so the coach knows whose own name is missing |
 | `get_history`, `get_planned_workouts` | `droppedValues` after `unreadable`, only when a stored foreign `performedTime` or `scheduledTime` is not `HH:mm`: that time reads as `null`, the row stays readable, and the entry names `entity`, `id`, `field` and `reason: "not_hh_mm"`, never the value |
 
@@ -341,13 +346,32 @@ The marks are hints only: no tool changes or deletes a set, the athlete decides 
 
 Nothing is applied by the MCP: the athlete accepts, edits or rejects every proposal in the app.
 
-### Own names without `lang`
+### Names without `lang`
 
-Without `lang`, own names follow the app language (`default_language`). When that setting is
-missing (the athlete never chose a language in the app, which then never syncs it) or unreadable,
-no own name appears, exactly as § 1.7 "Which language" says; every tool with own names now says so
-and that a call with `lang` shows the own names of that language. `get_training_state` names the
-reason in `appLanguageUnavailableReason`.
+Since protocol 1.50 (the athlete's decision E-16: without `lang` the coach gets the language set in
+the app) every name a tool returns follows one effective language: `lang`, otherwise the app
+language `appLanguage` (`default_language`, otherwise the device fact `effective_language` the app
+mirrors on every sync run, so it is known also when the athlete never chose one). This changes the
+meaning of existing fields in place, without parallel fields:
+
+- `exerciseName` in `get_template`, `get_history`, `get_progress`, `get_training_state`,
+  `get_stats` and `get_suggestion`: a catalog exercise's translation in that language, otherwise its
+  English name; an own exercise's translation, otherwise its name.
+- `typeName` of a predefined foreign sport type in `get_history`, `get_training_state`,
+  `get_adherence` and `get_planned_workouts` (the last two have no `lang` and take the app
+  language): German when the language starts with `de`, otherwise English.
+- `localizedName` of `get_exercise_catalog`, present whenever there is an effective language.
+- The name of a catalog exercise in `get_training_state.narrative`; the prose stays English.
+- Own names, as before, in the same language. When the app language is unknown or unreadable, no
+  own name appears and `get_training_state` names the reason in `appLanguageUnavailableReason`; a
+  call with `lang` shows the own names of that language.
+
+Without `lang` and without an app language every name is English as before. With `lang`, `lang`
+wins. No athlete free text stands unwrapped in a text field: when `narrative` names an own
+exercise, the sentence carries its `exerciseKey` (`user_exercise:<id>`), and `narrativeNames`
+right after it carries its name in the free-text envelope. Every name tool says this in one shared
+sentence of its description. The published package keeps the earlier behaviour until the next
+release (phase 169).
 
 ### Export directory
 
