@@ -208,8 +208,11 @@ function compareTieBreak(
  *      extends `toleranceDays` beyond both ends of `[from, to]` so an edge occurrence
  *      can still find its session.
  *   4. Pass 1 (exact): candidate pairs with equal `templateId` and
- *      `dateDistanceDays <= toleranceDays`, sorted ascending by distance then by
- *      `(date, rootId, sessionId)`, assigned greedily one-to-one.
+ *      `dateDistanceDays <= toleranceDays`, sorted ascending by distance, then
+ *      descending by the session's live set count, then descending by its duration
+ *      (`endTime - startTime`), then by `(date, rootId, sessionId)` (protocol §1.6
+ *      "Several candidates for one occurrence", Phase 166, D-10), assigned greedily
+ *      one-to-one.
  *   5. Pass 2 (similarity, D-19/D-21): over the occurrences and sessions pass 1 left
  *      unassigned only — an exact match is never additionally scored for similarity.
  *      Candidate pairs within tolerance are scored via `ruzickaSimilarity` over
@@ -288,6 +291,21 @@ export function computeAdherence(
   const usedSessionIds = new Set<string>();
   const matches: AdherenceMatch[] = [];
 
+  // The live sets of every session (`deletedAt` absent), built once: pass 1 orders by their
+  // count (Phase 166, D-10), pass 2 builds its session vectors from them.
+  const setLogsBySessionId = new Map<string, typeof snapshot.setLogs>();
+  for (const setLog of snapshot.setLogs) {
+    if (setLog.deletedAt !== undefined) continue;
+    const list = setLogsBySessionId.get(setLog.sessionId) ?? [];
+    list.push(setLog);
+    setLogsBySessionId.set(setLog.sessionId, list);
+  }
+  const liveSetCountOf = (session: DecryptedSession): number => setLogsBySessionId.get(session.id)?.length ?? 0;
+  // A session without endTime counts with duration 0; pass 1 sees only finished sessions
+  // (step 3), so this is a guard, not a case.
+  const durationOf = (session: DecryptedSession): number =>
+    session.endTime === undefined ? 0 : session.endTime - session.startTime;
+
   // Pass 1 (exact templateId match) — the strong signal, never additionally scored.
   const exactCandidates: ExactCandidate[] = [];
   for (const occ of denom.occurrences) {
@@ -298,8 +316,21 @@ export function computeAdherence(
       exactCandidates.push({ occKey: occKeyOf(occ), occ, session: cs.session, calDay: cs.calDay, dateDistanceDays });
     }
   }
+  // Order of pass 1, protocol §1.6 "Several candidates for one occurrence" (version 1.49,
+  // Phase 166, MCP-08, D-10): date distance ascending, then live set count descending, then
+  // duration descending, then the tie-break (date, rootId, sessionId). Through 1.48 the
+  // tie-break followed the distance directly, so of two sessions of the same template on the
+  // occurrence's day the smaller sessionId won whatever it contained (the phantom session of
+  // 2026-10-13). Exactly one session is matched either way: matchedCount and adherenceRatio
+  // keep their definition; only the assignment changes, in place (D-04 in the version E-15).
   exactCandidates.sort((a, b) => {
     if (a.dateDistanceDays !== b.dateDistanceDays) return a.dateDistanceDays - b.dateDistanceDays;
+    const setsA = liveSetCountOf(a.session);
+    const setsB = liveSetCountOf(b.session);
+    if (setsA !== setsB) return setsB - setsA; // more live sets first
+    const durationA = durationOf(a.session);
+    const durationB = durationOf(b.session);
+    if (durationA !== durationB) return durationB - durationA; // longer first
     return compareTieBreak(
       a.occ.date, a.occ.rootId, a.session.id,
       b.occ.date, b.occ.rootId, b.session.id,
@@ -343,14 +374,6 @@ export function computeAdherence(
     list.push({ exerciseId: te.exerciseId, sets: te.sets * roundsFor(te) });
     templateExercisesByTemplateId.set(te.templateId, list);
   }
-  const setLogsBySessionId = new Map<string, typeof snapshot.setLogs>();
-  for (const setLog of snapshot.setLogs) {
-    if (setLog.deletedAt !== undefined) continue;
-    const list = setLogsBySessionId.get(setLog.sessionId) ?? [];
-    list.push(setLog);
-    setLogsBySessionId.set(setLog.sessionId, list);
-  }
-
   const planVectorCache = new Map<string, Map<string, number>>();
   function planVectorFor(templateId: string): Map<string, number> {
     const cached = planVectorCache.get(templateId);
