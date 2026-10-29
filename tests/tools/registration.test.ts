@@ -331,9 +331,13 @@ const READ_TOOLS_WITH_HOLD_TIMES = ['get_history', 'get_progress', 'get_training
  * get_suggestion, plan 166-08).
  */
 const NEW_FIELDS_166: Record<string, readonly string[]> = {
-  get_training_state: ['capabilityBalance', 'dataQuality', 'suspectSetCount', 'byReason', 'newest'],
-  get_history: ['suspect', 'reps_on_time_station', 'zero_set', 'measured_time_missing', 'CALICOMP_EXPORT_DIR'],
-  get_progress: ['CALICOMP_EXPORT_DIR'],
+  get_training_state: ['capabilityBalance', 'dataQuality', 'suspectSetCount', 'byReason', 'newest', 'carries key'],
+  get_history: ['suspect', 'reps_on_time_station', 'zero_set', 'measured_time_missing', 'CALICOMP_EXPORT_DIR', 'droppedValues', 'not_hh_mm', 'carries key'],
+  // Plan 166-10 (155-IN-06): a foreign time that is not HH:mm is dropped and named.
+  get_planned_workouts: ['droppedValues', 'not_hh_mm'],
+  get_progress: ['CALICOMP_EXPORT_DIR', 'carries key'],
+  // Plan 166-10 (156-GR-MCP-03): an unreadable override entry carries its routing key.
+  get_stats: ['carries key'],
   get_adherence: ['CALICOMP_EXPORT_DIR'],
   propose_plan_update: ['updateBlock', 'addBlock', 'translations', 'muscleGroups', 'capabilities', 'equipment'],
   propose_new_plan: ['translations', 'muscleGroups', 'capabilities', 'equipment'],
