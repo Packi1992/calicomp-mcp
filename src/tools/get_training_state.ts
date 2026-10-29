@@ -393,6 +393,8 @@ export function getTrainingState(
     };
   });
 
+  // Since Phase 166 (protocol §1.11 Rule M; D-02, D-04 in the version E-15): the existing field,
+  // corrected in place — records split by the mode the set was trained in, same entry form.
   const personalRecords = computePersonalRecords(snapshot, catalog, timeZoneId);
 
   // The narrative sees ONLY already-computed numbers — never the snapshot itself (D-18).
@@ -546,7 +548,9 @@ export function registerToolGetTrainingState(
         'heatmap, rule S); a plan-adherence short form — counts, ratio, and an honesty ' +
         'explanation about what removedOccurrenceCount does and does not mean (adherence); the ' +
         'most recently trained exercises with their direction labels (recentExercises); all-time ' +
-        'personal records (personalRecords); and a short, deterministic narrative sentence built ' +
+        'personal records (personalRecords; since phase 166 split by the mode the set was trained ' +
+        'in, rule M: maxHoldSeconds only from sets trained in TIME or in MAX on a TIME catalog ' +
+        'exercise, maxReps only from the other sets); and a short, deterministic narrative sentence built ' +
         'from these already-computed numbers, never a second model call. Every entry in ' +
         'recentExercises and personalRecords carries exerciseName and exerciseKey next to its ' +
         'exerciseId (optional lang, default English) — the narrative itself is unaffected by ' +

@@ -27,7 +27,10 @@
  * semantics over the decrypted snapshot; their correctness rests on matching the app's
  * query behavior by construction (window boundaries, filter conditions, exercise
  * resolution), not on a shared corpus replay — verified manually against a real device
- * (`137-VALIDATION.md`), unresolved by any automated test in this file.
+ * (`137-VALIDATION.md`), unresolved by any automated test in this file. Since Phase 166 that
+ * no longer holds for personal records: Rule M of protocol §1.11 defines them for both sides,
+ * and the corpus section `personalRecordsByTrainingMode` pins them (MCP replay in
+ * tests/shared-vectors.test.ts, app replay in `CoachPlanningVectorsTest.kt`).
  *
  * Naming (RESEARCH.md Pitfall 4 / 137-CONTEXT.md specifics #1): the app's own UiState
  * carries the two four-week windows under names that each promise a span the window does
@@ -39,13 +42,14 @@
  *   trainingWeekKeys — sessions → distinct, ascending week keys (excludes soft-deleted)
  *   computeStreaks    — sessions + zone + now → { currentStreakWeeks, longestStreakWeeks, trainingWeekCount }
  *   computeFrequency  — sessions + zone + now → four session counts (ISO week, two 4-week windows, all-time)
- *   computePersonalRecords — snapshot + catalog + zone → all-time max reps / hold-time per exercise
+ *   computePersonalRecords — snapshot + catalog + zone → all-time max reps / hold-time per exercise (Rule M since 166)
  *   computeConsistency — snapshot + catalog + zone + now → the streak fields plus the frequency fields, in one object
  */
 
 import type { DecryptedSession, DecryptedSnapshot, CatalogExercise } from '../types.js';
 import { toCalendarDay, isoWeekKey } from './time-zone.js';
 import { classifySession, type SessionKind } from '../session-kind.js';
+import { resolveSetPopulation } from './set-population.js';
 
 // ---------------------------------------------------------------------------
 // Port of TrainingStreakCalculator.kt
@@ -311,21 +315,25 @@ function toSortedRecords(
 }
 
 /**
- * All-time maximum reps and hold-time per exercise, mirroring
- * `AnalyticsDao.getMaxRepsPerExercise` / `getMaxTimePerExercise` exactly: NO time window
- * (unlike `computeFrequency` above) — a set counts as long as its own `deletedAt` is
- * unset AND its session exists and is itself not soft-deleted. An ongoing session's sets
- * still count here; there is no `endTime` condition in either app query this mirrors.
+ * All-time maximum reps and hold-time per exercise, by Rule M of protocol §1.11 since Phase 166
+ * (plan 166-04; D-02, D-04 in the version E-15 — the existing field, corrected in place):
  *
- * `maxHoldSeconds` additionally requires the resolved exercise to be present in the
- * CATALOG with `mode === 'TIME'`, mirroring the app's `e.defaultMode = 'TIME'`
- * restriction — a MAX or REPS station logged with a stray time value never counts as a
- * hold-time record. `maxReps` carries no such restriction, matching the app's own
- * unrestricted `getMaxRepsPerExercise`.
+ *   - **Population:** the population of Rule P (`resolveSetPopulation`) WITHOUT the
+ *     finished-session requirement, as the app's `MAX_REPS_PER_EXERCISE`/`MAX_TIME_PER_EXERCISE`:
+ *     a set of a session that was never finished counts; a deleted set, a deleted or missing
+ *     session and a missing or deleted exercise exclude the set. NO time window.
+ *   - **Mode:** the mode the set was trained in — the workout exercise's `mode`, also of a
+ *     soft-deleted one, otherwise the catalog mode (`trainingModeOf`). A set records a time when
+ *     that mode is `TIME`, or `MAX` on a `TIME` catalog exercise (`recordsTime`).
+ *   - **Two records:** `maxReps` is the largest `completedReps` among the sets that do NOT
+ *     record a time, `maxHoldSeconds` the largest `completedTimeSeconds` among the sets that do.
+ *     `null` takes no part, `0` is a value. A tie keeps the earlier set.
  *
- * Exercise resolution mirrors `COALESCE(sl.exerciseId, we.exerciseId)`
- * (`muscle-balance.ts`). An exercise with no usable value for a given metric never
- * appears in that metric's list — never with a `null` value standing in for "no record".
+ * Before 166 the hold list asked only the catalog mode and the repetition list asked no mode at
+ * all. The entry form (`exerciseId`, `exerciseName`, `value`, `achievedOn`), the ordering and
+ * the signature are unchanged. An exercise with no usable value never appears in that list —
+ * never with a `null` value standing in for "no record". The corpus section
+ * `personalRecordsByTrainingMode` (docs/coach-planning-vectors.json) proves the rule.
  */
 export function computePersonalRecords(
   snapshot: DecryptedSnapshot,
@@ -333,33 +341,18 @@ export function computePersonalRecords(
   timeZoneId: string,
 ): PersonalRecordsResult {
   const catalogById = new Map(catalog.map((ex) => [ex.id, ex]));
-  const templateExerciseById = new Map(snapshot.templateExercises.map((te) => [te.id, te]));
-  const sessionById = new Map(snapshot.sessions.map((s) => [s.id, s]));
 
   const maxRepsByExercise = new Map<string, RecordCandidate>();
   const maxHoldByExercise = new Map<string, RecordCandidate>();
 
-  for (const setLog of snapshot.setLogs) {
-    if (setLog.deletedAt != null) continue;
-
-    const session = sessionById.get(setLog.sessionId);
-    if (session === undefined) continue;
-    if (session.deletedAt != null) continue;
-
-    const exerciseId =
-      setLog.exerciseId ??
-      (setLog.workoutExerciseId !== undefined
-        ? templateExerciseById.get(setLog.workoutExerciseId)?.exerciseId
-        : undefined);
-    if (exerciseId === undefined) continue;
-
-    if (setLog.completedReps !== null) {
+  for (const entry of resolveSetPopulation(snapshot, catalogById, { requireFinishedSession: false })) {
+    const { setLog, exerciseId } = entry;
+    if (entry.recordsTime) {
+      if (setLog.completedTimeSeconds !== null) {
+        trackBest(maxHoldByExercise, exerciseId, setLog.completedTimeSeconds, setLog.createdAt);
+      }
+    } else if (setLog.completedReps !== null) {
       trackBest(maxRepsByExercise, exerciseId, setLog.completedReps, setLog.createdAt);
-    }
-
-    const exercise = catalogById.get(exerciseId);
-    if (exercise?.mode === 'TIME' && setLog.completedTimeSeconds !== null) {
-      trackBest(maxHoldByExercise, exerciseId, setLog.completedTimeSeconds, setLog.createdAt);
     }
   }
 
