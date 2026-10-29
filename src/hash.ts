@@ -308,7 +308,7 @@ function canonicalizeTemplateExercise(
  * SuggestRequestBody fields), so their exclusion is automatic — no filtering step.
  */
 export function computeChangeHash(
-  type: 'plan_update' | 'new_plan' | 'new_exercise' | 'planned_update',
+  type: 'plan_update' | 'new_plan' | 'new_exercise' | 'planned_update' | 'exercise_update',
   payload: unknown,
 ): string {
   return createHash('sha256').update(`${type}:${canonicalStringify(payload)}`, 'utf8').digest('hex');

@@ -851,7 +851,9 @@ export interface UserProfileResponse {
 // ---------------------------------------------------------------------------
 
 export interface SuggestRequestBody {
-  type: 'plan_update' | 'new_plan' | 'new_exercise' | 'planned_update';
+  // Phase 166 (plan 166-08, D-15): `exercise_update`, protocol §2.7; the server allows it from
+  // plan 166-03 on (ALLOWED_SUGGEST_TYPES), live after the deploy of 166-16.
+  type: 'plan_update' | 'new_plan' | 'new_exercise' | 'planned_update' | 'exercise_update';
   payload: string;          // JSON.stringify(canonical payload) — UUID-referencing only
   rationale: string;
   sourceLlm: string;

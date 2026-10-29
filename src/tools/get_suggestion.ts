@@ -130,15 +130,24 @@ function annotateCatalogRefs(value: unknown, resolver: ExerciseNameResolver): un
   return value;
 }
 
-/** Parses a stored payload string and annotates it via `annotateCatalogRefs` (D-35). */
-function resolvePayloadString(payload: string, resolver: ExerciseNameResolver): PayloadResolveOutcome {
+/**
+ * Parses a stored payload string and annotates it via `annotateCatalogRefs` (D-35). An
+ * `exercise_update` (Phase 166, plan 166-08, protocol §2.7) names its exercise by a top-level
+ * `exerciseId` without a `source` marker; that id additively gets the same name fields.
+ */
+function resolvePayloadString(payload: string, resolver: ExerciseNameResolver, type?: string): PayloadResolveOutcome {
   let parsed: unknown;
   try {
     parsed = JSON.parse(payload);
   } catch {
     return { skipped: 'unparsable_payload' };
   }
-  return { resolved: annotateCatalogRefs(parsed, resolver) };
+  const resolved = annotateCatalogRefs(parsed, resolver);
+  if (type === 'exercise_update' && resolved !== null && typeof resolved === 'object' && !Array.isArray(resolved)) {
+    const top = resolved as Record<string, unknown>;
+    if (typeof top.exerciseId === 'string') Object.assign(top, resolver.forExerciseId(top.exerciseId));
+  }
+  return { resolved };
 }
 
 // ---------------------------------------------------------------------------
@@ -212,7 +221,7 @@ export function registerToolGetSuggestion(
             output.appliedPayloadResolvedSkipped = 'catalog_unavailable';
           }
         } else {
-          const payloadOutcome = resolvePayloadString(result.payload, resolver);
+          const payloadOutcome = resolvePayloadString(result.payload, resolver, result.type);
           if ('skipped' in payloadOutcome) {
             output.payloadResolvedSkipped = payloadOutcome.skipped;
           } else {
@@ -221,7 +230,7 @@ export function registerToolGetSuggestion(
 
           if (hasAppliedPayload) {
             // hasAppliedPayload already excludes null/undefined above.
-            const appliedOutcome = resolvePayloadString(result.appliedPayload as string, resolver);
+            const appliedOutcome = resolvePayloadString(result.appliedPayload as string, resolver, result.type);
             if ('skipped' in appliedOutcome) {
               output.appliedPayloadResolvedSkipped = appliedOutcome.skipped;
             } else {

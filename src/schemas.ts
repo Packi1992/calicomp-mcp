@@ -1066,11 +1066,36 @@ export const ProposeNewExerciseSchema = z.object({
   ...NEW_EXERCISE_LINK_FIELDS,
 });
 
-/** STUB (red commit of 166-08): propose_exercise_update without its fields yet. */
-export const ProposeExerciseUpdateSchema = z.object({
-  exerciseId: UUID_STRING,
-  rationale: z.string().min(1).max(2000),
-});
+/**
+ * propose_exercise_update (Phase 166, plan 166-08, MCP-06, D-15, protocol §2.7 "exercise_update:
+ * changing an existing exercise"): `exerciseId` and at least one of `translations`,
+ * `muscleGroups`, `capabilities`, in the forms of `NEW_EXERCISE_LINK_FIELDS` except that
+ * `translations` may name `en`. `.strict()` because §2.7 says "No other key": equipment is not
+ * part of exercise_update in 166, and a dropped key would read to the coach as accepted. Whether
+ * the id is a catalog or an own exercise, and whether that kind takes muscles and capabilities,
+ * is the tool's check against the exercises it read (`validateExerciseUpdate`).
+ */
+export const ProposeExerciseUpdateSchema = z
+  .object({
+    exerciseId: UUID_STRING.describe(
+      'Id of an existing exercise: a catalog exercise or an own exercise (origin CUSTOM) from get_exercise_catalog.',
+    ),
+    rationale: z.string().min(1).max(2000),
+    translations: ExerciseUpdateTranslationsSchema.optional().describe(
+      'Optional. Per language, the new name and description; a language not named stays as it is. ' +
+        'en changes the base name and description of an own exercise.',
+    ),
+    muscleGroups: MuscleLinksSchema.optional().describe(
+      'Optional, own exercises only. Replaces the muscle list completely; absent keeps it.',
+    ),
+    capabilities: CapabilityLinksSchema.optional().describe(
+      'Optional, own exercises only. Replaces the capability list completely; absent keeps it.',
+    ),
+  })
+  .strict()
+  .refine((d) => d.translations !== undefined || d.muscleGroups !== undefined || d.capabilities !== undefined, {
+    message: 'An exercise_update needs at least one of translations, muscleGroups and capabilities',
+  });
 
 // ---------------------------------------------------------------------------
 // propose_planned_update (Phase 136, D-01, Protocol v1.11 §2). The coach names an
