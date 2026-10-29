@@ -35,6 +35,9 @@
  *   weightedCounts                       — the port of CapabilityInvolvementWeighting.weightedCounts
  *   CapabilityLevelSetCount               — the port of Kotlin's CapabilityLevelSetCount
  *   capabilitySetCountsInPeriod           — the window-and-count query, mirrored from muscleSetCountsInPeriod
+ *   CapabilityBalanceWindow, computeCapabilityBalance — `get_training_state.capabilityBalance`
+ *                                         (Phase 166, plan 166-06, STAT-03): three windows over
+ *                                         the population of Rule P, raw and weighted
  *
  * Security (threat model):
  *   T-138.1-40: a coach-reported capability weight that disagrees with the app's own
@@ -56,6 +59,7 @@
  */
 
 import type { DecryptedSnapshot, CatalogExercise, CapabilityInvolvementLevel } from '../types.js';
+import { resolveSetPopulation } from './set-population.js';
 
 // ---------------------------------------------------------------------------
 // Port of CapabilityInvolvementWeighting.kt
@@ -198,23 +202,62 @@ export function capabilitySetCountsInPeriod(
 }
 
 // ---------------------------------------------------------------------------
-// get_training_state.capabilityBalance (Phase 166, plan 166-06; STAT-03) — stub
+// get_training_state.capabilityBalance (Phase 166, plan 166-06; STAT-03, D-03)
 // ---------------------------------------------------------------------------
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * One window of `get_training_state.capabilityBalance` (protocol 1.48 §1.11 "Capability
+ * balance"): `setCounts` maps every capability axis key to the raw number of sets whose
+ * resolved exercise has a RATED link to that axis (one set counts once per axis); `weighted`
+ * maps the same keys to the sum of the level factors, folded by `weightedCounts` exactly as
+ * the corpus section `capabilityBalance` proves. An axis without a set has no key.
+ */
 export interface CapabilityBalanceWindow {
   setCounts: Record<string, number>;
   weighted: Record<string, number>;
 }
 
-/** Stub without behavior (red commit of plan 166-06); the implementation follows. */
+/**
+ * The capability balance of the app's capability heatmap, reachable over the MCP (STAT-03).
+ * A genuine addition (D-04 in the version E-15): no existing field carried these counts —
+ * `capabilitySetCountsInPeriod` computed them, but no tool returned them.
+ *
+ * Reads the shared population of Rule P with the finished-session requirement (no deleted
+ * set or session, only finished sessions, the exercise resolved over `workoutExerciseId`
+ * too), the same population as `muscleBalance`. The windows start at `nowMs - 7 days`,
+ * `nowMs - 30 days` and `0` and are cut on the set (`createdAt >= sinceMs`). An unrated link
+ * (`capabilityLevel` absent) takes no part, as in the app's `getCapabilityWeightedCounts`;
+ * the MCP's catalog projection drops such links anyway, this guard keeps `weightFor` from
+ * throwing should one arrive. Rule S does not apply: the capability heatmap counts
+ * stretching on purpose.
+ */
 export function computeCapabilityBalance(
   snapshot: DecryptedSnapshot,
   catalog: CatalogExercise[],
   nowMs: number,
 ): { last7Days: CapabilityBalanceWindow; last30Days: CapabilityBalanceWindow; allTime: CapabilityBalanceWindow } {
-  void snapshot;
-  void catalog;
-  void nowMs;
-  const empty = (): CapabilityBalanceWindow => ({ setCounts: {}, weighted: {} });
-  return { last7Days: empty(), last30Days: empty(), allTime: empty() };
+  const catalogById = new Map<string, CatalogExercise>(catalog.map((ex) => [ex.id, ex]));
+  const population = resolveSetPopulation(snapshot, catalogById, { requireFinishedSession: true });
+
+  const windowFor = (sinceMs: number): CapabilityBalanceWindow => {
+    const rows: CapabilityLevelSetCount[] = [];
+    const setCounts: Record<string, number> = {};
+    for (const entry of population) {
+      if (entry.setLog.createdAt < sinceMs) continue;
+      for (const axis of entry.exercise.capabilities) {
+        if (axis.capabilityLevel === null || axis.capabilityLevel === undefined) continue;
+        rows.push({ capabilityAxisKey: axis.key, capabilityLevel: axis.capabilityLevel, setCount: 1 });
+        setCounts[axis.key] = (setCounts[axis.key] ?? 0) + 1;
+      }
+    }
+    return { setCounts, weighted: weightedCounts(rows) };
+  };
+
+  return {
+    last7Days: windowFor(nowMs - 7 * MS_PER_DAY),
+    last30Days: windowFor(nowMs - 30 * MS_PER_DAY),
+    allTime: windowFor(0),
+  };
 }

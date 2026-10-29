@@ -60,6 +60,7 @@ import {
   type PersonalRecord,
 } from '../training-state/consistency.js';
 import { computeMuscleBalance, type MuscleBalanceWindow } from '../training-state/muscle-balance.js';
+import { computeCapabilityBalance, type CapabilityBalanceWindow } from '../training-state/capability-balance.js';
 import { computeAdherence } from '../training-state/adherence.js';
 import {
   computeExerciseProgress,
@@ -251,6 +252,18 @@ export interface GetTrainingStateResult {
    * byte-identical with and without foreign data.
    */
   foreignSport: TrainingStateForeignSport;
+  /**
+   * The capability balance of the app's capability heatmap (Phase 166, plan 166-06, STAT-03;
+   * protocol 1.48 §1.11 "Capability balance"): three windows like `muscleBalance`, each with
+   * raw `setCounts` and `weighted` per axis over the population of Rule P. A genuine addition
+   * (D-04 in the version E-15), computed strictly AFTER `narrative` and appended after
+   * `foreignSport`, so every field above stays byte-identical.
+   */
+  capabilityBalance: {
+    last7Days: CapabilityBalanceWindow;
+    last30Days: CapabilityBalanceWindow;
+    allTime: CapabilityBalanceWindow;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -448,6 +461,11 @@ export function getTrainingState(
   );
   const foreignSport = buildForeignSport(snapshot, asOfDate, foreignAdherenceFrom, args.lang, foreignAvailability);
 
+  // Phase 166 (STAT-03, D-03, D-04 in the version E-15): the capability balance, a genuine
+  // addition computed AFTER narrative (protocol §1.11 "Existing fields that change meaning":
+  // new keys stand at the end, the narrative reads none of them).
+  const capabilityBalance = computeCapabilityBalance(snapshot, catalog, nowMs);
+
   return {
     timeZoneId,
     appLanguage: appLanguage.languageCode,
@@ -464,6 +482,7 @@ export function getTrainingState(
     narrative,
     templateFeedbackSeries,
     foreignSport,
+    capabilityBalance,
   };
 }
 
@@ -606,7 +625,13 @@ export function registerToolGetTrainingState(
         'sport. If foreign sport cannot be read, foreignSport is { available: false, reason, ' +
         'asOfDate, loadApproximation } with reason \'server_without_foreign_sport\' (a server ' +
         'older than phase 155) or \'foreign_rows_unreadable\'; every other field is still ' +
-        'delivered. Freshly recorded activities can be missing for up to 60 seconds (cache).',
+        'delivered. Freshly recorded activities can be missing for up to 60 seconds (cache). ' +
+        'capabilityBalance (since phase 166, after foreignSport) is the app\'s capability heatmap: ' +
+        'three windows last7Days, last30Days and allTime, each with setCounts (raw sets per ' +
+        'capability axis whose exercise has a rated link to it, one set once per axis) and ' +
+        'weighted (the same sets weighted like the app, HAUPTREIZ 1, MITTRAINIERT 0.5, GERING ' +
+        '0.25); it counts finished, undeleted sessions like muscleBalance, but includes ' +
+        'stretching on purpose.',
       inputSchema: GetTrainingStateSchema,
       annotations: { readOnlyHint: true },
     },

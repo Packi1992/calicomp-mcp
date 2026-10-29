@@ -30,6 +30,8 @@ export const POPULATION_COUNT_FUNCTIONS: readonly { name: string; file: string }
   { name: 'getStatsByExercise', file: 'src/tools/get_stats.ts' },
   { name: 'getStatsByMuscle', file: 'src/tools/get_stats.ts' },
   { name: 'getStatsByCapabilities', file: 'src/tools/get_stats.ts' },
+  // Plan 166-06: get_training_state.capabilityBalance (STAT-03).
+  { name: 'computeCapabilityBalance', file: 'src/training-state/capability-balance.ts' },
 ];
 
 /**
