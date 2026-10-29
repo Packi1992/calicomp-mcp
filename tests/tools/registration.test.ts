@@ -778,6 +778,24 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     expect(description).toContain(OWN_NAME_APP_LANGUAGE_SENTENCE);
   });
 
+  // Plan 166-10 (D-19, 156-GR-MCP-06): plan 166-09 corrected four stale doc passages (commit
+  // e380f69); this case keeps the corrected wording in place and the stale wording out.
+  it('P166 GR-MCP-06 the four doc passages corrected after the gap round stay corrected', () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const read = (rel: string): string => readFileSync(join(root, rel), 'utf-8');
+    const passages: ReadonlyArray<{ file: string; now: string; stale: string }> = [
+      { file: 'src/types.ts', now: 'a blank description decodes as `null`', stale: 'an empty string decodes as `null`, D-01' },
+      { file: 'src/tools/get_exercise_catalog.ts', now: 'carries an own name (not a version-2 `name: null`, D-22)', stale: 'exact code equality \u2014 gets two' },
+      { file: 'README.md', now: 'every existing key keeps its value, with one exception', stale: 'every existing key keeps its value \u2014 above all' },
+      { file: 'tests/app-language.test.ts', now: 'otherwise `null` with one of three reasons', stale: 'with the reason `setting_not_synced` (missing) or' },
+    ];
+    for (const { file, now, stale } of passages) {
+      const text = read(file);
+      expect(text, `${file} should carry the corrected wording`).toContain(now);
+      expect(text, `${file} should no longer carry the stale wording`).not.toContain(stale);
+    }
+  });
+
   it.each(['get_template', 'get_suggestion', 'get_exercise_catalog'] as const)(
     'P166 GR-MCP-02 %s says when an own name is missing although it carries no unreadable list',
     (name) => {
