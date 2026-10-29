@@ -277,6 +277,30 @@ export function muscleSetCountsInPeriod(
   return counts;
 }
 
+/** Stub of plan 166-04 (red commit): the level rows of Rule S in a window. */
+export function strengthLevelSetCounts(
+  snapshot: DecryptedSnapshot,
+  catalog: CatalogExercise[],
+  sinceMs: number,
+): MuscleLevelSetCount[] {
+  void snapshot;
+  void catalog;
+  void sinceMs;
+  return [];
+}
+
+/** Stub of plan 166-04 (red commit): the level rows of Rule S for one session. */
+export function strengthLevelSetCountsForSession(
+  snapshot: DecryptedSnapshot,
+  catalog: CatalogExercise[],
+  sessionId: string,
+): MuscleLevelSetCount[] {
+  void snapshot;
+  void catalog;
+  void sessionId;
+  return [];
+}
+
 // ---------------------------------------------------------------------------
 // The three app windows in one call
 // ---------------------------------------------------------------------------

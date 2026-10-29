@@ -1,4 +1,137 @@
 {
-  "deltas": [],
+  "deltas": [
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/muscleBalance/last7Days/setCounts",
+      "before": {
+        "chest": 8,
+        "triceps": 4,
+        "hamstrings": 2,
+        "lower_back": 1,
+        "quads": 2,
+        "glutes": 1,
+        "abs": 3
+      },
+      "after": {
+        "chest": 8,
+        "triceps": 4,
+        "quads": 2,
+        "glutes": 1,
+        "abs": 3
+      },
+      "rule": "S",
+      "plan": "166-04",
+      "why": "Rule S excludes the stretch-only exercise (rated only mobility and flexibility) from the strength heatmap, so its hamstrings and lower_back sets count nowhere."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/muscleBalance/last7Days/radar/back",
+      "before": 0.125,
+      "after": 0,
+      "rule": "S",
+      "plan": "166-04",
+      "why": "Rule S: the back category held only the lower_back sets of the stretch-only exercise, so it drops to 0."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/muscleBalance/last7Days/radar/legs",
+      "before": 0.625,
+      "after": 0.375,
+      "rule": "S",
+      "plan": "166-04",
+      "why": "Rule S: legs keep only the mixed exercise (quads 2 plus glutes 1 = 3) against the chest maximum of 8."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/muscleBalance/last30Days/setCounts",
+      "before": {
+        "chest": 9,
+        "triceps": 4.5,
+        "hamstrings": 3,
+        "lower_back": 1.5,
+        "quads": 2,
+        "glutes": 1,
+        "abs": 3
+      },
+      "after": {
+        "chest": 9,
+        "triceps": 4.5,
+        "quads": 2,
+        "glutes": 1,
+        "abs": 3
+      },
+      "rule": "S",
+      "plan": "166-04",
+      "why": "Rule S excludes the stretch-only exercise (rated only mobility and flexibility) from the strength heatmap, so its hamstrings and lower_back sets count nowhere."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/muscleBalance/last30Days/radar/back",
+      "before": 0.16666666666666666,
+      "after": 0,
+      "rule": "S",
+      "plan": "166-04",
+      "why": "Rule S: the back category held only the lower_back sets of the stretch-only exercise, so it drops to 0."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/muscleBalance/last30Days/radar/legs",
+      "before": 0.6666666666666666,
+      "after": 0.3333333333333333,
+      "rule": "S",
+      "plan": "166-04",
+      "why": "Rule S: legs keep only the mixed exercise (quads 2 plus glutes 1 = 3) against the chest maximum of 9."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/muscleBalance/allTime/setCounts",
+      "before": {
+        "chest": 9,
+        "triceps": 4.5,
+        "hamstrings": 3,
+        "lower_back": 1.5,
+        "quads": 2,
+        "glutes": 1,
+        "abs": 3
+      },
+      "after": {
+        "chest": 9,
+        "triceps": 4.5,
+        "quads": 2,
+        "glutes": 1,
+        "abs": 3
+      },
+      "rule": "S",
+      "plan": "166-04",
+      "why": "Rule S excludes the stretch-only exercise (rated only mobility and flexibility) from the strength heatmap, so its hamstrings and lower_back sets count nowhere."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/muscleBalance/allTime/radar/back",
+      "before": 0.16666666666666666,
+      "after": 0,
+      "rule": "S",
+      "plan": "166-04",
+      "why": "Rule S: the back category held only the lower_back sets of the stretch-only exercise, so it drops to 0."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/muscleBalance/allTime/radar/legs",
+      "before": 0.6666666666666666,
+      "after": 0.3333333333333333,
+      "rule": "S",
+      "plan": "166-04",
+      "why": "Rule S: legs keep only the mixed exercise (quads 2 plus glutes 1 = 3) against the chest maximum of 9."
+    }
+  ],
   "additions": []
 }

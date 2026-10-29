@@ -19,7 +19,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadCoachPlanningVectors, resolveCorpusPath, RRULE_ALLOWLIST_REASON_CODES } from './shared-vectors.js';
+import { loadCoachPlanningVectors, resolveCorpusPath, RRULE_ALLOWLIST_REASON_CODES, corpusCatalog, corpusSnapshot } from './shared-vectors.js';
 import {
   expandDates,
   parseIsoDate,
@@ -49,7 +49,12 @@ import {
 import { FOREIGN_BUILTIN_TYPES } from '../src/foreign-types.js';
 import { assignForeignFulfilment, foreignFulfilmentRatio } from '../src/training-state/foreign-adherence.js';
 import { calculateLongestStreak, calculateCurrentStreak } from '../src/training-state/consistency.js';
-import { toRadarValues, weightedCounts } from '../src/training-state/muscle-balance.js';
+import {
+  toRadarValues,
+  weightedCounts,
+  strengthLevelSetCounts,
+  strengthLevelSetCountsForSession,
+} from '../src/training-state/muscle-balance.js';
 import { weightedCounts as capabilityWeightedCounts } from '../src/training-state/capability-balance.js';
 import { amrapSummary, deathBySummary, emomIntervals } from '../src/training-state/format-progress.js';
 import { ProposeNewPlanSchema } from '../src/schemas.js';
@@ -1154,6 +1159,33 @@ describe('shared coach-planning vector corpus', () => {
       expect('standalone' in payload).toBe('standalone' in (vector.expectedPayload ?? {}));
     },
   );
+
+  // -----------------------------------------------------------------------
+  // Phase 166 (plan 166-04, STAT-01, D-01): Rule S of protocol §1.11 over the population of
+  // Rule P, replayed against the function behind get_training_state.muscleBalance.
+  // -----------------------------------------------------------------------
+
+  const byLevelRow = (a: { muscleGroupKey: string; involvementLevel: string | null }, b: { muscleGroupKey: string; involvementLevel: string | null }): number =>
+    a.muscleGroupKey.localeCompare(b.muscleGroupKey) || String(a.involvementLevel).localeCompare(String(b.involvementLevel));
+
+  it('P166 every strengthHeatmapSelection vector yields its expected level counts', () => {
+    expect(corpus.strengthHeatmapSelection.length).toBeGreaterThanOrEqual(10);
+    for (const vector of corpus.strengthHeatmapSelection) {
+      const actual = strengthLevelSetCounts(corpusSnapshot(vector), corpusCatalog(vector), vector.sinceMs);
+      expect([...actual].sort(byLevelRow), vector.name).toEqual([...vector.expectedLevelCounts].sort(byLevelRow));
+    }
+  });
+
+  it('P166 the per-session strengthHeatmapSelection variant yields its expected session level counts', () => {
+    const perSession = corpus.strengthHeatmapSelection.filter((v) => v.sessionId !== undefined);
+    expect(perSession.length).toBeGreaterThanOrEqual(2);
+    expect(perSession.some((v) => (v.expectedSessionLevelCounts ?? []).length === 0)).toBe(true);
+    for (const vector of perSession) {
+      expect(vector.expectedSessionLevelCounts, vector.name).toBeDefined();
+      const actual = strengthLevelSetCountsForSession(corpusSnapshot(vector), corpusCatalog(vector), vector.sessionId as string);
+      expect([...actual].sort(byLevelRow), vector.name).toEqual([...(vector.expectedSessionLevelCounts ?? [])].sort(byLevelRow));
+    }
+  });
 
   // -----------------------------------------------------------------------
   // Corpus-absent direction (task 2, D-02): both directions covered.

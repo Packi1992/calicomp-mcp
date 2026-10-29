@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { ISO_DATE, ProposePlannedUpdateSchema } from '../src/schemas.js';
+import type { CatalogExercise, DecryptedSnapshot } from '../src/types.js';
 
 /** Path to the corpus, relative to this file's own directory (tests/). */
 export const CORPUS_RELATIVE_PATH = '../../docs/coach-planning-vectors.json';
@@ -740,6 +741,74 @@ const NewPlanVectorSchema = z.object({
   expectedIssue: z.string().optional(),
 });
 
+/**
+ * Phase 166 (plan 166-04, STAT-01, D-01): the `strengthHeatmapSelection` corpus section — Rule S
+ * of protocol §1.11 over the population of Rule P. Each vector carries a small database (catalog
+ * exercises with their capability links and muscle-group links, workout exercises, sessions, set
+ * logs; `deleted: true` is a soft-deleted row), a window start `sinceMs` and the expected level
+ * rows `{ muscleGroupKey, involvementLevel, setCount }`; the per-session vectors additionally carry
+ * `sessionId` and `expectedSessionLevelCounts`. The MCP replays it against the function behind
+ * `get_training_state.muscleBalance` (`strengthLevelSetCounts`), the app against its Room SQL. An
+ * unrated capability link (`capabilityLevel: null`) is in the corpus on purpose: the MCP's catalog
+ * projection drops it, the app's rule ignores it (§1.11 "Unrated links do not count").
+ */
+const CorpusSessionSchema = z.object({
+  id: z.string().min(1),
+  startTime: z.number().int(),
+  endTime: z.number().int().nullable(),
+  deleted: z.boolean(),
+});
+
+const CorpusTemplateExerciseSchema = z.object({
+  id: z.string().min(1),
+  exerciseId: z.string().min(1),
+  mode: z.string().min(1),
+  deleted: z.boolean(),
+});
+
+const CorpusSetLogSchema = z.object({
+  id: z.string().min(1),
+  sessionId: z.string().min(1),
+  exerciseId: z.string().min(1).nullable(),
+  workoutExerciseId: z.string().min(1).nullable(),
+  completedReps: z.number().int().nullable(),
+  completedTimeSeconds: z.number().int().nullable(),
+  createdAt: z.number().int(),
+  deleted: z.boolean(),
+});
+
+const StrengthLevelCountSchema = z.object({
+  muscleGroupKey: z.string().min(1),
+  involvementLevel: z.enum(['PRIMARY', 'SECONDARY', 'STABILIZER'] as const),
+  setCount: z.number().int(),
+});
+
+const StrengthHeatmapSelectionVectorSchema = z.object({
+  name: z.string().min(1),
+  exercises: z.array(z.object({
+    id: z.string().min(1),
+    defaultMode: z.string().min(1),
+    isSkill: z.boolean(),
+    capabilities: z.array(z.object({
+      capabilityAxisKey: z.string().min(1),
+      capabilityLevel: z.enum(['HAUPTREIZ', 'MITTRAINIERT', 'GERING'] as const).nullable(),
+    })),
+    muscleGroups: z.array(z.object({
+      muscleGroupKey: z.string().min(1),
+      involvementLevel: z.enum(['PRIMARY', 'SECONDARY', 'STABILIZER'] as const),
+    })),
+  })).min(1),
+  templateExercises: z.array(CorpusTemplateExerciseSchema),
+  sessions: z.array(CorpusSessionSchema).min(1),
+  setLogs: z.array(CorpusSetLogSchema).min(1),
+  sinceMs: z.number().int(),
+  sessionId: z.string().min(1).optional(),
+  expectedLevelCounts: z.array(StrengthLevelCountSchema),
+  expectedSessionLevelCounts: z.array(StrengthLevelCountSchema).optional(),
+});
+
+export type StrengthHeatmapSelectionVector = z.infer<typeof StrengthHeatmapSelectionVectorSchema>;
+
 export const CoachPlanningVectorsSchema = z.object({
   _provenance: ProvenanceSchema,
   expansion: z.array(ExpansionVectorSchema).min(1),
@@ -775,6 +844,9 @@ export const CoachPlanningVectorsSchema = z.object({
   formatProgress: z.array(FormatProgressVectorSchema).min(1),
   capabilityBalance: z.array(CapabilityBalanceVectorSchema).min(1),
   newPlan: z.array(NewPlanVectorSchema).min(1),
+  // Phase 166 (plan 166-04): listed for the same reason as every section above — an unlisted
+  // section would be silently dropped by the parse and its replay would measure nothing.
+  strengthHeatmapSelection: z.array(StrengthHeatmapSelectionVectorSchema).min(10),
 });
 
 export type CoachPlanningVectors = z.infer<typeof CoachPlanningVectorsSchema>;
@@ -811,4 +883,119 @@ export function loadCoachPlanningVectors(fromDir?: string): CoachPlanningVectors
   // Zod parse failures propagate — a malformed corpus edit must fail loudly here, not
   // produce silently wrong test results downstream.
   return CoachPlanningVectorsSchema.parse(parsed);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 166 (plan 166-04): the small databases of §1.11 corpus vectors as MCP inputs
+// ---------------------------------------------------------------------------
+
+/** The database part shared by the §1.11 corpus sections (`strengthHeatmapSelection`, `personalRecordsByTrainingMode`). */
+export interface CorpusDatabase {
+  exercises: {
+    id: string;
+    defaultMode: string;
+    isSkill?: boolean;
+    capabilities?: { capabilityAxisKey: string; capabilityLevel: 'HAUPTREIZ' | 'MITTRAINIERT' | 'GERING' | null }[];
+    muscleGroups?: { muscleGroupKey: string; involvementLevel: 'PRIMARY' | 'SECONDARY' | 'STABILIZER' }[];
+  }[];
+  templateExercises: { id: string; exerciseId: string; mode: string; deleted: boolean }[];
+  sessions: { id: string; startTime: number; endTime: number | null; deleted: boolean }[];
+  setLogs: {
+    id: string;
+    sessionId: string;
+    exerciseId: string | null;
+    workoutExerciseId: string | null;
+    completedReps: number | null;
+    completedTimeSeconds: number | null;
+    createdAt: number;
+    deleted: boolean;
+  }[];
+}
+
+/**
+ * The catalog of a corpus database, in the MCP's normalized form. A capability link without a
+ * level is dropped exactly as `cache.ts` `projectUserExerciseToCatalog` drops it (the curated
+ * catalog never carries one): that is how the MCP sees an unrated link.
+ */
+export function corpusCatalog(db: CorpusDatabase): CatalogExercise[] {
+  return db.exercises.map((ex) => ({
+    id: ex.id,
+    key: ex.id,
+    nameEn: ex.id,
+    mode: ex.defaultMode,
+    usesWeight: false,
+    lastModifiedAt: 0,
+    translations: [],
+    muscleGroups: (ex.muscleGroups ?? []).map((mg) => ({
+      id: `mg-${mg.muscleGroupKey}`,
+      key: mg.muscleGroupKey,
+      translations: [],
+      involvementLevel: mg.involvementLevel,
+    })),
+    equipment: [],
+    isSkill: ex.isSkill ?? false,
+    capabilities: (ex.capabilities ?? [])
+      .filter((c) => c.capabilityLevel !== null)
+      .map((c) => ({
+        id: `ax-${c.capabilityAxisKey}`,
+        key: c.capabilityAxisKey,
+        translations: [],
+        capabilityLevel: c.capabilityLevel as 'HAUPTREIZ' | 'MITTRAINIERT' | 'GERING',
+      })),
+    origin: 'CATALOG' as const,
+  }));
+}
+
+/** The decrypted snapshot of a corpus database; `deleted: true` becomes a `deletedAt`, `null` an absent key. */
+export function corpusSnapshot(db: CorpusDatabase): DecryptedSnapshot {
+  const DELETED_AT = 1;
+  return {
+    syncedAt: 0,
+    exercises: [],
+    exerciseTranslations: [],
+    templates: [],
+    blocks: [],
+    templateExercises: db.templateExercises.map((te, i) => ({
+      id: te.id,
+      templateId: 'corpus-template',
+      exerciseId: te.exerciseId,
+      exerciseSource: 'CATALOG',
+      mode: te.mode,
+      restTimeSeconds: 0,
+      sets: 1,
+      orderIndex: i,
+      createdAt: 0,
+      updatedAt: 0,
+      ...(te.deleted ? { deletedAt: DELETED_AT } : {}),
+    })),
+    sessions: db.sessions.map((s) => ({
+      id: s.id,
+      startTime: s.startTime,
+      ...(s.endTime !== null ? { endTime: s.endTime } : {}),
+      isManual: false,
+      isCorrected: false,
+      isQuickChallenge: false,
+      createdAt: s.startTime,
+      updatedAt: s.startTime,
+      ...(s.deleted ? { deletedAt: DELETED_AT } : {}),
+    })),
+    setLogs: db.setLogs.map((sl) => ({
+      id: sl.id,
+      sessionId: sl.sessionId,
+      ...(sl.exerciseId !== null ? { exerciseId: sl.exerciseId } : {}),
+      ...(sl.workoutExerciseId !== null ? { workoutExerciseId: sl.workoutExerciseId } : {}),
+      exerciseSource: 'CATALOG',
+      completedReps: sl.completedReps,
+      completedTimeSeconds: sl.completedTimeSeconds,
+      weightUsed: null,
+      startedAt: sl.createdAt,
+      measuredTimeSeconds: null,
+      createdAt: sl.createdAt,
+      updatedAt: sl.createdAt,
+      ...(sl.deleted ? { deletedAt: DELETED_AT } : {}),
+    })),
+    hrSamples: [],
+    plannedWorkouts: [],
+    settings: [{ key: 'training_timezone_id', type: 's', value: 'Europe/Berlin' }],
+  };
 }

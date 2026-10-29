@@ -41,6 +41,12 @@ import { mockSnapshot, mockCatalog, CATALOG_EXERCISE_ID_PUSHUP } from '../fixtur
 import { computeForeignAdherence } from '../../src/training-state/foreign-adherence.js';
 import { FOREIGN_LOAD_EXPLANATION } from '../../src/training-state/foreign-load.js';
 import { protocolExplanation } from '../protocol-text.js';
+import {
+  CHAR166_NOW_MS,
+  CHAR166_TRAINING_STATE_ARGS,
+  CHAR166_TRAINING_STATE_DATA,
+} from '../characterization-166-fixture.js';
+import { loadDeltaFile, loadPinFile } from '../characterization-166-deltas.js';
 import type {
   DecryptedSnapshot,
   DecodeReport,
@@ -1136,5 +1142,34 @@ describe('get_training_state — own-name result types and an unreadable languag
       expect(description, fragment).toContain(fragment);
     }
     expect(description).not.toContain('never travelled');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 166 (plan 166-04, STAT-01, D-01, D-04 in the version E-15): muscleBalance by Rule S
+// ---------------------------------------------------------------------------
+
+describe('get_training_state — Phase 166 counting rules', () => {
+  it('P166 muscleBalance counts by rule S and narrative keeps its pin', () => {
+    // The characterization fixture of 166: a stretch-only exercise (hamstrings PRIMARY,
+    // lower_back SECONDARY; rated only mobility and flexibility) beside a mixed exercise (quads,
+    // glutes; mobility plus power), a push exercise (chest, triceps; power) and a hold exercise
+    // (abs; no axis). Expected by hand from Rule S over the population of Rule P (finished,
+    // live sessions; live sets; resolved over exerciseId or the workout exercise): the
+    // stretch-only sets count nowhere, every other set counts once per muscle link, weighted
+    // PRIMARY 1, SECONDARY 0.5. Last 7 days: 8 push, 2 mixed, 3 hold sets; 30 days and all
+    // time add one push set of 2026-02-20.
+    const result = getTrainingState(CHAR166_TRAINING_STATE_ARGS, CHAR166_TRAINING_STATE_DATA, CHAR166_NOW_MS);
+    expect(result.muscleBalance.last7Days.setCounts).toEqual({ chest: 8, triceps: 4, quads: 2, glutes: 1, abs: 3 });
+    expect(result.muscleBalance.last30Days.setCounts).toEqual({ chest: 9, triceps: 4.5, quads: 2, glutes: 1, abs: 3 });
+    expect(result.muscleBalance.allTime.setCounts).toEqual({ chest: 9, triceps: 4.5, quads: 2, glutes: 1, abs: 3 });
+    expect(result.muscleBalance.last7Days.radar).toEqual({ chest: 1, shoulders: 0, back: 0, legs: 0.375, core: 0.375, arms: 0.5 });
+    expect(result.muscleBalance.allTime.radar).toEqual({ chest: 1, shoulders: 0, back: 0, legs: 3 / 9, core: 3 / 9, arms: 0.5 });
+
+    // narrative reads neither muscleBalance nor personalRecords: it keeps its pin, and no
+    // declared delta may touch it.
+    const pinned = loadPinFile('characterization-166.json').getTrainingState as { narrative: string };
+    expect(result.narrative).toBe(pinned.narrative);
+    expect(loadDeltaFile().deltas.filter((d) => d.pinKey === 'getTrainingState' && d.path.startsWith('/narrative'))).toEqual([]);
   });
 });
