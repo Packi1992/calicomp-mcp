@@ -56,7 +56,7 @@ import { registerToolListTemplates }      from '../../src/tools/list_templates.j
 import { registerToolGetTemplate }        from '../../src/tools/get_template.js';
 import { registerToolGetExerciseCatalog } from '../../src/tools/get_exercise_catalog.js';
 import { registerToolGetPlannedWorkouts } from '../../src/tools/get_planned_workouts.js';
-import { registerToolGetTrainingState }   from '../../src/tools/get_training_state.js';
+import { registerToolGetTrainingState, REPS_IN_TIME_SENTENCE } from '../../src/tools/get_training_state.js';
 import { registerToolProposePlanUpdate }  from '../../src/tools/propose_plan_update.js';
 import { registerToolProposeNewPlan }     from '../../src/tools/propose_new_plan.js';
 import { registerToolProposeNewExercise } from '../../src/tools/propose_new_exercise.js';
@@ -364,7 +364,8 @@ const ENGLISH_DEFAULT_WORDING: readonly RegExp[] = [
 
 const NEW_FIELDS_166: Record<string, readonly string[]> = {
   // Plan 166-20 (166-20-FUND-01): narrativeNames, the own exercise of the sentence as athlete free text.
-  get_training_state: ['capabilityBalance', 'dataQuality', 'suspectSetCount', 'byReason', 'newest', 'carries key', 'exerciseNameFreeText', 'narrativeNames'],
+  // Gap plan 166-22 (E-17, protocol 1.52): repsInTime, the third record kind of personalRecords.
+  get_training_state: ['capabilityBalance', 'dataQuality', 'suspectSetCount', 'byReason', 'newest', 'carries key', 'exerciseNameFreeText', 'narrativeNames', 'repsInTime'],
   get_history: ['suspect', 'reps_on_time_station', 'zero_set', 'measured_time_missing', 'CALICOMP_EXPORT_DIR', 'droppedValues', 'not_hh_mm', 'carries key', 'exerciseNameFreeText'],
   // Plan 166-10 (155-IN-06): a foreign time that is not HH:mm is dropped and named.
   get_planned_workouts: ['droppedValues', 'not_hh_mm'],
@@ -408,6 +409,8 @@ const CHANGED_MEANING_166: ReadonlyArray<{ tool: string; field: string; rule: st
   })),
   { tool: 'get_exercise_catalog', field: 'localizedName', rule: APP_LANGUAGE_NAMES_SENTENCE },
   { tool: 'get_training_state', field: 'narrative', rule: APP_LANGUAGE_NAMES_SENTENCE },
+  // Gap plan 166-22 (E-17, protocol 1.52, D-04 in the version E-15): maxHoldSeconds leaves out station sets, in place.
+  { tool: 'get_training_state', field: 'maxHoldSeconds', rule: REPS_IN_TIME_SENTENCE },
 ];
 
 // ---------------------------------------------------------------------------
