@@ -54,6 +54,23 @@ describe('startup fail-fast: missing CALICOMP_PAT', () => {
   });
 });
 
+// Phase 166 (MCP-07, D-09, D-21, protocol §1.5 rule 2): the export directory comes from
+// CALICOMP_EXPORT_DIR, resolved once at start. A relative value stops the start before any
+// tool is registered, with a message that names the variable and never the configured path.
+describe('P166 startup with CALICOMP_EXPORT_DIR', () => {
+  it('P166 the start exits with a named error for a relative CALICOMP_EXPORT_DIR', () => {
+    const relative = 'p166-relative/exports';
+    const result = spawnEntry({ CALICOMP_PAT: TEST_PAT, CALICOMP_KEY: TEST_KEY, CALICOMP_EXPORT_DIR: relative });
+    expect(result.status).not.toBe(0);
+    expect(result.status).not.toBeNull();
+    expect(result.stderr).toContain('CALICOMP_EXPORT_DIR');
+    const combined = (result.stdout ?? '') + (result.stderr ?? '');
+    expect(combined).not.toContain(relative);
+    expect(combined).not.toContain('calicomp_pat_');
+    expect(combined).not.toContain(TEST_KEY);
+  });
+});
+
 // Protocol v1.15 §1.5 rule 4 (D-15): pruneExports() runs once, before the
 // transport connects. This is verified structurally against the source
 // rather than by spawning the real entry against the machine's real
@@ -88,7 +105,9 @@ describe('startup runs pruneExports before connecting the transport', () => {
       new URL('../src/index.ts', import.meta.url),
       'utf-8',
     );
-    expect(source).toMatch(/import\s*\{\s*pruneExports\s*\}\s*from\s*'\.\/file-channel\.js'/);
+    // Phase 166 (D-09): the same import also brings resolveExportDir, so the braces may name
+    // more than pruneExports; still exactly the one file-channel module.
+    expect(source).toMatch(/import\s*\{[^}]*\bpruneExports\b[^}]*\}\s*from\s*'\.\/file-channel\.js'/);
   });
 });
 
