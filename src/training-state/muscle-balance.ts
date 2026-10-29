@@ -25,19 +25,20 @@
  * below calls `weightFor` on every row (was: a fixed `+ 1`) — the corpus therefore proves
  * the function that actually runs in production, not a neighboring copy.
  *
- * `muscleSetCountsInPeriod` reproduces `AnalyticsDao.getMuscleGroupSetsInPeriod`'s SQL
- * exactly, including two details that are easy to get wrong (RESEARCH.md Pitfall 3):
+ * Phase 166 (plan 166-04; D-01, D-03, D-04 in the version E-15; protocol §1.11): the
+ * strength counts read the shared population of Rule P (`set-population.ts`) and apply Rule S
+ * (`strength-selection.ts`): an exercise whose rated capability axes are only `mobility` or
+ * `flexibility` counts nowhere. That is the clause the app's strength heatmap queries
+ * (`AnalyticsDao.getMuscleGroupSetsByLevelInPeriod`, its observed twin and the per-session
+ * query) carry since 166, so `muscleBalance` mirrors the app's strength heatmap again
+ * (Pitfall 3 of Phase 166). Before 166 neither side had that clause and both counted pure
+ * stretching; the stretch heatmap (`getMuscleGroupSetsByLevelInPeriodForAxes`) still selects
+ * by the same axis list on purpose. Two details stay easy to get wrong (Phase 137, Pitfall 3):
  *   - the window criterion is `setLog.createdAt` — a ROLLING MILLISECOND SPAN, never
- *     `session.startTime` and never a calendar-day boundary. A session that runs past
- *     midnight, or whose set logs drift slightly from the session's own start time, must
- *     not produce a different result than the app's own query.
- *   - the app's Strength query (`getMuscleGroupSetsByLevelInPeriod`) carries NO capability
- *     filter at all — it counts across every exercise, regardless of axis. The neighboring
- *     Stretch/Mobility query in `AnalyticsDao.kt` (`getMuscleGroupSetsByLevelInPeriodForAxes`,
- *     Phase 138.1 CAP-01/D-08) DOES restrict its rows to a subquery over
- *     `exercise_capabilities`/`capability_axes` for the caller-supplied axis keys (mobility/
- *     flexibility) — the two queries are not symmetric. This port follows the Strength
- *     query's own lack of a filter, not any comment describing it.
+ *     `session.startTime` and never a calendar-day boundary.
+ *   - the counted unit is a set per muscle-group link, grouped by key and involvement level
+ *     (`strengthLevelSetCounts`, the rows the corpus section `strengthHeatmapSelection`
+ *     pins); the weighting folds those rows (`weightedCounts`, corpus section `muscleBalance`).
  *
  * `computeMuscleBalance` returns all three app windows (7 days, 30 days, all time) in one
  * call, because the app's own window selection (`AnalyticsViewModel.heatmapPeriodDays`,
@@ -51,7 +52,9 @@
  *   WEIGHT_PRIMARY/SECONDARY/STABILIZER — the port of MuscleInvolvementWeighting's constants
  *   weightFor                 — the port of MuscleInvolvementWeighting.weightFor
  *   weightedCounts             — the port of MuscleInvolvementWeighting.weightedCounts
- *   muscleSetCountsInPeriod   — the window-and-count query, mirrored from AnalyticsDao
+ *   strengthLevelSetCounts    — Rule S level rows in a window (the corpus replay target)
+ *   strengthLevelSetCountsForSession — Rule S level rows of one session (the app's session card)
+ *   muscleSetCountsInPeriod   — the weighted strength counts of one window
  *   computeMuscleBalance      — assembles all three app windows in one call
  *
  * Security (threat model):
@@ -73,6 +76,8 @@
  */
 
 import type { DecryptedSnapshot, CatalogExercise, MuscleInvolvementLevel } from '../types.js';
+import { resolveSetPopulation, type PopulationSet } from './set-population.js';
+import { isStretchOnly } from './strength-selection.js';
 
 // ---------------------------------------------------------------------------
 // Port of MuscleBalanceCalculator.kt
@@ -203,102 +208,84 @@ export function weightedCounts(rows: MuscleLevelSetCount[]): Record<string, numb
 }
 
 // ---------------------------------------------------------------------------
-// AnalyticsDao.getMuscleGroupSetsInPeriod / OfflineFirstAnalyticsRepository window mirror
+// Rule S over the population of Rule P (Phase 166, protocol §1.11)
 // ---------------------------------------------------------------------------
 
 /**
- * Counts sets per muscle-group key in the window `[sinceMs, +inf)`, mirroring
- * `AnalyticsDao.getMuscleGroupSetsInPeriod`'s SQL exactly:
- *   - `sl.deletedAt IS NULL`               — setLog not soft-deleted
- *   - the set's session exists, is not soft-deleted, and has `endTime IS NOT NULL`
- *     (a running/ongoing session contributes nothing)
- *   - `sl.createdAt >= sinceTimestamp`     — the ROLLING MILLISECOND window, over the
- *     set log's own `createdAt`, never over `session.startTime` and never over a
- *     calendar-day boundary (RESEARCH.md Pitfall 3). A session spanning midnight, or a
- *     set log whose `createdAt` drifts from its session's `startTime`, is judged solely
- *     by its own timestamp — exactly as the app's SQL does.
- *   - the app's Strength query carries NO capability-axis filter (its neighboring
- *     Stretch/Mobility query, `getMuscleGroupSetsByLevelInPeriodForAxes`, restricts to a
- *     mobility/flexibility capability-axis subquery instead) — the two queries are not
- *     symmetric. This port follows the Strength query's own lack of a filter.
+ * Folds population entries into the level rows of Rule S: every entry with
+ * `setLog.createdAt >= sinceMs` whose exercise is not stretch-only (`isStretchOnly`) counts
+ * once for EACH muscle-group link of its exercise, grouped by the link's key and involvement
+ * level; a key and level without a set produce no row. Rows appear in the order of their first
+ * set. The population must already be Rule P with finished sessions.
+ */
+function foldStrengthLevelRows(population: PopulationSet[], sinceMs: number): MuscleLevelSetCount[] {
+  const rows = new Map<string, MuscleLevelSetCount>();
+  for (const entry of population) {
+    if (entry.setLog.createdAt < sinceMs) continue;
+    if (isStretchOnly(entry.exercise)) continue;
+    for (const muscleGroup of entry.exercise.muscleGroups) {
+      const rowKey = `${muscleGroup.key}\u0000${muscleGroup.involvementLevel}`;
+      const row = rows.get(rowKey);
+      if (row === undefined) {
+        rows.set(rowKey, { muscleGroupKey: muscleGroup.key, involvementLevel: muscleGroup.involvementLevel, setCount: 1 });
+      } else {
+        row.setCount += 1;
+      }
+    }
+  }
+  return [...rows.values()];
+}
+
+function catalogMapOf(catalog: CatalogExercise[]): Map<string, CatalogExercise> {
+  return new Map<string, CatalogExercise>(catalog.map((ex) => [ex.id, ex]));
+}
+
+/**
+ * The level rows `{ muscleGroupKey, involvementLevel, setCount }` of the strength heatmap in the
+ * window `[sinceMs, +inf)` — Rule S over the population of Rule P with finished sessions, the
+ * rows `AnalyticsDao.getMuscleGroupSetsByLevelInPeriod` returns in the app. The corpus section
+ * `strengthHeatmapSelection` replays against this function.
+ */
+export function strengthLevelSetCounts(
+  snapshot: DecryptedSnapshot,
+  catalog: CatalogExercise[],
+  sinceMs: number,
+): MuscleLevelSetCount[] {
+  const population = resolveSetPopulation(snapshot, catalogMapOf(catalog), { requireFinishedSession: true, sinceMs });
+  return foldStrengthLevelRows(population, sinceMs);
+}
+
+/**
+ * The level rows of Rule S for ONE session instead of a window, as the app's session card
+ * (`AnalyticsDao.getMuscleGroupSetsByLevelForSession`): the session must still be live and
+ * finished, otherwise there are no rows.
+ */
+export function strengthLevelSetCountsForSession(
+  snapshot: DecryptedSnapshot,
+  catalog: CatalogExercise[],
+  sessionId: string,
+): MuscleLevelSetCount[] {
+  const population = resolveSetPopulation(snapshot, catalogMapOf(catalog), { requireFinishedSession: true });
+  return foldStrengthLevelRows(population.filter((entry) => entry.session.id === sessionId), 0);
+}
+
+/**
+ * The weighted strength counts per muscle-group key in the window `[sinceMs, +inf)`:
+ * `weightedCounts(strengthLevelSetCounts(...))`. Each set contributes
+ * `weightFor(involvementLevel)` to each of its muscle keys (PRIMARY 1.0, SECONDARY 0.5,
+ * STABILIZER 0.25, Phase 138 MUSC-06).
  *
- * Exercise resolution mirrors `COALESCE(sl.exerciseId, we.exerciseId)`: if the set log
- * carries its own `exerciseId`, that wins; otherwise the linked `workoutExerciseId` is
- * looked up in `snapshot.templateExercises`. If neither resolves, or the resolved
- * exercise is not present in the CATALOG (custom/user exercises carry no muscle-group
- * data on the wire — `SyncExerciseDto` has no `muscleGroups` field), the set contributes
- * nothing — exactly as the SQL's `INNER JOIN exercises` / `INNER JOIN
- * exercise_muscle_groups` would produce zero rows for it.
- *
- * A set touching multiple muscles counts once for EACH of its muscle keys (`GROUP BY
- * mg.canonicalKey` after the join fans out one row per muscle-group link).
- *
- * Phase 138 (MUSC-06): each contribution is now `weightFor(muscleGroup.involvementLevel)`
- * rather than a fixed `1` — the graded involvement level from the catalog (PRIMARY = 1.0,
- * SECONDARY = 0.5, STABILIZER = 0.25, missing = PRIMARY per D-03) scales how much a set
- * counts toward that muscle group.
+ * Own exercises count like catalog exercises: since Phase 164 (D-25) their muscle-group links
+ * arrive encrypted and `cache.ts` projects them into the catalog; an own exercise without
+ * links contributes nothing, exactly as the app's join over `exercise_muscle_groups` produces no
+ * row for it.
  */
 export function muscleSetCountsInPeriod(
   snapshot: DecryptedSnapshot,
   catalog: CatalogExercise[],
   sinceMs: number,
 ): Record<string, number> {
-  const catalogById = new Map<string, CatalogExercise>(catalog.map((ex) => [ex.id, ex]));
-  const templateExerciseById = new Map(snapshot.templateExercises.map((te) => [te.id, te]));
-  const sessionById = new Map(snapshot.sessions.map((s) => [s.id, s]));
-
-  const counts: Record<string, number> = {};
-
-  for (const setLog of snapshot.setLogs) {
-    if (setLog.deletedAt !== undefined) continue;
-
-    const session = sessionById.get(setLog.sessionId);
-    if (session === undefined) continue;
-    if (session.deletedAt !== undefined) continue;
-    if (session.endTime === undefined) continue;
-
-    if (setLog.createdAt < sinceMs) continue;
-
-    const exerciseId =
-      setLog.exerciseId ??
-      (setLog.workoutExerciseId !== undefined
-        ? templateExerciseById.get(setLog.workoutExerciseId)?.exerciseId
-        : undefined);
-    if (exerciseId === undefined) continue;
-
-    const exercise = catalogById.get(exerciseId);
-    if (exercise === undefined) continue;
-
-    for (const muscleGroup of exercise.muscleGroups) {
-      counts[muscleGroup.key] = (counts[muscleGroup.key] ?? 0) + weightFor(muscleGroup.involvementLevel);
-    }
-  }
-
-  return counts;
-}
-
-/** Stub of plan 166-04 (red commit): the level rows of Rule S in a window. */
-export function strengthLevelSetCounts(
-  snapshot: DecryptedSnapshot,
-  catalog: CatalogExercise[],
-  sinceMs: number,
-): MuscleLevelSetCount[] {
-  void snapshot;
-  void catalog;
-  void sinceMs;
-  return [];
-}
-
-/** Stub of plan 166-04 (red commit): the level rows of Rule S for one session. */
-export function strengthLevelSetCountsForSession(
-  snapshot: DecryptedSnapshot,
-  catalog: CatalogExercise[],
-  sessionId: string,
-): MuscleLevelSetCount[] {
-  void snapshot;
-  void catalog;
-  void sessionId;
-  return [];
+  return weightedCounts(strengthLevelSetCounts(snapshot, catalog, sinceMs));
 }
 
 // ---------------------------------------------------------------------------
@@ -317,17 +304,24 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  * and all time — because the app's own window selection
  * (`AnalyticsViewModel.heatmapPeriodDays`, default 7) is pure UI state with no
  * persistence (`AnalyticsViewModel.kt:75`); there is no synced "current" window value for
- * the coach to match, so it always returns all three (D-04). All-time uses the lower
- * bound 0, exactly mirroring `OfflineFirstAnalyticsRepository.getMuscleGroupHeatmapData`'s
+ * the coach to match, so it always returns all three (D-04 of Phase 137). All-time uses the
+ * lower bound 0, exactly mirroring `OfflineFirstAnalyticsRepository.getMuscleGroupHeatmapData`'s
  * `Int.MAX_VALUE` branch.
+ *
+ * Since Phase 166 (protocol §1.11, D-01; D-04 in the version E-15) this is Rule S over the
+ * population of Rule P with finished sessions: an exercise whose rated capability axes are only
+ * `mobility` or `flexibility` counts in no window, so `muscleBalance` is the same number as the
+ * app's strength heatmap again. Before 166 it counted those sets too. Field name, place and
+ * form are unchanged; only the sets it counts changed (in place, no parallel field).
  */
 export function computeMuscleBalance(
   snapshot: DecryptedSnapshot,
   catalog: CatalogExercise[],
   nowMs: number,
 ): { last7Days: MuscleBalanceWindow; last30Days: MuscleBalanceWindow; allTime: MuscleBalanceWindow } {
+  const population = resolveSetPopulation(snapshot, catalogMapOf(catalog), { requireFinishedSession: true });
   const windowFor = (sinceMs: number): MuscleBalanceWindow => {
-    const setCounts = muscleSetCountsInPeriod(snapshot, catalog, sinceMs);
+    const setCounts = weightedCounts(foldStrengthLevelRows(population, sinceMs));
     return { setCounts, radar: toRadarValues(setCounts) };
   };
 

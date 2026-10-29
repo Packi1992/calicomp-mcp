@@ -328,6 +328,8 @@ export function getTrainingState(
   const appLanguage = resolveAppLanguage(snapshot, decodeReport);
 
   const consistency = computeConsistency(snapshot, catalog, timeZoneId, nowMs);
+  // Since Phase 166 (protocol §1.11 Rule S over Rule P; D-01, D-04 in the version E-15): the
+  // existing field, corrected in place — no stretch-only exercise counts, the app's strength heatmap.
   const muscleBalance = computeMuscleBalance(snapshot, catalog, nowMs);
 
   // Adherence short form: window ends on the athlete's own calendar day and spans back
@@ -539,7 +541,9 @@ export function registerToolGetTrainingState(
         'overview, rather than raw session-by-session history. In one call: the current and ' +
         'longest training streak in weeks plus session-frequency counts (consistency); the same ' +
         'radar-chart muscle balance data as the app\'s Analytics dashboard in all three app ' +
-        'windows (muscleBalance); a plan-adherence short form — counts, ratio, and an honesty ' +
+        'windows (muscleBalance; since phase 166 it counts no exercise whose rated capability ' +
+        'axes are only mobility or flexibility, so it is the same number as the app\'s strength ' +
+        'heatmap, rule S); a plan-adherence short form — counts, ratio, and an honesty ' +
         'explanation about what removedOccurrenceCount does and does not mean (adherence); the ' +
         'most recently trained exercises with their direction labels (recentExercises); all-time ' +
         'personal records (personalRecords); and a short, deterministic narrative sentence built ' +
