@@ -42,6 +42,11 @@ import * as httpModule from '../../src/http.js';
 import { OWN_TEST_KEY_B64, ownExercisePair, ownTranslationPair } from '../own-exercise-fixture.js';
 import { GetHistorySchema } from '../../src/schemas.js';
 import { getHistory, registerToolGetHistory } from '../../src/tools/get_history.js';
+import {
+  CHAR166_SNAPSHOT,
+  CHAR166_CATALOG,
+  CHAR166_HISTORY_ARGS,
+} from '../characterization-166-fixture.js';
 import type { GetHistoryResult } from '../../src/tools/get_history.js';
 import { createExerciseNameResolver } from '../../src/exercise-names.js';
 import {
@@ -1233,5 +1238,56 @@ describe('get_history — own exercises, encrypted (Phase 164)', () => {
       expect(deletedLog?.exerciseDeleted).toBe(true);
       expect(cipher.setLogs.some((sl) => sl.exerciseUnknown === true)).toBe(false);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 166 (plan 166-06; protocol 1.48 §1.11 "Suspect sets", STAT-05): `suspect` per set-log
+// only on a finding, in the pure function with the catalog and in both handler branches.
+// ---------------------------------------------------------------------------
+
+describe('get_history — suspect marks (Phase 166, STAT-05)', () => {
+  beforeEach(() => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, snapshot: CHAR166_SNAPSHOT, catalog: CHAR166_CATALOG });
+    vi.mocked(fileChannelModule.writeExportFile).mockReset();
+  });
+
+  it('P166 get_history carries suspect only on a finding', async () => {
+    // On the fixture of 166, by hand from the protocol table: the repetitions on the TIME
+    // station and on the MAX hold (no targetReps) are reps_on_time_station, the push set with
+    // 0 repetitions is a zero set; every other set, also the deleted one, has no finding.
+    const expectedMarks: Record<string, string[]> = {
+      'char166-sl-push-time-station': ['reps_on_time_station'],
+      'char166-sl-push-zero': ['zero_set'],
+      'char166-sl-hold-max': ['reps_on_time_station'],
+    };
+    const check = (setLogs: Array<Record<string, unknown>>) => {
+      const withSuspect = setLogs.filter((sl) => 'suspect' in sl);
+      expect(withSuspect.map((sl) => sl.id).sort()).toEqual(Object.keys(expectedMarks).sort());
+      for (const sl of withSuspect) {
+        const marks = sl.suspect as Array<{ reason: string; explanation: string }>;
+        expect(marks.length).toBeGreaterThan(0);
+        expect(marks.map((m) => m.reason)).toEqual(expectedMarks[sl.id as string]);
+        expect(Object.keys(sl)[Object.keys(sl).length - 1]).toBe('suspect');
+      }
+      expect(setLogs.some((sl) => sl.id === 'char166-sl-push-deleted' && !('suspect' in sl))).toBe(true);
+    };
+
+    const pure = getHistory(CHAR166_HISTORY_ARGS, CHAR166_SNAPSHOT, undefined, undefined, CHAR166_CATALOG);
+    check(pure.setLogs as unknown as Array<Record<string, unknown>>);
+    // Without the catalog no set-log carries the key (the call of every caller before 166).
+    const plain = getHistory(CHAR166_HISTORY_ARGS, CHAR166_SNAPSHOT);
+    expect(plain.setLogs.some((sl) => 'suspect' in sl)).toBe(false);
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolGetHistory(server, DUMMY_CFG);
+    const handler = getHandler(server);
+    const inline = await handler({ ...CHAR166_HISTORY_ARGS });
+    check((JSON.parse(inline.content[0].text) as { setLogs: Array<Record<string, unknown>> }).setLogs);
+
+    vi.mocked(fileChannelModule.writeExportFile).mockResolvedValue({ path: '/tmp/x.json', bytes: 1, itemCount: 1 });
+    await handler({ ...CHAR166_HISTORY_ARGS, outputFile: true });
+    const [written] = vi.mocked(fileChannelModule.writeExportFile).mock.calls[0];
+    check((written as { setLogs: Array<Record<string, unknown>> }).setLogs);
   });
 });

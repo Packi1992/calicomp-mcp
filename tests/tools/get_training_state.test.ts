@@ -74,7 +74,7 @@ function snapshotWithZone(zone: string | null, extra: Partial<DecryptedSnapshot>
  * meaning", D-04 in the version E-15): they stand after `foreignSport`, in this order.
  * GEAENDERT in 166-06: before 166 `foreignSport` was the last key.
  */
-const PHASE_166_ADDITIONS = ['capabilityBalance'];
+const PHASE_166_ADDITIONS = ['capabilityBalance', 'dataQuality'];
 
 const EXPECTED_KEYS = [
   'timeZoneId',

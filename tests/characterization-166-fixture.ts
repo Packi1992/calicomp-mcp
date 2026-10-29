@@ -367,7 +367,9 @@ export function collectPinnedOutputs166(): Record<string, unknown> {
     getStatsExercise: getStats(CHAR166_STATS_EXERCISE_ARGS, CHAR166_STATS_DATA),
     getStatsMuscle: getStats(CHAR166_STATS_MUSCLE_ARGS, CHAR166_STATS_DATA),
     getStatsCapabilities: getStats(CHAR166_STATS_CAPABILITIES_ARGS, CHAR166_STATS_DATA),
-    getHistory: getHistory(CHAR166_HISTORY_ARGS, CHAR166_SNAPSHOT),
+    // Since 166-06 with the catalog, as the registered handler calls it, so the declared
+    // addition `suspect` (STAT-05) appears; every pinned key stays as before.
+    getHistory: getHistory(CHAR166_HISTORY_ARGS, CHAR166_SNAPSHOT, undefined, undefined, CHAR166_CATALOG),
     getAdherence: getAdherence(CHAR166_ADHERENCE_ARGS, CHAR166_ADHERENCE_DATA, CHAR166_NOW_MS),
   };
   return JSON.parse(JSON.stringify(outputs)) as Record<string, unknown>;

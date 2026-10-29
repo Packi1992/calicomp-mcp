@@ -583,6 +583,22 @@
       "rule": "STAT-03",
       "plan": "166-06",
       "why": "Genuine addition (D-04 in the version E-15): the capability balance of the app capability heatmap in three windows, raw and weighted over the population of rule P; no existing field carried these counts, so it is a new key after foreignSport, not a parallel field."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getHistory",
+      "path": "/setLogs/*/suspect",
+      "rule": "STAT-05",
+      "plan": "166-06",
+      "why": "Genuine addition (D-04 in the version E-15, D-05, D-17): a set-log that is probably an entry error carries its suspect marks (reason and explanation), only on a finding; no existing field carried this information."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getTrainingState",
+      "path": "/dataQuality",
+      "rule": "STAT-05",
+      "plan": "166-06",
+      "why": "Genuine addition (D-04 in the version E-15, D-05): the summary of the suspect marks (count, by reason, at most 20 newest) as the last key after capabilityBalance; no existing field carried this information."
     }
   ]
 }

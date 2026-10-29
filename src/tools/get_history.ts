@@ -70,6 +70,7 @@ import { resolveForeignType, wrapFreeText } from '../foreign-types.js';
 import type { ForeignTypeFields } from '../foreign-types.js';
 import type {
   AthleteFreeText,
+  CatalogExercise,
   DecryptedForeignActivity,
   DecryptedSnapshot,
   DecryptedSession,
@@ -193,7 +194,9 @@ export function getHistory(
   snapshot: DecryptedSnapshot,
   resolver?: ExerciseNameResolver,
   foreignAvailability?: ForeignSportAvailability,
+  catalog?: CatalogExercise[],
 ): GetHistoryResult {
+  void catalog; // stub of plan 166-06 (red commit): suspect marks follow
   const { from, to, exercise, templateId, sessionKind, limit } = args;
 
   // Step 1: ISO-date → UTC epoch bounds
