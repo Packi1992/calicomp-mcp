@@ -506,6 +506,11 @@ describe('computePersonalRecords — Rule M (Phase 166)', () => {
     // The 60 seconds on the REPS workout exercise of the TIME catalog exercise record no time;
     // the hold list takes the 50 of MAX on TIME and the 30 of the time station. Entry form,
     // ordering (value descending, then exerciseId) and calendar day are unchanged.
+    // GEAENDERT in gap plan 166-22 (E-17, protocol 1.52 §1.11 Rule M steps 3 to 5): the 40 repetitions in 30 seconds
+    // of the time station are a station set (a repetition exercise at a TIME station with its counted repetitions).
+    // Through 166-21 maxHoldSeconds carried its 30 seconds for P166 Push; since 1.52 a station set never counts as a
+    // hold time, so the hold list keeps only the 50 of P166 Hold, and the new last key repsInTime carries 40 in 30
+    // seconds without weight (the fixture set has no weightUsed).
     const expected = {
       maxReps: [
         { exerciseId: 'char166-cat-push', exerciseName: 'P166 Push', value: 20, achievedOn: '2026-03-08' },
@@ -515,7 +520,9 @@ describe('computePersonalRecords — Rule M (Phase 166)', () => {
       ],
       maxHoldSeconds: [
         { exerciseId: 'char166-cat-hold', exerciseName: 'P166 Hold', value: 50, achievedOn: '2026-03-06' },
-        { exerciseId: 'char166-cat-push', exerciseName: 'P166 Push', value: 30, achievedOn: '2026-03-06' },
+      ],
+      repsInTime: [
+        { exerciseId: 'char166-cat-push', exerciseName: 'P166 Push', durationSeconds: 30, weightKg: null, value: 40, achievedOn: '2026-03-06' },
       ],
     };
     const records = computePersonalRecords(CHAR166_SNAPSHOT, CHAR166_CATALOG, 'Europe/Berlin');
@@ -538,6 +545,11 @@ describe('computePersonalRecords — Rule M (Phase 166)', () => {
         expected[list].map((r) => r.exerciseId.replace('char166-cat-', 'char166_')),
       );
     }
+    // Gap plan 166-22 (E-17): repsInTime keeps its six keys first and gains the same resolver name fields.
+    expect(named.personalRecords.repsInTime.map((r) => Object.keys(r).slice(0, 6))).toEqual(
+      expected.repsInTime.map(() => ['exerciseId', 'exerciseName', 'durationSeconds', 'weightKg', 'value', 'achievedOn']),
+    );
+    expect(named.personalRecords.repsInTime.map((r) => r.exerciseKey)).toEqual(['char166_push']);
   });
 });
 
