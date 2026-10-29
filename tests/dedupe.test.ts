@@ -117,3 +117,24 @@ describe('findCatalogMatch origin scoping', () => {
     expect(match).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 166 (plan 166-08, D-11, protocol §2.7 "Dedupe"): the proposed name AND every
+// translations[].name are compared with the catalog names of every language.
+// ---------------------------------------------------------------------------
+
+describe('findCatalogMatch over the names of every language (166-08)', () => {
+  it('P166 dedupe compares the names of every language', () => {
+    // The base name is novel; the German translation name is the catalog Pull-Up's German name.
+    const germanName = mockCatalog.find((ex) => ex.id === CATALOG_EXERCISE_ID_PULLUP)?.translations[0]?.name;
+    expect(germanName).toBeDefined();
+    expect(findCatalogMatch('Completely novel base name', mockCatalog)).toBeUndefined();
+    expect(findCatalogMatch('Completely novel base name', mockCatalog, [`  ${String(germanName).toUpperCase()} `])?.id).toBe(
+      CATALOG_EXERCISE_ID_PULLUP,
+    );
+    // A translation name matching the catalog's English name counts too.
+    expect(findCatalogMatch('Another novel name', mockCatalog, ['nothing', 'pull-up'])?.id).toBe(CATALOG_EXERCISE_ID_PULLUP);
+    // No match in any language stays undefined; blank translation names are ignored.
+    expect(findCatalogMatch('Novel', mockCatalog, ['still novel', '   '])).toBeUndefined();
+  });
+});

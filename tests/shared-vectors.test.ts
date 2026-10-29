@@ -57,7 +57,15 @@ import {
 } from '../src/training-state/muscle-balance.js';
 import { weightedCounts as capabilityWeightedCounts } from '../src/training-state/capability-balance.js';
 import { amrapSummary, deathBySummary, emomIntervals } from '../src/training-state/format-progress.js';
-import { ProposeNewPlanSchema, ProposePlanUpdateSchema } from '../src/schemas.js';
+import {
+  MUSCLE_KEY,
+  NewExerciseDefSchema,
+  ProposeNewExerciseSchema,
+  ProposeNewPlanSchema,
+  ProposePlanUpdateSchema,
+} from '../src/schemas.js';
+import { buildNewExercisePayload, findUnknownLinkKey } from '../src/tools/propose_new_exercise.js';
+import { computeChangeHash } from '../src/hash.js';
 import { buildNewPlanPayload, type ProposeNewPlanArgs } from '../src/tools/propose_new_plan.js';
 import { buildPlanUpdatePayload, type ProposePlanUpdateArgs } from '../src/tools/propose_plan_update.js';
 import type { MiscSyncRow, DecryptedSetLog, SyncSessionDto } from '../src/types.js';
@@ -1229,6 +1237,53 @@ describe('shared coach-planning vector corpus', () => {
     // NICHT GEMESSEN guard: the replay must have reached both new ops through the schema.
     expect(opKinds.has('updateBlock')).toBe(true);
     expect(opKinds.has('addBlock')).toBe(true);
+  });
+
+  // -----------------------------------------------------------------------
+  // Phase 166 (plan 166-08, MCP-06, D-11): protocol §2.7 new_exercise links on the MCP side.
+  // The MCP accepts a vector when BOTH of its enforcement points accept it: the input schema
+  // (ProposeNewExerciseSchema for new_exercise, NewExerciseDefSchema for newExercises[], both
+  // must agree) and the key check against the catalog the MCP loaded (vector.catalog). An
+  // accepted payload comes out of buildNewExercisePayload unchanged; the byte-identity vector
+  // also pins the payload string and its changeHash.
+  // -----------------------------------------------------------------------
+
+  it('P166 every newExerciseLinks vector is accepted or rejected by the MCP as the corpus says', () => {
+    expect(corpus.newExerciseLinks.length).toBeGreaterThanOrEqual(9);
+    expect(corpus.newExerciseLinks.some((v) => v.acceptedBy.mcp === false)).toBe(true);
+    const pinned = corpus.newExerciseLinks.filter((v) => v.expectedChangeHash !== undefined);
+    expect(pinned.length).toBeGreaterThanOrEqual(1);
+    let keyRefusals = 0;
+    let fieldsSeen = 0;
+    for (const vector of corpus.newExerciseLinks) {
+      // The corpus muscle vocabulary is exactly MUSCLE_KEY: the schema is the MCP's muscle check.
+      expect([...vector.catalog.muscleGroupKeys].sort(), vector.name).toEqual([...MUSCLE_KEY.options].sort());
+      const vocabulary = {
+        capabilityKeys: new Set(vector.catalog.capabilityAxisKeys),
+        equipmentKeys: new Set(vector.catalog.equipmentKeys),
+      };
+      const asTool = ProposeNewExerciseSchema.safeParse({ ...vector.payload, rationale: 'corpus replay' });
+      const asEntry = NewExerciseDefSchema.safeParse({ ...vector.payload, tempId: 't-corpus' });
+      expect(asEntry.success, `${vector.name}: both schemas agree`).toBe(asTool.success);
+      const unknownKey = asTool.success ? findUnknownLinkKey(asTool.data, vocabulary) : undefined;
+      if (unknownKey !== undefined) keyRefusals += 1;
+      const accepted = asTool.success && unknownKey === undefined;
+      expect(accepted, `${vector.name}: acceptedBy.mcp is ${vector.acceptedBy.mcp}`).toBe(vector.acceptedBy.mcp);
+      if (!accepted || !asTool.success) continue;
+      const built = buildNewExercisePayload(asTool.data);
+      expect(built, vector.name).toStrictEqual(vector.payload);
+      for (const field of ['translations', 'muscleGroups', 'capabilities', 'equipment']) {
+        if (field in built) fieldsSeen += 1;
+      }
+      if (vector.expectedPayloadString !== undefined) {
+        expect(JSON.stringify(built), vector.name).toBe(vector.expectedPayloadString);
+        expect(computeChangeHash('new_exercise', built), vector.name).toBe(vector.expectedChangeHash);
+      }
+    }
+    // NICHT GEMESSEN guards: the key check refused at least one vector, and accepted payloads
+    // carried new fields through the builder.
+    expect(keyRefusals).toBeGreaterThanOrEqual(1);
+    expect(fieldsSeen).toBeGreaterThanOrEqual(4);
   });
 
   // -----------------------------------------------------------------------

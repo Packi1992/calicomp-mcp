@@ -859,6 +859,32 @@ const PlanUpdateOpsVectorSchema = z.object({
 
 export type PlanUpdateOpsVector = z.infer<typeof PlanUpdateOpsVectorSchema>;
 
+/**
+ * Phase 166 (plan 166-08, MCP-06, D-11): the `newExerciseLinks` corpus section of protocol §2.7
+ * "new_exercise and newExercises[]: optional links and translations". `catalog` is the
+ * vocabulary the MCP loaded (the keys it checks against), `deviceCatalog` the one of the
+ * installed app (read by the app replay only). `payload` stays a loose record for the reason
+ * `PlanUpdateOpsVectorSchema` gives. `expectedPayloadString`/`expectedChangeHash` pin the
+ * byte-identity of a payload without the four new fields.
+ */
+const LinkCatalogSchema = z.object({
+  muscleGroupKeys: z.array(z.string().min(1)).min(1),
+  capabilityAxisKeys: z.array(z.string().min(1)).min(1),
+  equipmentKeys: z.array(z.string().min(1)).min(1),
+});
+
+const NewExerciseLinksVectorSchema = z.object({
+  name: z.string().min(1),
+  catalog: LinkCatalogSchema,
+  payload: z.record(z.string(), z.unknown()),
+  acceptedBy: AcceptedBySchema,
+  note: z.string().min(1),
+  expectedPayloadString: z.string().min(1).optional(),
+  expectedChangeHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+});
+
+export type NewExerciseLinksVector = z.infer<typeof NewExerciseLinksVectorSchema>;
+
 export const CoachPlanningVectorsSchema = z.object({
   _provenance: ProvenanceSchema,
   expansion: z.array(ExpansionVectorSchema).min(1),
@@ -900,6 +926,7 @@ export const CoachPlanningVectorsSchema = z.object({
   personalRecordsByTrainingMode: z.array(PersonalRecordsByTrainingModeVectorSchema).min(5),
   // Phase 166 (plan 166-08): listed for the same reason as every section above.
   planUpdateOps: z.array(PlanUpdateOpsVectorSchema).min(8),
+  newExerciseLinks: z.array(NewExerciseLinksVectorSchema).min(9),
 });
 
 export type CoachPlanningVectors = z.infer<typeof CoachPlanningVectorsSchema>;

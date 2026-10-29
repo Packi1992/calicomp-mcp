@@ -44,7 +44,8 @@ import * as cacheModule from '../../src/cache.js';
 import * as httpModule from '../../src/http.js';
 import { HttpError } from '../../src/http.js';
 import { computePlanHash } from '../../src/hash.js';
-import { ProposePlanUpdateSchema } from '../../src/schemas.js';
+import { ProposeNewPlanSchema, ProposePlanUpdateSchema } from '../../src/schemas.js';
+import { registerToolProposeNewPlan } from '../../src/tools/propose_new_plan.js';
 import {
   registerToolProposePlanUpdate,
   buildPlanUpdatePayload,
@@ -614,23 +615,23 @@ describe('propose_plan_update — G-136-R2-7a Task 2: fail-closed invariant guar
 // carry both ops unchanged.
 // ---------------------------------------------------------------------------
 
-describe('propose_plan_update — block ops (166-08, D-12)', () => {
-  // The fixture's template and block ids are not RFC 4122 UUIDs (variant nibble c/d), which the
-  // schema's UUID_STRING refuses; the app writes random v4 ids. This block therefore runs the
-  // Push Day template under valid ids, every other field of the fixture unchanged.
-  const PUSH_TEMPLATE_ID = '16608000-0000-4000-8000-000000000001';
-  const PUSH_BLOCK_ID = '16608000-0000-4000-8000-000000000011';
-  const remap = (value: unknown): unknown => {
-    if (value === TEMPLATE_ID_PUSH) return PUSH_TEMPLATE_ID;
-    if (value === BLOCK_ID_PUSH_A) return PUSH_BLOCK_ID;
-    if (Array.isArray(value)) return value.map(remap);
-    if (value !== null && typeof value === 'object') {
-      return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, remap(v)]));
-    }
-    return value;
-  };
-  const pushSnapshot = remap(mockSnapshot) as DecryptedSnapshot;
+// The fixture's template and block ids are not RFC 4122 UUIDs (variant nibble c/d), which the
+// schema's UUID_STRING refuses; the app writes random v4 ids. The 166-08 blocks below therefore
+// run the Push Day template under valid ids, every other field of the fixture unchanged.
+const PUSH_TEMPLATE_ID = '16608000-0000-4000-8000-000000000001';
+const PUSH_BLOCK_ID = '16608000-0000-4000-8000-000000000011';
+const remap = (value: unknown): unknown => {
+  if (value === TEMPLATE_ID_PUSH) return PUSH_TEMPLATE_ID;
+  if (value === BLOCK_ID_PUSH_A) return PUSH_BLOCK_ID;
+  if (Array.isArray(value)) return value.map(remap);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, remap(v)]));
+  }
+  return value;
+};
+const pushSnapshot = remap(mockSnapshot) as DecryptedSnapshot;
 
+describe('propose_plan_update — block ops (166-08, D-12)', () => {
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, snapshot: pushSnapshot });
     vi.mocked(httpModule.postSuggest).mockReset();
@@ -708,5 +709,93 @@ describe('propose_plan_update — block ops (166-08, D-12)', () => {
     expect(payload.newExercises).toStrictEqual([]);
     const addBlock = payload.ops[0] as { exercises: { exercise: unknown }[] };
     expect(addBlock.exercises[0].exercise).toStrictEqual({ source: 'catalog', exerciseId: CATALOG_EXERCISE_ID_PUSHUP });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 166 (plan 166-08, MCP-06, D-11): newExercises[] of plan_update and new_plan take the
+// same optional fields as new_exercise (protocol §2.7), with the same key check.
+// ---------------------------------------------------------------------------
+
+describe('plan proposals — newExercises[] links (166-08, D-11)', () => {
+  const LINK_CATALOG = mockCatalog.map((ex, i) =>
+    i === 0
+      ? {
+          ...ex,
+          capabilities: [{ id: 'cap-balance', key: 'balance', translations: [], capabilityLevel: 'HAUPTREIZ' as const }],
+          equipment: [{ equipmentId: 'eq-rings', key: 'rings', nameEn: 'Rings', isOptional: false }],
+        }
+      : ex,
+  );
+
+  beforeEach(() => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, snapshot: pushSnapshot, catalog: LINK_CATALOG });
+    vi.mocked(httpModule.postSuggest).mockReset();
+    vi.mocked(httpModule.postSuggest).mockResolvedValue(MOCK_SUGGESTION);
+  });
+
+  const linkedEntry = {
+    tempId: 't-ring',
+    name: 'Ring Support Hold Variant',
+    mode: 'TIME',
+    usesWeight: false,
+    translations: [{ languageCode: 'de', name: 'Ringstütz Variante', description: 'Arme gestreckt.' }],
+    muscleGroups: [{ key: 'triceps', level: 'PRIMARY' }, { key: 'chest', level: 'STABILIZER' }],
+    capabilities: [{ key: 'balance', level: 'MITTRAINIERT' }],
+    equipment: [{ key: 'rings', optional: false }],
+  };
+  const ref = { exercise: { source: 'new', tempId: 't-ring' }, mode: 'TIME', targetTimeSeconds: 20, restTimeSeconds: 40, sets: 1, orderIndex: 0 };
+
+  const updateArgs = (entry: Record<string, unknown>) => ({
+    templateId: PUSH_TEMPLATE_ID,
+    rationale: 'a linked new exercise',
+    newExercises: [entry],
+    ops: [{ op: 'addExercise', blockId: null, ...ref, orderIndex: 5 }],
+  });
+  const newPlanArgs = (entry: Record<string, unknown>) => ({
+    name: 'Rings Day',
+    rationale: 'a linked new exercise',
+    newExercises: [entry],
+    standalone: [ref],
+  });
+
+  it('P166 newExercises entries of a plan proposal accept the same fields', async () => {
+    // Both schemas keep the four fields.
+    const update = ProposePlanUpdateSchema.parse(updateArgs(linkedEntry));
+    const plan = ProposeNewPlanSchema.parse(newPlanArgs(linkedEntry));
+    expect(update.newExercises?.[0]).toStrictEqual(linkedEntry);
+    expect(plan.newExercises?.[0]).toStrictEqual(linkedEntry);
+    // A capability without level is refused in newExercises[] as well.
+    expect(
+      ProposePlanUpdateSchema.safeParse(updateArgs({ ...linkedEntry, capabilities: [{ key: 'balance' }] })).success,
+    ).toBe(false);
+
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolProposePlanUpdate(server, DUMMY_CFG);
+    registerToolProposeNewPlan(server, DUMMY_CFG);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tools = (server as any)._registeredTools;
+
+    // Both tools send the entry unchanged.
+    expect((await tools.propose_plan_update.handler(update)).isError).toBeFalsy();
+    expect((await tools.propose_new_plan.handler(plan)).isError).toBeFalsy();
+    expect(httpModule.postSuggest).toHaveBeenCalledTimes(2);
+    for (const [body] of vi.mocked(httpModule.postSuggest).mock.calls) {
+      expect((JSON.parse(body.payload) as { newExercises: unknown[] }).newExercises).toStrictEqual([linkedEntry]);
+    }
+
+    // Both tools refuse an unknown key of the loaded catalog, naming it, without a network call.
+    vi.mocked(httpModule.postSuggest).mockClear();
+    const badUpdate = await tools.propose_plan_update.handler(
+      ProposePlanUpdateSchema.parse(updateArgs({ ...linkedEntry, equipment: [{ key: 'parallettes' }] })),
+    );
+    expect(badUpdate.isError).toBe(true);
+    expect(badUpdate.content[0].text).toContain('parallettes');
+    const badPlan = await tools.propose_new_plan.handler(
+      ProposeNewPlanSchema.parse(newPlanArgs({ ...linkedEntry, capabilities: [{ key: 'juggling', level: 'GERING' }] })),
+    );
+    expect(badPlan.isError).toBe(true);
+    expect(badPlan.content[0].text).toContain('juggling');
+    expect(httpModule.postSuggest).not.toHaveBeenCalled();
   });
 });

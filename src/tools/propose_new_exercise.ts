@@ -32,6 +32,45 @@ import { findCatalogMatch } from '../dedupe.js';
 import { computeChangeHash } from '../hash.js';
 import { getSourceLlm } from '../source_llm.js';
 import { postSuggest, HttpError } from '../http.js';
+import type { CatalogExercise } from '../types.js';
+
+// ---------------------------------------------------------------------------
+// Pure helpers (Phase 166, plan 166-08) — importable for the corpus replay
+// ---------------------------------------------------------------------------
+
+export interface ProposeNewExerciseArgs {
+  name: string;
+  mode: 'REPS' | 'TIME' | 'MAX';
+  usesWeight: boolean;
+  rationale?: string;
+  description?: string;
+}
+
+/** The capability and equipment keys of the loaded catalog (protocol §2.7 "Keys, never ids"). */
+export interface LinkVocabulary {
+  capabilityKeys: ReadonlySet<string>;
+  equipmentKeys: ReadonlySet<string>;
+}
+
+/** STUB (red commit of 166-08): no vocabulary yet. */
+export function catalogLinkVocabulary(_catalog: CatalogExercise[]): LinkVocabulary {
+  return { capabilityKeys: new Set(), equipmentKeys: new Set() };
+}
+
+/** STUB (red commit of 166-08): checks nothing yet. */
+export function findUnknownLinkKey(_def: object, _vocabulary: LinkVocabulary): string | undefined {
+  return undefined;
+}
+
+/** The allowlisted `new_exercise` payload (T-121-02): name, mode, usesWeight, description. */
+export function buildNewExercisePayload(args: ProposeNewExerciseArgs): Record<string, unknown> {
+  return {
+    name:       args.name,
+    mode:       args.mode,
+    usesWeight: args.usesWeight,
+    ...(args.description ? { description: args.description } : {}),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Tool registration
@@ -78,12 +117,7 @@ export function registerToolProposeNewExercise(
           };
         }
 
-        const payload = {
-          name:       typedArgs.name,
-          mode:       typedArgs.mode,
-          usesWeight: typedArgs.usesWeight,
-          ...(typedArgs.description ? { description: typedArgs.description } : {}),
-        };
+        const payload = buildNewExercisePayload(typedArgs);
         const changeHash = computeChangeHash('new_exercise', payload);
         const sourceLlm  = getSourceLlm(server);
 
