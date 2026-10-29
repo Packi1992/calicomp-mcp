@@ -573,6 +573,34 @@
       "rule": "P",
       "plan": "166-06",
       "why": "Rule P: the point of the deleted session of 2026-01-04 goes; both live template sessions keep theirs."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getAdherence",
+      "path": "/matches/0/sessionId",
+      "before": "char166-s-d10-a",
+      "after": "char166-s-d10-b",
+      "rule": "D-10",
+      "plan": "166-07",
+      "why": "Rule D-10 (protocol 1.49, section 1.6 Several candidates for one occurrence): of the two finished sessions of the D-10 template on 2026-03-05, both at date distance 0, pass 1 now prefers the one with more live sets; char166-s-d10-b has three, char166-s-d10-a one, so b is matched although its id is larger. sessionDate, dateDistanceDays, via and confidence of the match stay the same, and so do matchedCount and adherenceRatio."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getAdherence",
+      "path": "/unplannedSessionIds",
+      "before": [
+        "char166-s-main",
+        "char166-s-d10-b",
+        "char166-s-in02"
+      ],
+      "after": [
+        "char166-s-main",
+        "char166-s-d10-a",
+        "char166-s-in02"
+      ],
+      "rule": "D-10",
+      "plan": "166-07",
+      "why": "Rule D-10: the losing candidate char166-s-d10-a takes the place of char166-s-d10-b among the unplanned sessions; the list keeps the snapshot order of the candidate sessions."
     }
   ],
   "additions": [

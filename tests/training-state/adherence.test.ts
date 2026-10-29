@@ -593,6 +593,95 @@ describe('computeAdherence — foreign sport is its own pass (Phase 155)', () =>
 // ---------------------------------------------------------------------------
 // Phase 155 (D-07, D-06): completed series dates the app wrote as removed
 // ---------------------------------------------------------------------------
+// Phase 166 (MCP-08, D-10, protocol §1.6 "Several candidates for one occurrence"): pass 1
+// orders its candidates by date distance, then live set count (descending), then duration
+// (descending), then the old tie-break. Invented ids: the losing session always carries the
+// SMALLER id, so the order through 1.48 (smaller sessionId wins) decides visibly wrong.
+// ---------------------------------------------------------------------------
+
+describe('computeAdherence — several candidates for one occurrence (Phase 166, D-10)', () => {
+  const args = { from: '2026-06-01', to: '2026-06-10', ...ARGS };
+  const occurrenceRoot = root({ id: 'r1', scheduledDate: epochMs(2026, 6, 4, 0, 0) });
+
+  it('P166 two sessions of one template on one day match the one with more live sets even with the larger session id', () => {
+    const snapshot = snapshotWith({
+      plannedWorkouts: [occurrenceRoot],
+      sessions: [
+        // Smaller id, three set rows but only ONE live (deleted sets never count), and the
+        // LONGER duration: the live set count decides before the duration does.
+        session({ id: 's-a', startTime: epochMs(2026, 6, 4, 8), endTime: epochMs(2026, 6, 4, 10) }),
+        session({ id: 's-b', startTime: epochMs(2026, 6, 4, 18), endTime: epochMs(2026, 6, 4, 18, 30) }),
+      ],
+      setLogs: [
+        setLog({ id: 'sl-a-1', sessionId: 's-a' }),
+        setLog({ id: 'sl-a-2', sessionId: 's-a', deletedAt: epochMs(2026, 6, 4, 10) }),
+        setLog({ id: 'sl-a-3', sessionId: 's-a', deletedAt: epochMs(2026, 6, 4, 10) }),
+        setLog({ id: 'sl-b-1', sessionId: 's-b' }),
+        setLog({ id: 'sl-b-2', sessionId: 's-b' }),
+      ],
+    });
+    const result = computeAdherence(args, { snapshot, catalog: mockCatalog, timeZoneId: TZ });
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0]).toMatchObject({ rootId: 'r1', sessionId: 's-b', via: 'templateId', confidence: 'matched' });
+  });
+
+  it('P166 equal set counts match the longer session', () => {
+    const snapshot = snapshotWith({
+      plannedWorkouts: [occurrenceRoot],
+      sessions: [
+        session({ id: 's-a', startTime: epochMs(2026, 6, 4, 8), endTime: epochMs(2026, 6, 4, 8, 20) }),
+        session({ id: 's-b', startTime: epochMs(2026, 6, 4, 18), endTime: epochMs(2026, 6, 4, 19) }),
+      ],
+      setLogs: [
+        setLog({ id: 'sl-a-1', sessionId: 's-a' }),
+        setLog({ id: 'sl-a-2', sessionId: 's-a' }),
+        setLog({ id: 'sl-b-1', sessionId: 's-b' }),
+        setLog({ id: 'sl-b-2', sessionId: 's-b' }),
+      ],
+    });
+    const result = computeAdherence(args, { snapshot, catalog: mockCatalog, timeZoneId: TZ });
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0].sessionId).toBe('s-b');
+    expect(result.unplannedSessionIds).toEqual(['s-a']);
+  });
+
+  it('P166 the other candidate appears as unplanned and matchedCount stays the same', () => {
+    const sessions = [
+      session({ id: 's-a', startTime: epochMs(2026, 6, 4, 9), endTime: epochMs(2026, 6, 4, 9, 2) }),
+      session({ id: 's-b', startTime: epochMs(2026, 6, 4, 8), endTime: epochMs(2026, 6, 4, 9) }),
+    ];
+    const setLogs = [
+      setLog({ id: 'sl-a-1', sessionId: 's-a' }),
+      setLog({ id: 'sl-b-1', sessionId: 's-b' }),
+      setLog({ id: 'sl-b-2', sessionId: 's-b' }),
+      setLog({ id: 'sl-b-3', sessionId: 's-b' }),
+    ];
+    const both = computeAdherence(args, {
+      snapshot: snapshotWith({ plannedWorkouts: [occurrenceRoot], sessions, setLogs }),
+      catalog: mockCatalog,
+      timeZoneId: TZ,
+    });
+    expect(both.matches.map((m) => m.sessionId)).toEqual(['s-b']);
+    expect(both.unplannedSessionIds).toEqual(['s-a']);
+    // The measuring figures keep their definition: exactly one session is matched either way,
+    // the same as with only one of the two sessions present.
+    for (const only of sessions) {
+      const single = computeAdherence(args, {
+        snapshot: snapshotWith({ plannedWorkouts: [occurrenceRoot], sessions: [only], setLogs }),
+        catalog: mockCatalog,
+        timeZoneId: TZ,
+      });
+      expect(single.matchedCount).toBe(both.matchedCount);
+      expect(single.adherenceRatio).toBe(both.adherenceRatio);
+    }
+    expect(both.matchedCount).toBe(1);
+    expect(both.plannedCount).toBe(1);
+    expect(both.missedCount).toBe(0);
+    expect(both.adherenceRatio).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 
 describe('computeAdherence — removedWithCompletedSessionCount (Phase 155, D-07)', () => {
   const OTHER_TEMPLATE = 'cccccccc-0002-4000-c000-0000000000aa';

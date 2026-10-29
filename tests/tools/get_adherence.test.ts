@@ -266,6 +266,74 @@ describe('getAdherence', () => {
     });
   });
 
+  it('P166 get_adherence returns the phantom fixture with the real session matched', () => {
+    // The pattern of 2026-10-13 (protocol §1.6 "Several candidates for one occurrence"), with
+    // invented ids: the real session was recorded on the watch with all its sets and imported
+    // after its end (createdAt after endTime); a second session of the same template started
+    // on the phone while the watch was training, with one set and a short duration. The
+    // phantom carries the SMALLER id, so the order through 1.48 matched it.
+    const PHANTOM = 'p166-session-0001';
+    const REAL = 'p166-session-0002';
+    const day = epochMs(2026, 6, 3);
+    const at = (h: number, mi = 0) => day + (h * 60 + mi) * 60_000;
+    const setLogFor = (id: string, sessionId: string, minute: number) => ({
+      id,
+      sessionId,
+      exerciseId: mockCatalog[0].id,
+      exerciseSource: 'CATALOG' as const,
+      completedReps: 10,
+      completedTimeSeconds: null,
+      weightUsed: null,
+      startedAt: null,
+      measuredTimeSeconds: null,
+      createdAt: at(17, minute),
+      updatedAt: at(17, minute),
+    });
+    const snapshot = snapshotWithZone(TZ, {
+      plannedWorkouts: [root({ id: 'r-phantom-day', scheduledDate: epochMs(2026, 6, 3) })],
+      sessions: [
+        {
+          id: PHANTOM,
+          templateId: TEMPLATE_ID_PUSH,
+          startTime: at(17, 10),
+          endTime: at(17, 12),
+          isManual: false,
+          isCorrected: false,
+          isQuickChallenge: false,
+          createdAt: at(17, 10),
+          updatedAt: at(17, 12),
+        },
+        {
+          id: REAL,
+          templateId: TEMPLATE_ID_PUSH,
+          startTime: at(17, 0),
+          endTime: at(18, 0),
+          isManual: false,
+          isCorrected: true,
+          isQuickChallenge: false,
+          createdAt: at(18, 5),
+          updatedAt: at(18, 5),
+        },
+      ],
+      setLogs: [
+        setLogFor('p166-sl-phantom-1', PHANTOM, 11),
+        ...[5, 15, 25, 35, 45].map((m, i) => setLogFor(`p166-sl-real-${i + 1}`, REAL, m)),
+      ],
+    });
+    const result = getAdherence(
+      { from: '2026-06-01', to: '2026-06-07' },
+      { snapshot, catalog: mockCatalog, coachParameters: COACH_PARAMETER_DEFAULTS },
+      epochMs(2026, 6, 4) + 12 * 3_600_000,
+    );
+    expect(result.matches.map((m) => ({ rootId: m.rootId, sessionId: m.sessionId, via: m.via }))).toEqual([
+      { rootId: 'r-phantom-day', sessionId: REAL, via: 'templateId' },
+    ]);
+    expect(result.unplannedSessionIds).toEqual([PHANTOM]);
+    expect(result.plannedCount).toBe(1);
+    expect(result.matchedCount).toBe(1);
+    expect(result.adherenceRatio).toBe(1);
+  });
+
   it('propagates TimeZoneUnavailableError uncaught when no time-zone row is synced', () => {
     const snapshot = snapshotWithZone(null);
     expect(() =>
