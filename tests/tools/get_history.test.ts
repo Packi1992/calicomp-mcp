@@ -1274,11 +1274,11 @@ describe('get_history — suspect marks (Phase 166, STAT-05)', () => {
   });
 
   it('P166 get_history carries suspect only on a finding', async () => {
-    // On the fixture of 166, by hand from the protocol table: the repetitions on the TIME
-    // station and on the MAX hold (no targetReps) are reps_on_time_station, the push set with
-    // 0 repetitions is a zero set; every other set, also the deleted one, has no finding.
+    // On the fixture of 166, by hand from the protocol table: the repetitions on the MAX hold
+    // (no targetReps) are reps_on_time_station, the push set with 0 repetitions is a zero set;
+    // every other set, also the deleted one, has no finding. The repetitions on the TIME station
+    // of the push exercise (catalog REPS) are real counts since protocol 1.51 (166-17-FUND-02).
     const expectedMarks: Record<string, string[]> = {
-      'char166-sl-push-time-station': ['reps_on_time_station'],
       'char166-sl-push-zero': ['zero_set'],
       'char166-sl-hold-max': ['reps_on_time_station'],
     };

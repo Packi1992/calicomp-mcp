@@ -169,12 +169,12 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
       }),
       CATALOG,
     );
-    // a: TIME station on a REPS exercise; c: MAX on a TIME exercise; d: no workout exercise,
-    // catalog TIME. b is excepted (targetReps 8), e records repetitions, f has no repetitions.
-    expect(reasonsOf(marks, 'ss-a')).toEqual(['reps_on_time_station']);
+    // c: MAX on a TIME exercise; d: no workout exercise, catalog TIME. b is excepted
+    // (targetReps 8), e records repetitions, f has no repetitions. a: a TIME station on a REPS
+    // exercise carries real counts since protocol 1.51 and no mark (166-17-FUND-02).
     expect(reasonsOf(marks, 'ss-c')).toEqual(['reps_on_time_station']);
     expect(reasonsOf(marks, 'ss-d')).toEqual(['reps_on_time_station']);
-    for (const id of ['ss-b', 'ss-e', 'ss-f']) expect(marks.has(id), id).toBe(false);
+    for (const id of ['ss-a', 'ss-b', 'ss-e', 'ss-f']) expect(marks.has(id), id).toBe(false);
   });
 
   it('P166 a zero set is marked zero_set', () => {
@@ -239,6 +239,66 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
     expect(marks.has('ss-f01-empty')).toBe(false);
     expect(reasonsOf(marks, 'ss-f01-reps-no-time') ?? []).not.toContain('zero_set');
     expect(reasonsOf(marks, 'ss-f01-reps-kind-time-zero')).toEqual(['zero_set']);
+  });
+
+  it('P166 166-17-FUND-02 repetitions of a repetition exercise at a time station are no reps_on_time_station', () => {
+    // Protocol 1.51 §1.11 "Suspect sets": before app plan 165-02 the app took the counted
+    // repetitions at a TIME station of a repetition exercise, often with the station time. They
+    // are real counts. Invented constellation: a finished classic session at such a station
+    // without targetReps.
+    const te = [templateExercise('ss-te-fund02-time', EX_REPS.id, 'TIME', { targetTimeSeconds: 40 })];
+    const s = { ...session('ss-f02-classic', '2026-05-07T08:00:00Z'), templateId: 'ss-tpl' };
+    const atStation = { workoutExerciseId: 'ss-te-fund02-time', exerciseId: EX_REPS.id };
+    const marks = suspectMarksFor(
+      snapshot({
+        templateExercises: te,
+        sessions: [s],
+        setLogs: [
+          set('ss-f02-reps-time-measured', s.id, s.startTime + 1, { ...atStation, completedReps: 12, completedTimeSeconds: 40, measuredTimeSeconds: 41 }),
+          set('ss-f02-reps-time', s.id, s.startTime + 2, { ...atStation, completedReps: 11, completedTimeSeconds: 40 }),
+          set('ss-f02-reps-only', s.id, s.startTime + 3, { ...atStation, completedReps: 10 }),
+        ],
+      }),
+      CATALOG,
+    );
+    for (const id of ['ss-f02-reps-time-measured', 'ss-f02-reps-time', 'ss-f02-reps-only']) {
+      expect(reasonsOf(marks, id) ?? [], id).not.toContain('reps_on_time_station');
+    }
+  });
+
+  it('P166 166-17-FUND-02 repetitions on a hold exercise stay reps_on_time_station in every mode that records a time', () => {
+    const s1 = session('ss-f02-hold', '2026-05-08T08:00:00Z');
+    const te = [
+      templateExercise('ss-te-f02-hold-time', EX_HOLD.id, 'TIME', { targetTimeSeconds: 20 }),
+      templateExercise('ss-te-f02-hold-max', EX_HOLD.id, 'MAX'),
+      templateExercise('ss-te-f02-hold-reps', EX_HOLD.id, 'REPS', { targetReps: 5 }),
+      templateExercise('ss-te-f02-reps-max', EX_REPS.id, 'MAX'),
+      templateExercise('ss-te-f02-hold-time-target', EX_HOLD.id, 'TIME', { targetReps: 8 }),
+    ];
+    const t0 = s1.startTime;
+    const marks = suspectMarksFor(
+      snapshot({
+        templateExercises: te,
+        sessions: [s1],
+        setLogs: [
+          // Marked: a hold exercise at a TIME station, on MAX, and on the catalog fallback (no
+          // workout exercise), the pattern of the three sets the athlete corrected (D-17).
+          set('ss-f02-hold-time', s1.id, t0 + 1, { workoutExerciseId: 'ss-te-f02-hold-time', exerciseId: EX_HOLD.id, completedReps: 2, completedTimeSeconds: 20 }),
+          set('ss-f02-hold-max', s1.id, t0 + 2, { workoutExerciseId: 'ss-te-f02-hold-max', exerciseId: EX_HOLD.id, completedReps: 3, completedTimeSeconds: 25 }),
+          set('ss-f02-hold-fallback', s1.id, t0 + 3, { exerciseId: EX_HOLD.id, completedReps: 2, completedTimeSeconds: 20 }),
+          // Not marked: a REPS row records repetitions, MAX on a repetition exercise records
+          // repetitions, and a time station with targetReps is the exception.
+          set('ss-f02-hold-reps', s1.id, t0 + 4, { workoutExerciseId: 'ss-te-f02-hold-reps', exerciseId: EX_HOLD.id, completedReps: 5, completedTimeSeconds: 20 }),
+          set('ss-f02-reps-max', s1.id, t0 + 5, { workoutExerciseId: 'ss-te-f02-reps-max', exerciseId: EX_REPS.id, completedReps: 9, completedTimeSeconds: 20 }),
+          set('ss-f02-hold-target', s1.id, t0 + 6, { workoutExerciseId: 'ss-te-f02-hold-time-target', exerciseId: EX_HOLD.id, completedReps: 8, completedTimeSeconds: 30 }),
+        ],
+      }),
+      CATALOG,
+    );
+    for (const id of ['ss-f02-hold-time', 'ss-f02-hold-max', 'ss-f02-hold-fallback']) {
+      expect(reasonsOf(marks, id), id).toEqual(['reps_on_time_station']);
+    }
+    for (const id of ['ss-f02-hold-reps', 'ss-f02-reps-max', 'ss-f02-hold-target']) expect(marks.has(id), id).toBe(false);
   });
 
   it('P166 a missing measured time after measurements began is marked measured_time_missing', () => {
@@ -315,14 +375,16 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
     expect(Object.keys(explanations).sort()).toEqual([...SUSPECT_REASONS].sort());
     const s1 = session('ss-s1', '2026-05-01T08:00:00Z');
     const sessions = [s1, ...Array.from({ length: 6 }, (_, i) => session(`ss-x${i}`, `2026-05-0${i + 2}T08:00:00Z`))];
-    const te = [templateExercise('ss-te-time', EX_REPS.id, 'TIME', { targetTimeSeconds: 30 })];
+    // 166-17-FUND-02 (protocol 1.51): the time station stands on a hold exercise, because
+    // reps_on_time_station marks only exercises whose catalog mode is TIME.
+    const te = [templateExercise('ss-te-time', EX_HOLD.id, 'TIME', { targetTimeSeconds: 30 })];
     const marks = suspectMarksFor(
       snapshot({
         templateExercises: te,
         sessions,
         setLogs: [
           // Two reasons on one set: repetitions on a time station and a zero time.
-          set('ss-two', s1.id, s1.startTime + 1, { workoutExerciseId: 'ss-te-time', exerciseId: EX_REPS.id, completedReps: 6, completedTimeSeconds: 0 }),
+          set('ss-two', s1.id, s1.startTime + 1, { workoutExerciseId: 'ss-te-time', exerciseId: EX_HOLD.id, completedReps: 6, completedTimeSeconds: 0 }),
           ...sessions.slice(1, 6).map((s, i) =>
             set(`ss-meas-${i}`, s.id, s.startTime + 1, { exerciseId: EX_HOLD.id, completedTimeSeconds: 30, measuredTimeSeconds: 30 }),
           ),
@@ -352,14 +414,16 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
     // created at 23:30 UTC, already the next day in Europe/Berlin; two share a creation time.
     const sessions: DecryptedSession[] = [];
     const setLogs: DecryptedSetLog[] = [];
-    const te = [templateExercise('ss-te-time', EX_REPS.id, 'TIME', { targetTimeSeconds: 30 })];
+    // 166-17-FUND-02 (protocol 1.51): the time station stands on a hold exercise, so the two
+    // sets keep reps_on_time_station.
+    const te = [templateExercise('ss-te-time', EX_HOLD.id, 'TIME', { targetTimeSeconds: 30 })];
     for (let i = 0; i < 25; i++) {
       const day = String(i + 1).padStart(2, '0');
       const s = session(`ss-d${day}`, `2026-03-${day}T08:00:00Z`);
       sessions.push(s);
       const id = `ss-z${day}`;
       if (i === 23 || i === 24) {
-        setLogs.push(set(id, s.id, s.startTime + MIN, { workoutExerciseId: 'ss-te-time', exerciseId: EX_REPS.id, completedReps: 4, completedTimeSeconds: 0 }));
+        setLogs.push(set(id, s.id, s.startTime + MIN, { workoutExerciseId: 'ss-te-time', exerciseId: EX_HOLD.id, completedReps: 4, completedTimeSeconds: 0 }));
       } else {
         setLogs.push(set(id, s.id, s.startTime + MIN, { exerciseId: EX_REPS.id, completedReps: 0 }));
       }
@@ -382,20 +446,20 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
     expect(ids[ids.length - 1]).toBe('ss-z08');
     for (const e of dq.newest) expect(Object.keys(e)).toEqual(['setLogId', 'date', 'reasons']);
 
-    // In get_training_state: the last key, the same summary; on the fixture of 166 the
-    // time-station set and the MAX-hold set carry repetitions, one push set is a zero set.
+    // In get_training_state: the last key, the same summary; on the fixture of 166 the MAX-hold
+    // set carries repetitions, one push set is a zero set. The time-station set of the push
+    // exercise (catalog REPS) carries real counts since protocol 1.51 (166-17-FUND-02).
     const state = getTrainingState(CHAR166_TRAINING_STATE_ARGS, CHAR166_TRAINING_STATE_DATA, CHAR166_NOW_MS);
     const keys = Object.keys(state);
     expect(keys[keys.length - 1]).toBe('dataQuality');
     const { dataQuality } = state as unknown as { dataQuality: unknown };
     expect(dataQuality).toEqual(computeDataQuality(CHAR166_SNAPSHOT, CHAR166_CATALOG, 'Europe/Berlin'));
     expect(dataQuality).toEqual({
-      suspectSetCount: 3,
-      byReason: { reps_on_time_station: 2, zero_set: 1, measured_time_missing: 0 },
+      suspectSetCount: 2,
+      byReason: { reps_on_time_station: 1, zero_set: 1, measured_time_missing: 0 },
       newest: [
         { setLogId: 'char166-sl-hold-max', date: '2026-03-06', reasons: ['reps_on_time_station'] },
         { setLogId: 'char166-sl-push-zero', date: '2026-03-06', reasons: ['zero_set'] },
-        { setLogId: 'char166-sl-push-time-station', date: '2026-03-06', reasons: ['reps_on_time_station'] },
       ],
     });
   });
