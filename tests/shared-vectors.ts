@@ -893,6 +893,9 @@ const NewExerciseLinksVectorSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
   acceptedBy: AcceptedBySchema,
   note: z.string().min(1),
+  // Protocol 1.54 (166-REVIEW WR-03): the payload as the MCP sends it after normalising the
+  // language codes; a vector without it is sent as its `payload`.
+  expectedPayload: z.record(z.string(), z.unknown()).optional(),
   expectedPayloadString: z.string().min(1).optional(),
   expectedChangeHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 });

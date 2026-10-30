@@ -16,6 +16,8 @@ import {
   ProposePlanUpdateSchema,
   ProposeNewPlanSchema,
   ProposeNewExerciseSchema,
+  ProposeExerciseUpdateSchema,
+  NewExerciseDefSchema,
   FormatParamsSchema,
 } from '../src/schemas.js';
 
@@ -808,5 +810,55 @@ describe('ProposePlanUpdateSchema — block ops (166-08, D-12)', () => {
     const fiftyOne = Array.from({ length: 51 }, (_, i) => blockEntry({ source: 'catalog', exerciseId: VALID_UUID }, i));
     expect(ProposePlanUpdateSchema.safeParse(withOps([{ op: 'addBlock', rounds: 3, orderIndex: 0, exercises: fiftyOne }])).success).toBe(false);
     expect(ProposePlanUpdateSchema.safeParse(withOps([{ op: 'addBlock', rounds: 3, orderIndex: -1, exercises: [blockEntry({ source: 'catalog', exerciseId: VALID_UUID }, 0)] }])).success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 166-REVIEW WR-03, WR-04 (protocol 1.54 §2.7): a translation's languageCode is two or three
+// letters, lowered before the uniqueness and the en rule (the form the app's views read); every
+// other form is refused. The base description of new_exercise and newExercises[] is at most 1000.
+// ---------------------------------------------------------------------------
+
+const tr = (languageCode: string, name = 'WR03 Name') => ({ languageCode, name, description: null });
+const validDef = { tempId: 't1', name: 'WR03 row', mode: 'REPS', usesWeight: false };
+const updateWith = (translations: unknown[]) => ({
+  exerciseId: VALID_UUID,
+  rationale: 'WR03',
+  translations,
+});
+
+describe('translations languageCode — normalised to lower case (166-REVIEW WR-03)', () => {
+  it('lowers DE in propose_new_exercise, newExercises[] and propose_exercise_update', () => {
+    const asTool = ProposeNewExerciseSchema.safeParse({ ...validNewExercise, translations: [tr('DE')] });
+    expect(asTool.success).toBe(true);
+    expect(asTool.success && asTool.data.translations?.[0].languageCode).toBe('de');
+    const asDef = NewExerciseDefSchema.safeParse({ ...validDef, translations: [tr('Fr')] });
+    expect(asDef.success && asDef.data.translations?.[0].languageCode).toBe('fr');
+    const asUpdate = ProposeExerciseUpdateSchema.safeParse(updateWith([tr('EN')]));
+    expect(asUpdate.success && asUpdate.data.translations?.[0].languageCode).toBe('en');
+  });
+
+  it('refuses every form that does not normalise', () => {
+    for (const code of ['de-AT', 'de_AT', 'x1', 'd', 'deut', ' de', '']) {
+      expect(ProposeNewExerciseSchema.safeParse({ ...validNewExercise, translations: [tr(code)] }).success, code).toBe(false);
+      expect(ProposeExerciseUpdateSchema.safeParse(updateWith([tr(code)])).success, code).toBe(false);
+    }
+  });
+
+  it('judges en and duplicates on the lowered code', () => {
+    expect(ProposeNewExerciseSchema.safeParse({ ...validNewExercise, translations: [tr('EN')] }).success).toBe(false);
+    expect(
+      ProposeNewExerciseSchema.safeParse({ ...validNewExercise, translations: [tr('de'), tr('DE', 'WR03 Zweiter')] }).success,
+    ).toBe(false);
+    expect(ProposeExerciseUpdateSchema.safeParse(updateWith([tr('de'), tr('DE', 'WR03 Zweiter')])).success).toBe(false);
+  });
+});
+
+describe('base description — at most 1000 (166-REVIEW WR-04)', () => {
+  it('accepts 1000 and refuses 1001 in propose_new_exercise and newExercises[]', () => {
+    expect(ProposeNewExerciseSchema.safeParse({ ...validNewExercise, description: 'a'.repeat(1000) }).success).toBe(true);
+    expect(ProposeNewExerciseSchema.safeParse({ ...validNewExercise, description: 'a'.repeat(1001) }).success).toBe(false);
+    expect(NewExerciseDefSchema.safeParse({ ...validDef, description: 'a'.repeat(1000) }).success).toBe(true);
+    expect(NewExerciseDefSchema.safeParse({ ...validDef, description: 'a'.repeat(1001) }).success).toBe(false);
   });
 });

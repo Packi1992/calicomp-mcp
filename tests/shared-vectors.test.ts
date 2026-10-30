@@ -1343,6 +1343,7 @@ describe('shared coach-planning vector corpus', () => {
     expect(pinned.length).toBeGreaterThanOrEqual(1);
     let keyRefusals = 0;
     let fieldsSeen = 0;
+    let normalisedSeen = 0;
     for (const vector of corpus.newExerciseLinks) {
       // The corpus muscle vocabulary is exactly MUSCLE_KEY: the schema is the MCP's muscle check.
       expect([...vector.catalog.muscleGroupKeys].sort(), vector.name).toEqual([...MUSCLE_KEY.options].sort());
@@ -1359,7 +1360,9 @@ describe('shared coach-planning vector corpus', () => {
       expect(accepted, `${vector.name}: acceptedBy.mcp is ${vector.acceptedBy.mcp}`).toBe(vector.acceptedBy.mcp);
       if (!accepted || !asTool.success) continue;
       const built = buildNewExercisePayload(asTool.data);
-      expect(built, vector.name).toStrictEqual(vector.payload);
+      // Protocol 1.54 (166-REVIEW WR-03): a vector with expectedPayload is sent normalised.
+      expect(built, vector.name).toStrictEqual(vector.expectedPayload ?? vector.payload);
+      if (vector.expectedPayload !== undefined) normalisedSeen += 1;
       for (const field of ['translations', 'muscleGroups', 'capabilities', 'equipment']) {
         if (field in built) fieldsSeen += 1;
       }
@@ -1372,6 +1375,8 @@ describe('shared coach-planning vector corpus', () => {
     // carried new fields through the builder.
     expect(keyRefusals).toBeGreaterThanOrEqual(1);
     expect(fieldsSeen).toBeGreaterThanOrEqual(4);
+    // NICHT GEMESSEN guard (protocol 1.54): at least one accepted vector is sent normalised.
+    expect(normalisedSeen).toBeGreaterThanOrEqual(1);
   });
 
   // -----------------------------------------------------------------------
