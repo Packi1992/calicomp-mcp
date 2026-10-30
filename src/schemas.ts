@@ -460,8 +460,22 @@ const TRANSLATION_NAME = z
   .max(EXERCISE_TEXT_NAME_MAX)
   .refine((v) => !isBlankOverrideText(v), { message: 'A translation name must not be blank (protocol §1.7 set W)' });
 
+/**
+ * 166-REVIEW WR-03 (protocol 1.54 §2.7): a translation's language code is two or three letters,
+ * lowered to the form the app's views read (`Locale.getDefault().language`, the same form
+ * `app-language.ts` accepts) before the uniqueness and the `en` rule run; every other form
+ * (`de-AT`, `x1`, a padded or empty code) is refused. The app parser applies the same rule.
+ * `toLowerCase()` is a zod overwrite, so the tool's JSON Schema keeps the input pattern.
+ */
+const TRANSLATION_LANGUAGE_CODE = z
+  .string()
+  .regex(/^[A-Za-z]{2,3}$/, 'languageCode must be a language code of two or three letters such as de')
+  .toLowerCase();
+
 const TranslationEntrySchema = z.object({
-  languageCode: LANG.describe('Language code of this translation, for example de.'),
+  languageCode: TRANSLATION_LANGUAGE_CODE.describe(
+    'Language code of this translation, two or three letters, for example de (sent in lower case).',
+  ),
   name: TRANSLATION_NAME.describe('The exercise name in this language, 1 to 255 characters, never blank.'),
   description: z.string().max(EXERCISE_TEXT_DESCRIPTION_MAX).nullable().optional().describe(
     'The description in this language, at most 1000 characters; null or absent for none.',
@@ -565,8 +579,9 @@ export const NewExerciseDefSchema = z.object({
   // Phase 134 (G-134-12): widened to accept an explicit JSON `null` — mirrors the
   // Kotlin side's `description: String? = null` (NewExerciseDef, ProposalPayload.kt);
   // the shared formatProposal corpus's tempId vector encodes an absent description
-  // as literal `null`, not an omitted key.
-  description: z.string().max(2000).nullable().optional(),
+  // as literal `null`, not an omitted key. 166-REVIEW WR-04 (protocol 1.54 §2.7): at most
+  // EXERCISE_TEXT_DESCRIPTION_MAX, the width the app stores (was 2000, the app cut the rest).
+  description: z.string().max(EXERCISE_TEXT_DESCRIPTION_MAX).nullable().optional(),
   ...NEW_EXERCISE_LINK_FIELDS,
 });
 
@@ -1062,7 +1077,8 @@ export const ProposeNewExerciseSchema = z.object({
   mode: z.enum(['REPS', 'TIME', 'MAX']),
   usesWeight: z.boolean(),
   rationale: z.string().min(1).max(2000),
-  description: z.string().max(2000).optional(),
+  // 166-REVIEW WR-04 (protocol 1.54 §2.7): the width the app stores, refused beyond, never cut.
+  description: z.string().max(EXERCISE_TEXT_DESCRIPTION_MAX).optional(),
   ...NEW_EXERCISE_LINK_FIELDS,
 });
 
