@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "vitest.config.ts"
+  },
+  "mutate": [
+    "src/training-state/**/*.ts",
+    "!src/training-state/**/*.d.ts",
+    "src/analysis/**/*.ts",
+    "!src/analysis/**/*.d.ts",
+    "src/crypto.ts",
+    "src/own-exercise-cipher.ts",
+    "src/row-decode.ts"
+  ],
+  "reporters": [
+    "json",
+    "clear-text"
+  ],
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
+  },
+  "coverageAnalysis": "perTest",
+  "concurrency": 4,
+  "inPlace": true
+}
