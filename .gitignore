@@ -4,3 +4,8 @@ dist/
 
 # Serena MCP local project config + LSP cache
 .serena
+
+# Messwerkzeuge (Vitest-Abdeckung, Stryker)
+coverage/
+reports/
+.stryker-tmp/
