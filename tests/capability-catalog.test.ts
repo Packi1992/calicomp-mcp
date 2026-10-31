@@ -84,13 +84,13 @@ describe('capability-catalog', () => {
 });
 
 /**
- * 138.1-21 (CAP-07/D-07) — `CatalogExercise` loses `category` and gains `isSkill`. The four
+ * 138.1-21 (CAP-07/D-07) — `CatalogExercise` loses `category` and gains `isSkill`. The three
  * cases below pin the plan's `<behavior>` block: a set flag survives the catalog pass-through
  * unchanged, an absent flag reads as non-skill without error (a server that has not yet
- * deployed 138.1-18 must not break the coach), a still-present legacy `category` field is
- * ignored without error (the window between the 138.1-23 deploy and the next catalog pull),
- * and the 138.1-01 D-04 invariant (an exercise with no capability axis stays fully resolvable)
- * stays green as its own case.
+ * deployed 138.1-18 must not break the coach), and a still-present legacy `category` field is
+ * ignored without error (the window between the 138.1-23 deploy and the next catalog pull).
+ * The 138.1-01 D-04 invariant (an exercise with no capability axis stays fully resolvable) is
+ * the empty-capabilities case of the describe above.
  */
 describe('capability-catalog — isSkill (138.1-21, CAP-07/D-07)', () => {
   it('an entry with isSkill set is passed through by get_exercise_catalog with the flag intact', () => {
@@ -131,15 +131,5 @@ describe('capability-catalog — isSkill (138.1-21, CAP-07/D-07)', () => {
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('ex-legacy');
     expect(result[0].isSkill).toBe(false);
-  });
-
-  it('D-04 invariant (138.1-01) stays green: an exercise with no capability axis stays fully resolvable', () => {
-    const exercise = buildExercise({ id: 'ex-no-axis', capabilities: [] });
-
-    const result = getExerciseCatalog({}, [exercise]);
-
-    expect(result).toHaveLength(1);
-    expect(result[0].capabilities).toEqual([]);
-    expect(result[0].id).toBe('ex-no-axis');
   });
 });
