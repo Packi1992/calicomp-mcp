@@ -82,7 +82,7 @@ describe('buildNarrative', () => {
     expect(result).toContain('6 of 8');
   });
 
-  it('P150 D-32 a null adherence yields the calendar-unreadable sentence, never nothing-scheduled', () => {
+  it('a null adherence yields the calendar-unreadable sentence, never nothing-scheduled', () => {
     const input = baseInput({ adherence: null });
     const result = buildNarrative(input);
     expect(result).toContain('The training calendar could not be read, so no adherence statement is made.');

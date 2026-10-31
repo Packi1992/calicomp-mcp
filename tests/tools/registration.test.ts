@@ -471,7 +471,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     }
   });
 
-  it('every WRITE tool has readOnlyHint:false, destructiveHint:false, idempotentHint:true (D-06)', () => {
+  it('every WRITE tool has readOnlyHint:false, destructiveHint:false, idempotentHint:true', () => {
     const tools = buildRegisteredServer();
     for (const name of WRITE_TOOL_NAMES) {
       expect(tools[name], `${name} should be registered`).toBeDefined();
@@ -497,7 +497,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     expect(uniqueNames.size).toBe(20);
   });
 
-  it('P150 D-33 the six snapshot-reading tools describe their unreadable list', () => {
+  it('the six snapshot-reading tools describe their unreadable list', () => {
     const tools = buildRegisteredServer();
     for (const name of UNREADABLE_CARRYING_TOOL_NAMES) {
       expect(tools[name], `${name} should be registered`).toBeDefined();
@@ -509,7 +509,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     }
   });
 
-  it('P150 D-33 the four exempt tools say they carry no unreadable list', () => {
+  it('the four exempt tools say they carry no unreadable list', () => {
     const tools = buildRegisteredServer();
     for (const name of UNREADABLE_EXEMPT_TOOL_NAMES) {
       expect(tools[name], `${name} should be registered`).toBeDefined();
@@ -521,7 +521,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     }
   });
 
-  it('P150 D-29 get_planned_workouts and get_adherence point to get_template for exercises', () => {
+  it('get_planned_workouts and get_adherence point to get_template for exercises', () => {
     const tools = buildRegisteredServer();
     for (const name of CALENDAR_TOOL_NAMES) {
       expect(tools[name], `${name} should be registered`).toBeDefined();
@@ -536,7 +536,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     }
   });
 
-  it('P150 SC5 every tool that outputs an exerciseId mentions exerciseName in its description', () => {
+  it('every tool that outputs an exerciseId mentions exerciseName in its description', () => {
     const tools = buildRegisteredServer();
     for (const name of EXERCISE_ID_NAMING_TOOL_NAMES) {
       expect(tools[name], `${name} should be registered`).toBeDefined();
@@ -548,7 +548,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     }
   });
 
-  it('P156 D-10 every tool that can carry an own name names it as data, never as instructions', () => {
+  it('every tool that can carry an own name names it as data, never as instructions', () => {
     // Protocol §1.7 "Tool outputs": the six resolver tools carry exerciseOwnName and
     // exerciseOwnNameLanguage, get_exercise_catalog carries ownName and ownNameLanguage.
     const tools = buildRegisteredServer();
@@ -571,7 +571,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
   });
 
   it.each(OWN_NAME_UNREADABLE_TOOL_NAMES)(
-    "P156 WR-MCP-02 %s says an exerciseNameOverride entry only takes away that exercise's own name",
+    "%s says an exerciseNameOverride entry only takes away that exercise's own name",
     (name) => {
       // Protocol 1.29 §1.7 "Tool outputs": an unreadable override row stands in unreadable with
       // entity "exerciseNameOverride" and takes away only its exercise's own name; every other
@@ -589,7 +589,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
   );
 
   it.each(CALENDAR_TOOL_NAMES)(
-    'P166 GR-MCP-04 %s says an exerciseNameOverride entry affects nothing in a tool without own names',
+    '%s says an exerciseNameOverride entry affects nothing in a tool without own names',
     (name) => {
       const description = buildRegisteredServer()[name]?.description;
       expect(description, `${name} description should carry the unreadable list`).toContain(
@@ -600,7 +600,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     },
   );
 
-  it('P166 GR-MCP-04 the six unreadable-list tools are split into own-name and calendar tools', () => {
+  it('the six unreadable-list tools are split into own-name and calendar tools', () => {
     expect([...OWN_NAME_UNREADABLE_TOOL_NAMES, ...CALENDAR_TOOL_NAMES].sort()).toStrictEqual(
       [...UNREADABLE_CARRYING_TOOL_NAMES].sort(),
     );
@@ -611,7 +611,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
   // tool descriptions and the schema's own .describe() text.
   // ---------------------------------------------------------------------------
 
-  it('P150 D-18 propose_new_plan and propose_plan_update describe block forms without a rule', () => {
+  it('propose_new_plan and propose_plan_update describe block forms without a rule', () => {
     const tools = buildRegisteredServer();
     for (const name of ['propose_new_plan', 'propose_plan_update'] as const) {
       expect(tools[name].description).toContain('rounds: 1 makes no sense');
@@ -619,7 +619,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     }
   });
 
-  it('P150 D-19 D-38 both descriptions describe unilateral pairs and the L, L, L, R, R, R order', () => {
+  it('both descriptions describe unilateral pairs and the L, L, L, R, R, R order', () => {
     const tools = buildRegisteredServer();
     for (const name of ['propose_new_plan', 'propose_plan_update'] as const) {
       expect(tools[name].description).toContain('side-switch rest');
@@ -627,7 +627,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     }
   });
 
-  it('P150 D-36 propose_plan_update describes insert semantics and the unchecked reorder', () => {
+  it('propose_plan_update describes insert semantics and the unchecked reorder', () => {
     const tools = buildRegisteredServer();
     expect(tools.propose_plan_update.description).toContain(
       'addExercise inserts at orderIndex within its level',
@@ -637,7 +637,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     );
   });
 
-  it('P150 D-21 the inputSchema of propose_new_plan carries the block meaning in its descriptions', () => {
+  it('the inputSchema of propose_new_plan carries the block meaning in its descriptions', () => {
     const tools = buildRegisteredServer();
     const jsonSchema = z.toJSONSchema(tools.propose_new_plan.inputSchema) as {
       properties: Record<string, { description?: string }>;
@@ -652,7 +652,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     expect(blocksItemsProps?.rounds?.description).toBeDefined();
     expect(blocksItemsProps?.rounds?.description).toContain('rounds: 1 makes no sense');
   });
-  it('P166 propose_exercise_update is registered with its description', () => {
+  it('propose_exercise_update is registered with its description', () => {
     const tools = buildRegisteredServer();
     const tool = tools.propose_exercise_update;
     expect(tool, 'propose_exercise_update should be registered').toBeDefined();
@@ -684,7 +684,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
   // Phase 166-09 (MCP-09, GR-MCP-02, GR-MCP-06): tool texts against behaviour.
   // ---------------------------------------------------------------------------
 
-  it('P166 no tool claims to read no encrypted data while its resolver decrypts', () => {
+  it('no tool claims to read no encrypted data while its resolver decrypts', () => {
     const tools = registeredToolsWithModules(buildRegisteredServer());
     for (const tool of tools) {
       expect(existsSync(tool.modulePath), `module of ${tool.name} should exist at ${tool.modulePath}`).toBe(true);
@@ -701,7 +701,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     expect(result.violations, 'tools that claim to read no encrypted data while they decrypt').toStrictEqual([]);
   });
 
-  it('P166 the claim gate reports a planted tool that decrypts and makes the claim', () => {
+  it('the claim gate reports a planted tool that decrypts and makes the claim', () => {
     const planted: Record<string, string> = {
       [join(SRC_DIR, 'tools', 'planted_decrypting.ts')]:
         "import { getSnapshot } from '../cache.js';\nexport const x = getSnapshot;\n",
@@ -736,7 +736,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     ).toThrow(/cannot resolve/);
   });
 
-  it('P166 get_exercise_catalog describes own exercises with links origin CUSTOM and key user_exercise', () => {
+  it('get_exercise_catalog describes own exercises with links origin CUSTOM and key user_exercise', () => {
     const description = buildRegisteredServer().get_exercise_catalog?.description ?? '';
     for (const part of [
       'origin',
@@ -755,7 +755,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     expect(description).not.toContain('never contributes to a weighted evaluation');
   });
 
-  it('P166 proposal tools describe TIME as a target and MAX as a measurement for holds', () => {
+  it('proposal tools describe TIME as a target and MAX as a measurement for holds', () => {
     const tools = buildRegisteredServer();
     expect(PROPOSAL_HOLD_RULE).not.toMatch(/[–—]/);
     for (const name of PROPOSAL_TOOLS_WITH_MODE) {
@@ -768,7 +768,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     );
   });
 
-  it('P166 reading tools say a TIME set that ran out stores its target', () => {
+  it('reading tools say a TIME set that ran out stores its target', () => {
     const tools = buildRegisteredServer();
     expect(READ_HOLD_RULE).toContain('a TIME set that ran out stores its target');
     expect(READ_HOLD_RULE).not.toMatch(/[–—]/);
@@ -777,7 +777,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     }
   });
 
-  it('P166 every new output field of phase 166 is named in its tool description', () => {
+  it('every new output field of phase 166 is named in its tool description', () => {
     const tools = buildRegisteredServer();
     let checked = 0;
     for (const [name, fields] of Object.entries(NEW_FIELDS_166)) {
@@ -791,7 +791,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     expect(checked, 'NICHT GEMESSEN: the list of new fields is shorter than the phase delivered').toBeGreaterThanOrEqual(30);
   });
 
-  it('P166 every field whose meaning changed in phase 166 names its rule in its tool description', () => {
+  it('every field whose meaning changed in phase 166 names its rule in its tool description', () => {
     const tools = buildRegisteredServer();
     for (const { tool, field, rule } of CHANGED_MEANING_166) {
       const description = tools[tool]?.description ?? '';
@@ -814,7 +814,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     ]);
   });
 
-  it('P166 E-16 no tool text names English as the default without lang', () => {
+  it('no tool text names English as the default without lang', () => {
     const tools = buildRegisteredServer();
     const names = Object.keys(tools);
     // NICHT GEMESSEN guard: every registered tool is read.
@@ -841,14 +841,14 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
   // own names out without a word.
   it.each([
     'get_template', 'get_history', 'get_progress', 'get_training_state', 'get_stats', 'get_suggestion', 'get_exercise_catalog',
-  ] as const)('P166 GR-MCP-05 %s explains that without lang a missing or unreadable app language leaves own names out', (name) => {
+  ] as const)('%s explains that without lang a missing or unreadable app language leaves own names out', (name) => {
     const description = buildRegisteredServer()[name]?.description ?? '';
     expect(description).toContain(OWN_NAME_APP_LANGUAGE_SENTENCE);
   });
 
   // Plan 166-10 (D-19, 156-GR-MCP-06): plan 166-09 corrected four stale doc passages (commit
   // e380f69); this case keeps the corrected wording in place and the stale wording out.
-  it('P166 GR-MCP-06 the four doc passages corrected after the gap round stay corrected', () => {
+  it('the four corrected doc passages stay corrected', () => {
     const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
     const read = (rel: string): string => readFileSync(join(root, rel), 'utf-8');
     const passages: ReadonlyArray<{ file: string; now: string; stale: string }> = [
@@ -865,7 +865,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
   });
 
   it.each(['get_template', 'get_suggestion', 'get_exercise_catalog'] as const)(
-    'P166 GR-MCP-02 %s says when an own name is missing although it carries no unreadable list',
+    '%s says when an own name is missing although it carries no unreadable list',
     (name) => {
       const description = buildRegisteredServer()[name]?.description ?? '';
       for (const part of [

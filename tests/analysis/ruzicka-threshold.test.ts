@@ -172,7 +172,7 @@ describe('buildLabelledPairs', () => {
   // === 1, not 3, before the fix below was applied.
   // -------------------------------------------------------------------------
 
-  it('WR-01/MUSC-07 regression: multiplies templateExercise.sets by the containing block rounds, not sets alone', () => {
+  it('regression: multiplies templateExercise.sets by the containing block rounds, not sets alone', () => {
     const snapshot: LabelledPairsSnapshot = {
       templates: [{ id: 'template-1' }],
       blocks: [{ id: 'block-1', rounds: 3 }],
@@ -226,7 +226,7 @@ describe('buildLabelledPairs', () => {
   // D-17 (Phase 138.1, plan 138.1-22) — injectable vectorBuilder
   // -------------------------------------------------------------------------
 
-  it('the default vectorBuilder is buildCombinedVector (D-17 adoption) — omitting it matches passing buildCombinedVector explicitly', () => {
+  it('the default vectorBuilder is buildCombinedVector (adoption) — omitting it matches passing buildCombinedVector explicitly', () => {
     const explicit = buildLabelledPairs(baseSnapshot(), catalog, buildCombinedVector);
     const omitted = buildLabelledPairs(baseSnapshot(), catalog);
     const serialize = (r: BuildLabelledPairsResult) =>
@@ -362,7 +362,7 @@ describe('chooseThresholds', () => {
     }
   });
 
-  it('never returns an uncertainThreshold >= matchThreshold (D-23 invariant)', () => {
+  it('never returns an uncertainThreshold >= matchThreshold (invariant)', () => {
     const distribution = similarityDistribution([
       { sessionId: 's1', templateId: 't1', label: 'positive' as const, sessionVector: new Map([['m1', 1]]), templateVector: new Map([['m1', 1]]) },
       { sessionId: 's2', templateId: 't1', label: 'positive' as const, sessionVector: new Map([['m1', 1]]), templateVector: new Map([['m1', 1]]) },

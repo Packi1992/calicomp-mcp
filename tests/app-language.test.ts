@@ -39,8 +39,8 @@ function snapshotWithSettings(settings: DecryptedSnapshot['settings']): Decrypte
 
 const TIME_ZONE_ROW = { key: 'training_timezone_id', type: 's', value: 'Europe/Berlin' };
 
-describe('resolveAppLanguage (D-18)', () => {
-  it('P156 D-18 resolveAppLanguage reports the setting or a named reason', () => {
+describe('resolveAppLanguage', () => {
+  it('resolveAppLanguage reports the setting or a named reason', () => {
     expect(APP_LANGUAGE_SETTING_KEY).toBe('default_language');
 
     // A recognized code is returned as is.
@@ -70,7 +70,7 @@ describe('resolveAppLanguage (D-18)', () => {
     }
   });
 
-  it('P156 D-18 resolveAppLanguage never throws on a malformed settings row', () => {
+  it('resolveAppLanguage never throws on a malformed settings row', () => {
     const malformed = snapshotWithSettings([
       { key: 'default_language', type: 's', value: undefined as unknown as string },
     ]);
@@ -83,8 +83,8 @@ describe('resolveAppLanguage (D-18)', () => {
   });
 });
 
-describe('resolveAppLanguage — unreadable setting (WR-MCP-04)', () => {
-  it('P156 WR-MCP-04 an unreadable default_language row reports setting_unreadable', () => {
+describe('resolveAppLanguage — unreadable setting', () => {
+  it('an unreadable default_language row reports setting_unreadable', () => {
     const unreadableLanguageRow = {
       entity: 'setting' as const,
       id: 'set-lang',
@@ -134,8 +134,8 @@ describe('resolveAppLanguage — unreadable setting (WR-MCP-04)', () => {
   });
 });
 
-describe('effective_language and the effective name language (Phase 166, gap plan 166-20, E-16)', () => {
-  it('P166 E-16 the app language falls back to the mirrored device fact and lang wins over both', () => {
+describe('effective_language and the effective name language', () => {
+  it('the app language falls back to the mirrored device fact and lang wins over both', () => {
     expect(EFFECTIVE_LANGUAGE_SETTING_KEY).toBe('effective_language');
     const mirrorOnly = snapshotWithSettings([TIME_ZONE_ROW, { key: 'effective_language', type: 's', value: 'fr' }]);
     const both = snapshotWithSettings([

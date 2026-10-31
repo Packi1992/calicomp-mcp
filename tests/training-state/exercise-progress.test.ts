@@ -117,7 +117,7 @@ function dayStart(offsetDays: number): number {
 // ---------------------------------------------------------------------------
 
 describe('computeExerciseProgress', () => {
-  it('STATE-05: an exercise trained in three sessions, two of them WITHOUT templateId, yields three points', () => {
+  it('an exercise trained in three sessions, two of them WITHOUT templateId, yields three points', () => {
     const s1 = buildSession({ id: 's1', startTime: dayStart(0), templateId: 'template-a' });
     const s2 = buildSession({ id: 's2', startTime: dayStart(1) }); // no templateId — free training
     const s3 = buildSession({ id: 's3', startTime: dayStart(2) }); // no templateId — free training
@@ -341,7 +341,7 @@ describe('computeExerciseProgress', () => {
     expect(series.map((s) => s.exerciseId)).toEqual([EX_REPS, EX_WEIGHTED]);
   });
 
-  it('D-27 c: an exercise with no sets at all yields a structurally empty series, not an error', () => {
+  it('c: an exercise with no sets at all yields a structurally empty series, not an error', () => {
     const snapshot = buildSnapshot({});
 
     const [series] = computeExerciseProgress(
@@ -369,7 +369,7 @@ describe('computeExerciseProgress', () => {
     expect(series.rule).toBe(DIRECTION_RULE);
   });
 
-  it('P150 D-06 computeExerciseProgress applies the sessionFilter after the session lookup', () => {
+  it('computeExerciseProgress applies the sessionFilter after the session lookup', () => {
     const kept = buildSession({ id: 's-kept', startTime: dayStart(0), templateId: 'tpl-a' });
     const dropped = buildSession({ id: 's-dropped', startTime: dayStart(1) }); // no templateId
     const snapshot = buildSnapshot({

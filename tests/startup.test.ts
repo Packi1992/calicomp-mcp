@@ -18,37 +18,23 @@ function spawnEntry(env: Record<string, string>) {
   });
 }
 
+// One start per missing variable: exit code, message and the absent secret are three readings of
+// the same start (merged in phase 166.1, D-17; before, each reading started its own process).
 describe('startup fail-fast: missing CALICOMP_KEY', () => {
-  it('exits non-zero when CALICOMP_KEY is absent', () => {
+  it('exits non-zero with the required error message and never prints the PAT value', () => {
     const result = spawnEntry({ CALICOMP_PAT: TEST_PAT });
     expect(result.status).not.toBe(0);
-  });
-
-  it('writes the required error message to stderr', () => {
-    const result = spawnEntry({ CALICOMP_PAT: TEST_PAT });
     expect(result.stderr).toContain('CALICOMP_PAT and CALICOMP_KEY');
-  });
-
-  it('does not leak the PAT value in any output', () => {
-    const result = spawnEntry({ CALICOMP_PAT: TEST_PAT });
     const combined = (result.stdout ?? '') + (result.stderr ?? '');
     expect(combined).not.toContain('calicomp_pat_');
   });
 });
 
 describe('startup fail-fast: missing CALICOMP_PAT', () => {
-  it('exits non-zero when CALICOMP_PAT is absent', () => {
+  it('exits non-zero with the required error message and never prints the KEY value', () => {
     const result = spawnEntry({ CALICOMP_KEY: TEST_KEY });
     expect(result.status).not.toBe(0);
-  });
-
-  it('writes the required error message to stderr', () => {
-    const result = spawnEntry({ CALICOMP_KEY: TEST_KEY });
     expect(result.stderr).toContain('CALICOMP_PAT and CALICOMP_KEY');
-  });
-
-  it('does not leak the KEY value in any output', () => {
-    const result = spawnEntry({ CALICOMP_KEY: TEST_KEY });
     const combined = (result.stdout ?? '') + (result.stderr ?? '');
     expect(combined).not.toContain(TEST_KEY);
   });
@@ -57,8 +43,8 @@ describe('startup fail-fast: missing CALICOMP_PAT', () => {
 // Phase 166 (MCP-07, D-09, D-21, protocol §1.5 rule 2): the export directory comes from
 // CALICOMP_EXPORT_DIR, resolved once at start. A relative value stops the start before any
 // tool is registered, with a message that names the variable and never the configured path.
-describe('P166 startup with CALICOMP_EXPORT_DIR', () => {
-  it('P166 the start exits with a named error for a relative CALICOMP_EXPORT_DIR', () => {
+describe('startup with CALICOMP_EXPORT_DIR', () => {
+  it('the start exits with a named error for a relative CALICOMP_EXPORT_DIR', () => {
     const relative = 'p166-relative/exports';
     const result = spawnEntry({ CALICOMP_PAT: TEST_PAT, CALICOMP_KEY: TEST_KEY, CALICOMP_EXPORT_DIR: relative });
     expect(result.status).not.toBe(0);

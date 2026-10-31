@@ -123,8 +123,8 @@ describe('findCatalogMatch origin scoping', () => {
 // translations[].name are compared with the catalog names of every language.
 // ---------------------------------------------------------------------------
 
-describe('findCatalogMatch over the names of every language (166-08)', () => {
-  it('P166 dedupe compares the names of every language', () => {
+describe('findCatalogMatch over the names of every language', () => {
+  it('dedupe compares the names of every language', () => {
     // The base name is novel; the German translation name is the catalog Pull-Up's German name.
     const germanName = mockCatalog.find((ex) => ex.id === CATALOG_EXERCISE_ID_PULLUP)?.translations[0]?.name;
     expect(germanName).toBeDefined();

@@ -134,7 +134,7 @@ function captureThrow(fn: () => unknown): unknown {
   throw new Error('unreachable: fn was already asserted to throw');
 }
 
-describe('expandDates — D-15 loud failures', () => {
+describe('expandDates — loud failures', () => {
   const rangeStart = parseIsoDate('2026-06-01');
   const rangeEnd = parseIsoDate('2026-06-30');
   const dtstart = parseIsoDate('2026-06-01');
@@ -166,7 +166,7 @@ describe('expandDates — D-15 loud failures', () => {
     expect((err as Error).message).toContain('FREQ=MONTHLY;BYMONTHDAY=0');
   });
 
-  it('a MONTHLY rule with BYMONTHDAY=45 clamps to month-end, matching Kotlin — it does not throw (135-05, correcting CR-01)', () => {
+  it('a MONTHLY rule with BYMONTHDAY=45 clamps to month-end, matching Kotlin — it does not throw (correcting)', () => {
     // Same inputs and expected dates as the corpus vector
     // "monthly-bymonthday-above-31-clamps-to-month-end" (docs/coach-planning-vectors.json)
     // — read from the corpus, not invented here.
@@ -200,7 +200,7 @@ describe('expandDates — D-15 loud failures', () => {
   });
 });
 
-describe('expandDates — Int32 parse-boundary parity (135-05, WR-02)', () => {
+describe('expandDates — Int32 parse-boundary parity', () => {
   // Kotlin's String.toIntOrNull() is bounded to Int32 (-2147483648..2147483647); a
   // numeral one above the max is not a valid Int and returns null on both sides, so the
   // caller's existing fallback applies. Exercised through expandDates (observable

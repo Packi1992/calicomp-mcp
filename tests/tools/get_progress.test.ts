@@ -128,7 +128,7 @@ describe('GetProgressSchema', () => {
   // Phase 150, D-06: this is a DELIBERATE behavior change. templateId under kind:
   // "exercise" used to be rejected outright; it now filters which sessions' points feed
   // the series — see GetProgressSchema's own D-06 doc comment.
-  it('P150 D-06 templateId under kind exercise now filters instead of being rejected', () => {
+  it('templateId under kind exercise now filters instead of being rejected', () => {
     expect(
       GetProgressSchema.safeParse({ kind: 'exercise', templateId: '11111111-1111-4111-8111-111111111111' })
         .success,
@@ -147,7 +147,7 @@ describe('GetProgressSchema', () => {
     expect(GetProgressSchema.safeParse({ kind: 'exercise', outputFile: false }).success).toBe(true);
   });
 
-  it('P150 D-37 the filter parameter is sessionKind, never kind', () => {
+  it('the filter parameter is sessionKind, never kind', () => {
     expect(GetProgressSchema.safeParse({ kind: 'exercise', sessionKind: 'template' }).success).toBe(true);
     expect(
       GetProgressSchema.safeParse({ kind: 'exercise', kindFilter: 'template' } as unknown as Record<string, unknown>)
@@ -260,7 +260,7 @@ describe('getProgress — pure function', () => {
     expect(result.series[0].points).toHaveLength(2);
   });
 
-  it('P150 D-06 sessionKind template drops quick challenge points from a pull_up series', () => {
+  it('sessionKind template drops quick challenge points from a pull_up series', () => {
     const templateSession = buildSession({ id: 's-template', startTime: 1_700_000_000_000, templateId: 'tpl-a' });
     const quickSession = buildSession({ id: 's-quick', startTime: 1_700_100_000_000, isQuickChallenge: true });
     const snapshot = snapshotWithZone(TZ, {
@@ -286,7 +286,7 @@ describe('getProgress — pure function', () => {
     expect(filtered.sessionFilter).toEqual({ sessionKind: 'template' });
   });
 
-  it('P150 D-06 without a filter the series is unchanged', () => {
+  it('without a filter the series is unchanged', () => {
     const s1 = buildSession({ id: 's1', startTime: 1_700_000_000_000 });
     const snapshot = snapshotWithZone(TZ, {
       sessions: [s1],
@@ -340,7 +340,7 @@ describe('get_progress — registered MCP handler', () => {
     vi.mocked(fileChannelModule.writeExportFile).mockReset();
   });
 
-  it('D-27 c: an unknown exerciseId returns a structurally empty series, isError unset', async () => {
+  it('c: an unknown exerciseId returns a structurally empty series, isError unset', async () => {
     const snapshot = snapshotWithZone(TZ, {});
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
     vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
@@ -359,7 +359,7 @@ describe('get_progress — registered MCP handler', () => {
     expect(body.series[0].points).toEqual([]);
   });
 
-  it('D-27 c: a templateId with no format sessions returns an empty series, isError unset', async () => {
+  it('c: a templateId with no format sessions returns an empty series, isError unset', async () => {
     const snapshot = snapshotWithZone(TZ, {});
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
     vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
@@ -458,7 +458,7 @@ describe('get_progress — registered MCP handler', () => {
   // unreadable / D-11 (Phase 150)
   // -------------------------------------------------------------------------
 
-  it('P150 D-33 get_progress carries unreadable in the outputFile summary', async () => {
+  it('get_progress carries unreadable in the outputFile summary', async () => {
     const s1 = buildSession({ id: 's1', startTime: 1_700_000_000_000 });
     const snapshot = snapshotWithZone(TZ, {
       sessions: [s1],
@@ -499,7 +499,7 @@ describe('get_progress — registered MCP handler', () => {
     expect(body.unreadable).toEqual([{ entity: 'setLog', id: 'sl-broken', reason: 'decrypt_failed' }]);
   });
 
-  it('P150 D-11 get_progress refuses when every encrypted session failed', async () => {
+  it('get_progress refuses when every encrypted session failed', async () => {
     const snapshot = snapshotWithZone(TZ, {});
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
       ...mockCacheFor(snapshot),
@@ -530,14 +530,14 @@ describe('get_progress — registered MCP handler', () => {
 // Exercise names (Phase 150, D-15/D-17)
 // ---------------------------------------------------------------------------
 
-describe('get_progress — exercise names (D-15/D-17)', () => {
+describe('get_progress — exercise names', () => {
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockReset();
     vi.mocked(coachParametersModule.loadCoachParameters).mockReset();
     vi.mocked(fileChannelModule.writeExportFile).mockReset();
   });
 
-  it('P150 D-15 get_progress series carry exerciseKey next to exerciseId, also in the outputFile summary', async () => {
+  it('get_progress series carry exerciseKey next to exerciseId, also in the outputFile summary', async () => {
     const s1 = buildSession({ id: 's1', startTime: 1_700_000_000_000 });
     const snapshot = snapshotWithZone(TZ, {
       sessions: [s1],
@@ -575,7 +575,7 @@ describe('get_progress — exercise names (D-15/D-17)', () => {
     expect(summaryBody.series[0].exerciseKey).toBe('push_up');
   });
 
-  it('P150 D-17 get_progress names a deleted user exercise instead of null', async () => {
+  it('get_progress names a deleted user exercise instead of null', async () => {
     const deletedUserExerciseId = 'dddddddd-0009-4000-d000-000000000001';
     const s1 = buildSession({ id: 's1', startTime: 1_700_000_000_000 });
     const snapshot = snapshotWithZone(TZ, {
@@ -618,7 +618,7 @@ describe('get_progress — exercise names (D-15/D-17)', () => {
 // Own names in the outputFile summary (Phase 156 gap round, WR-MCP-01, D-10, §1.7 "Tool outputs")
 // ---------------------------------------------------------------------------
 
-describe('get_progress — own names in the outputFile summary (WR-MCP-01)', () => {
+describe('get_progress — own names in the outputFile summary', () => {
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockReset();
     vi.mocked(coachParametersModule.loadCoachParameters).mockReset();
@@ -671,7 +671,7 @@ describe('get_progress — own names in the outputFile summary (WR-MCP-01)', () 
     return body.series;
   }
 
-  it('P156 WR-MCP-01 the get_progress outputFile summary carries exerciseOwnName beside exerciseName', async () => {
+  it('the get_progress outputFile summary carries exerciseOwnName beside exerciseName', async () => {
     const series = await callOutputFile({
       settings: [{ key: 'default_language', type: 's', value: 'de' }],
       exerciseNameOverrides: [
@@ -698,7 +698,7 @@ describe('get_progress — own names in the outputFile summary (WR-MCP-01)', () 
     expect(series[0]).not.toHaveProperty('points');
   });
 
-  it('P156 WR-MCP-01 without an override the outputFile summary keeps its keys', async () => {
+  it('without an override the outputFile summary keeps its keys', async () => {
     const series = await callOutputFile({ settings: [{ key: 'default_language', type: 's', value: 'de' }] });
 
     expect(series).toHaveLength(1);

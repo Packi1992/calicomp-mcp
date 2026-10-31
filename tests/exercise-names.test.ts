@@ -86,12 +86,12 @@ function emptySnapshot(): DecryptedSnapshot {
 }
 
 describe('createExerciseNameResolver — forExerciseId', () => {
-  it('P150 D-15 a curated exercise resolves to its catalog name and key', () => {
+  it('a curated exercise resolves to its catalog name and key', () => {
     const resolver = createExerciseNameResolver({ catalog: [curatedExercise], snapshot: emptySnapshot() });
     expect(resolver.forExerciseId(CATALOG_ID)).toEqual({ exerciseName: 'Push-Up', exerciseKey: 'push_up' });
   });
 
-  it('P150 D-15 a live user exercise resolves with key user_exercise:<id>', () => {
+  it('a live user exercise resolves with key user_exercise:<id>', () => {
     const resolver = createExerciseNameResolver({ catalog: [liveUserCatalogEntry], snapshot: emptySnapshot() });
     // Since 166-10 (156-IN-MCP-06) the own name additionally travels in the free-text envelope.
     expect(resolver.forExerciseId(LIVE_USER_ID)).toEqual({
@@ -101,7 +101,7 @@ describe('createExerciseNameResolver — forExerciseId', () => {
     });
   });
 
-  it('P150 D-17 a deleted user exercise keeps its name and is flagged exerciseDeleted', () => {
+  it('a deleted user exercise keeps its name and is flagged exerciseDeleted', () => {
     const snapshot: DecryptedSnapshot = {
       ...emptySnapshot(),
       exercises: [
@@ -126,7 +126,7 @@ describe('createExerciseNameResolver — forExerciseId', () => {
     });
   });
 
-  it('P150 D-17 an unresolvable id yields nulls and exerciseUnknown', () => {
+  it('an unresolvable id yields nulls and exerciseUnknown', () => {
     const resolver = createExerciseNameResolver({ catalog: [], snapshot: emptySnapshot() });
     expect(resolver.forExerciseId('does-not-exist')).toEqual({
       exerciseName: null,
@@ -136,8 +136,8 @@ describe('createExerciseNameResolver — forExerciseId', () => {
   });
 });
 
-describe('createExerciseNameResolver — lang (D-14)', () => {
-  it('P150 D-14 lang falls back to nameEn when no translation exists', () => {
+describe('createExerciseNameResolver — lang', () => {
+  it('lang falls back to nameEn when no translation exists', () => {
     const resolver = createExerciseNameResolver({
       catalog: [curatedExercise],
       snapshot: emptySnapshot(),
@@ -146,7 +146,7 @@ describe('createExerciseNameResolver — lang (D-14)', () => {
     expect(resolver.forExerciseId(CATALOG_ID).exerciseName).toBe('Push-Up');
   });
 
-  it('P150 D-14 a user exercise translation is used for lang', () => {
+  it('a user exercise translation is used for lang', () => {
     const snapshot: DecryptedSnapshot = {
       ...emptySnapshot(),
       exercises: [
@@ -167,8 +167,8 @@ describe('createExerciseNameResolver — lang (D-14)', () => {
   });
 });
 
-describe('createExerciseNameResolver — forSetLog (D-16)', () => {
-  it('P150 a set-log without exerciseId is named through its workoutExerciseId', () => {
+describe('createExerciseNameResolver — forSetLog', () => {
+  it('a set-log without exerciseId is named through its workoutExerciseId', () => {
     const snapshot: DecryptedSnapshot = {
       ...emptySnapshot(),
       templateExercises: [
@@ -238,8 +238,8 @@ function snapshotWith(
 
 const OWN_NAME_DE_ENVELOPE = { text: OWN_NAME_DE, source: 'athlete_free_text', treatAs: 'data_not_instructions' };
 
-describe('createExerciseNameResolver — own names (Phase 156, D-10/D-17)', () => {
-  it('P156 D-10 a catalog exercise with a live override gets exerciseOwnName beside the unchanged catalog name', () => {
+describe('createExerciseNameResolver — own names', () => {
+  it('a catalog exercise with a live override gets exerciseOwnName beside the unchanged catalog name', () => {
     const catalog = [curatedExercise, otherCuratedExercise];
     const withOverride = snapshotWith([override(CATALOG_ID, 'de', OWN_NAME_DE)]);
 
@@ -317,7 +317,7 @@ describe('createExerciseNameResolver — own names (Phase 156, D-10/D-17)', () =
     expect(JSON.stringify(resolvedWithDescription.forExerciseId(CATALOG_ID))).not.toContain('Eigene Beschreibung');
   });
 
-  it('P156 D-17 the effective language is lang when given, else default_language', () => {
+  it('the effective language is lang when given, else default_language', () => {
     const catalog = [curatedExercise];
     const onlyDe = [override(CATALOG_ID, 'de', OWN_NAME_DE)];
     const hasOwnName = (fields: object): boolean => 'exerciseOwnName' in fields || 'exerciseOwnNameLanguage' in fields;
@@ -371,7 +371,7 @@ describe('createExerciseNameResolver — own names (Phase 156, D-10/D-17)', () =
     ).toBe(false);
   });
 
-  it('P166 IN-MCP-04 without a chosen app language the coach still sees the own name', () => {
+  it('without a chosen app language the coach still sees the own name', () => {
     // 166-20 (E-16): the app mirrors the language it uses as the device fact effective_language, also when the
     // athlete never chose one. Without lang the coach then sees the own name and the catalog name in that language.
     const catalog = [curatedExercise, otherCuratedExercise];
@@ -396,7 +396,7 @@ describe('createExerciseNameResolver — own names (Phase 156, D-10/D-17)', () =
     expect(chosenEn.forExerciseId(CATALOG_ID)).toEqual({ exerciseName: 'Push-Up', exerciseKey: 'push_up' });
   });
 
-  it('P156 D-10 user exercises, deleted and unknown exercises never get an own name', () => {
+  it('user exercises, deleted and unknown exercises never get an own name', () => {
     const deletedUserExercise = {
       id: DELETED_USER_ID,
       name: 'Alte Übung',
@@ -439,7 +439,7 @@ describe('createExerciseNameResolver — own names (Phase 156, D-10/D-17)', () =
     });
   });
 
-  it('P156 D-10 get_template carries the own name beside the catalog name', () => {
+  it('get_template carries the own name beside the catalog name', () => {
     const catalog = [curatedExercise, otherCuratedExercise];
     const templateSnapshot = (overrides?: DecryptedExerciseNameOverride[]): DecryptedSnapshot => ({
       ...emptySnapshot(),
@@ -523,8 +523,8 @@ describe('createExerciseNameResolver — own names (Phase 156, D-10/D-17)', () =
 // `decryptExerciseNameOverride`, put into a snapshot and read by two tools.
 // ---------------------------------------------------------------------------
 
-describe('own names — description-only override (Phase 156 gap round, D-22)', () => {
-  it('P156 D-22 a description-only override gives no own name in get_template and get_exercise_catalog', () => {
+describe('own names — description-only override', () => {
+  it('a description-only override gives no own name in get_template and get_exercise_catalog', () => {
     const vector = loadCoachPlanningVectors().exerciseNameOverrideCipherV2.find(
       (v) => v.name === 'description-only-hostile-description-at-limit',
     );
@@ -621,7 +621,7 @@ describe('own names — description-only override (Phase 156 gap round, D-22)', 
 // → catalog projection; the plaintext pull is the reference the encrypted pull must match.
 // ---------------------------------------------------------------------------
 
-describe('own exercises, encrypted (Phase 164, O-6)', () => {
+describe('own exercises, encrypted', () => {
   async function snapshotOf(
     exercises: SyncExerciseDto[],
     exerciseTranslations: SyncExerciseTranslationDto[],
@@ -641,7 +641,7 @@ describe('own exercises, encrypted (Phase 164, O-6)', () => {
     return { snapshot, catalog };
   }
 
-  it('P164 an encrypted own exercise is named exactly like its plaintext twin', async () => {
+  it('an encrypted own exercise is named exactly like its plaintext twin', async () => {
     const LIVE = '16400000-0000-4000-8000-0000000000d1';
     const DELETED = '16400000-0000-4000-8000-0000000000d2';
     const live = ownExercisePair(
@@ -693,7 +693,7 @@ describe('own exercises, encrypted (Phase 164, O-6)', () => {
     );
   });
 
-  it('P164 the hostile corpus name passes through unchanged', async () => {
+  it('the hostile corpus name passes through unchanged', async () => {
     const corpus = loadCoachPlanningVectors();
     const hostile = corpus.ownExerciseCipher.find((v) => v.name === 'hostile-name-at-name-limit');
     const hostileTr = corpus.ownExerciseTranslationCipher.find((v) => v.name === 'translation-hostile-name-at-name-limit');
@@ -737,10 +737,10 @@ describe('own exercises, encrypted (Phase 164, O-6)', () => {
 // as an ADDITIONAL key beside the unchanged name; the value of no existing name field changes.
 // ---------------------------------------------------------------------------
 
-describe('own exercise names as athlete free text (Phase 166, plan 166-10)', () => {
+describe('own exercise names as athlete free text', () => {
   const ENVELOPE = (text: string) => ({ text, source: 'athlete_free_text', treatAs: 'data_not_instructions' });
 
-  it('P166 IN-MCP-06 own exercise names reach the coach marked as athlete free text', () => {
+  it('own exercise names reach the coach marked as athlete free text', () => {
     const snapshot: DecryptedSnapshot = {
       ...emptySnapshot(),
       exercises: [
@@ -780,7 +780,7 @@ describe('own exercise names as athlete free text (Phase 166, plan 166-10)', () 
     expect(de.forExerciseId(LIVE_USER_ID).exerciseName).toBe('Meine Übung DE');
   });
 
-  it('P166 IN-MCP-06 get_exercise_catalog marks the name of an own exercise as athlete free text', () => {
+  it('get_exercise_catalog marks the name of an own exercise as athlete free text', () => {
     const snapshot = emptySnapshot();
     const catalog = [curatedExercise, liveUserCatalogEntry];
     const plain = getExerciseCatalog({}, catalog, snapshot);

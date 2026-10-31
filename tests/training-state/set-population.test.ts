@@ -113,7 +113,7 @@ const ids = (snap: DecryptedSnapshot, requireFinishedSession: boolean, sinceMs?:
   resolveSetPopulation(snap, BY_ID, { requireFinishedSession, sinceMs }).map((p) => p.setLog.id);
 
 describe('strength-selection (Rule S)', () => {
-  it('P166 isStretchOnly ignores unrated links and keeps mixed exercises', () => {
+  it('isStretchOnly ignores unrated links and keeps mixed exercises', () => {
     expect([...STRETCH_AXIS_KEYS]).toEqual(['mobility', 'flexibility']);
     expect(isStretchOnly(exercise('a', 'REPS', [{ key: 'mobility' }, { key: 'flexibility' }]))).toBe(true);
     expect(isStretchOnly(exercise('b', 'REPS', [{ key: 'flexibility' }]))).toBe(true);
@@ -142,7 +142,7 @@ describe('strength-selection (Rule S)', () => {
 });
 
 describe('set-population (Rule P)', () => {
-  it('P166 resolveSetPopulation keeps each live set once and drops deleted sets and sessions', () => {
+  it('resolveSetPopulation keeps each live set once and drops deleted sets and sessions', () => {
     const snap = snapshot({
       sessions: [
         session('s-live'),
@@ -164,7 +164,7 @@ describe('set-population (Rule P)', () => {
     expect(isMarkedDeleted({ deletedAt: 0 })).toBe(true);
   });
 
-  it('P166 resolveSetPopulation requires a finished session only when asked', () => {
+  it('resolveSetPopulation requires a finished session only when asked', () => {
     const snap = snapshot({
       sessions: [session('s-finished'), session('s-running', { endTime: undefined })],
       setLogs: [setLog('finished', 's-finished'), setLog('running', 's-running')],
@@ -173,7 +173,7 @@ describe('set-population (Rule P)', () => {
     expect(ids(snap, false)).toEqual(['finished', 'running']);
   });
 
-  it('P166 resolveSetPopulation resolves the exercise over the workout exercise, also a soft-deleted one', () => {
+  it('resolveSetPopulation resolves the exercise over the workout exercise, also a soft-deleted one', () => {
     const snap = snapshot({
       templateExercises: [
         templateExercise('te-live', 'ex-reps', 'REPS'),
@@ -195,7 +195,7 @@ describe('set-population (Rule P)', () => {
     ]);
   });
 
-  it('P166 resolveSetPopulation drops a set whose exercise is not a live catalog exercise', () => {
+  it('resolveSetPopulation drops a set whose exercise is not a live catalog exercise', () => {
     const snap = snapshot({
       sessions: [session('s')],
       setLogs: [setLog('known', 's'), setLog('unknown', 's', { exerciseId: 'ex-gone' })],
@@ -203,7 +203,7 @@ describe('set-population (Rule P)', () => {
     expect(ids(snap, true)).toEqual(['known']);
   });
 
-  it('P166 resolveSetPopulation cuts the window on the set createdAt, never on the session', () => {
+  it('resolveSetPopulation cuts the window on the set createdAt, never on the session', () => {
     const snap = snapshot({
       sessions: [session('s', { startTime: 100, createdAt: 100 })],
       setLogs: [setLog('before', 's', { createdAt: 999 }), setLog('at', 's', { createdAt: 1_000 }), setLog('after', 's', { createdAt: 1_001 })],
@@ -212,7 +212,7 @@ describe('set-population (Rule P)', () => {
     expect(ids(snap, true)).toEqual(['before', 'at', 'after']);
   });
 
-  it('P166 trainingModeOf takes the workout exercise mode, the catalog mode only as a fallback', () => {
+  it('trainingModeOf takes the workout exercise mode, the catalog mode only as a fallback', () => {
     const teById = new Map([
       ['te-time', templateExercise('te-time', 'ex-reps', 'TIME')],
       ['te-deleted-max', templateExercise('te-deleted-max', 'ex-time', 'MAX', { deletedAt: 1 })],
@@ -236,7 +236,7 @@ describe('set-population (Rule P)', () => {
 });
 
 describe('set-population (Rule M)', () => {
-  it('P166 recordsTime treats MAX as time only on a TIME catalog exercise', () => {
+  it('recordsTime treats MAX as time only on a TIME catalog exercise', () => {
     expect(recordsTime('TIME', 'TIME')).toBe(true);
     expect(recordsTime('TIME', 'REPS')).toBe(true);
     expect(recordsTime('MAX', 'TIME')).toBe(true);

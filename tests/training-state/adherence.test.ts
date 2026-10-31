@@ -243,7 +243,7 @@ describe('computeAdherence — full denominator, tolerance window, exact matches
     expect(result.adherenceRatio).toBeNull();
   });
 
-  it('explanation names both the removed-occurrence ambiguity (D-05) and the fully-deleted-root gap (D-07)', () => {
+  it('explanation names both the removed-occurrence ambiguity and the fully-deleted-root gap', () => {
     const snapshot = snapshotWith({});
     const result = computeAdherence(
       { from: '2026-06-01', to: '2026-06-10', ...ARGS },
@@ -492,7 +492,7 @@ describe('computeAdherence — the second axis: templateId-less sessions via mus
   const BLOCK_ID_CIRCUIT = 'dddddddd-0004-4000-d000-000000000097';
   const TE_ID_CIRCUIT = 'eeeeeeee-0005-4000-e000-000000000097';
 
-  it('WR-01/MUSC-07 regression: a rounds:3 circuit template, fully performed, scores near 1.0 — not the ~0.33 the pre-fix raw-sets vector gives', () => {
+  it('regression: a rounds:3 circuit template, fully performed, scores near 1.0 — not the ~0.33 the pre-fix raw-sets vector gives', () => {
     const snapshot = snapshotWith({
       plannedWorkouts: [root({ id: 'r1', templateId: TEMPLATE_ID_CIRCUIT, scheduledDate: epochMs(2026, 6, 4, 0, 0) })],
       sessions: [session({ id: 's1', templateId: undefined, startTime: epochMs(2026, 6, 4) })],
@@ -552,8 +552,8 @@ describe('computeAdherence — the second axis: templateId-less sessions via mus
 // Phase 155 (SC 2, T-155-28): foreign sport in the snapshot moves no template number
 // ---------------------------------------------------------------------------
 
-describe('computeAdherence — foreign sport is its own pass (Phase 155)', () => {
-  it('P155 SC2 computeAdherence is identical with and without foreign data', () => {
+describe('computeAdherence — foreign sport is its own pass', () => {
+  it('computeAdherence is identical with and without foreign data', () => {
     const FT_RUNNING = 'b85b2339-ddf1-385d-acb2-b0d3d498eeca';
     const base = snapshotWith({
       plannedWorkouts: [
@@ -599,11 +599,11 @@ describe('computeAdherence — foreign sport is its own pass (Phase 155)', () =>
 // SMALLER id, so the order through 1.48 (smaller sessionId wins) decides visibly wrong.
 // ---------------------------------------------------------------------------
 
-describe('computeAdherence — several candidates for one occurrence (Phase 166, D-10)', () => {
+describe('computeAdherence — several candidates for one occurrence', () => {
   const args = { from: '2026-06-01', to: '2026-06-10', ...ARGS };
   const occurrenceRoot = root({ id: 'r1', scheduledDate: epochMs(2026, 6, 4, 0, 0) });
 
-  it('P166 two sessions of one template on one day match the one with more live sets even with the larger session id', () => {
+  it('two sessions of one template on one day match the one with more live sets even with the larger session id', () => {
     const snapshot = snapshotWith({
       plannedWorkouts: [occurrenceRoot],
       sessions: [
@@ -625,7 +625,7 @@ describe('computeAdherence — several candidates for one occurrence (Phase 166,
     expect(result.matches[0]).toMatchObject({ rootId: 'r1', sessionId: 's-b', via: 'templateId', confidence: 'matched' });
   });
 
-  it('P166 equal set counts match the longer session', () => {
+  it('equal set counts match the longer session', () => {
     const snapshot = snapshotWith({
       plannedWorkouts: [occurrenceRoot],
       sessions: [
@@ -645,7 +645,7 @@ describe('computeAdherence — several candidates for one occurrence (Phase 166,
     expect(result.unplannedSessionIds).toEqual(['s-a']);
   });
 
-  it('P166 the other candidate appears as unplanned and matchedCount stays the same', () => {
+  it('the other candidate appears as unplanned and matchedCount stays the same', () => {
     const sessions = [
       session({ id: 's-a', startTime: epochMs(2026, 6, 4, 9), endTime: epochMs(2026, 6, 4, 9, 2) }),
       session({ id: 's-b', startTime: epochMs(2026, 6, 4, 8), endTime: epochMs(2026, 6, 4, 9) }),
@@ -683,7 +683,7 @@ describe('computeAdherence — several candidates for one occurrence (Phase 166,
 
 // ---------------------------------------------------------------------------
 
-describe('computeAdherence — removedWithCompletedSessionCount (Phase 155, D-07)', () => {
+describe('computeAdherence — removedWithCompletedSessionCount', () => {
   const OTHER_TEMPLATE = 'cccccccc-0002-4000-c000-0000000000aa';
   // Weekly on Tuesdays from 2026-06-02 (06-02, 06-09, 06-16); 06-09 and 06-16 stand in
   // deletedOccurrences, 06-09 because the app wrote the completed date there before 155-10.
@@ -695,7 +695,7 @@ describe('computeAdherence — removedWithCompletedSessionCount (Phase 155, D-07
   });
   const args = { from: '2026-06-01', to: '2026-06-21', ...ARGS };
 
-  it('P155 D-07 a removed series date with a finished session of the same template on that calendar day is counted', () => {
+  it('a removed series date with a finished session of the same template on that calendar day is counted', () => {
     const snapshot = snapshotWith({
       plannedWorkouts: [seriesRoot],
       // 2026-06-08 22:30 UTC is 2026-06-09 00:30 in Europe/Berlin — the athlete's calendar day.
@@ -717,7 +717,7 @@ describe('computeAdherence — removedWithCompletedSessionCount (Phase 155, D-07
     expect(keys.indexOf('explanation')).toBe(keys.length - 4);
   });
 
-  it('P155 D-07 a session of another template, an unfinished session or a deleted session does not count', () => {
+  it('a session of another template, an unfinished session or a deleted session does not count', () => {
     const snapshot = snapshotWith({
       plannedWorkouts: [seriesRoot],
       sessions: [
@@ -733,7 +733,7 @@ describe('computeAdherence — removedWithCompletedSessionCount (Phase 155, D-07
     expect(result.removedWithCompletedSessionDates).toEqual([]);
   });
 
-  it('P155 D-07 removedOccurrenceCount is unchanged', () => {
+  it('removedOccurrenceCount is unchanged', () => {
     const snapshot = snapshotWith({
       plannedWorkouts: [seriesRoot],
       sessions: [session({ id: 's-done', startTime: epochMs(2026, 6, 9), endTime: epochMs(2026, 6, 9, 13) })],
@@ -765,7 +765,7 @@ describe('computeAdherence — removedWithCompletedSessionCount (Phase 155, D-07
   });
   const shortArgs = { from: '2026-06-01', to: '2026-06-07', ...ARGS };
 
-  it('P166 a weekly series whose only occurrence in the window was cancelled and done still counts in removedWithCompletedSessionCount', () => {
+  it('a weekly series whose only occurrence in the window was cancelled and done still counts in removedWithCompletedSessionCount', () => {
     const snapshot = snapshotWith({
       plannedWorkouts: [onlyDateCancelledRoot],
       sessions: [session({ id: 's-done', startTime: epochMs(2026, 6, 2, 8), endTime: epochMs(2026, 6, 2, 9) })],
@@ -779,7 +779,7 @@ describe('computeAdherence — removedWithCompletedSessionCount (Phase 155, D-07
     ]);
   });
 
-  it('P166 removedOccurrenceCount on the template side keeps its counting set', () => {
+  it('removedOccurrenceCount on the template side keeps its counting set', () => {
     const snapshot = snapshotWith({
       plannedWorkouts: [onlyDateCancelledRoot, seriesRoot],
       sessions: [session({ id: 's-done', startTime: epochMs(2026, 6, 2, 8), endTime: epochMs(2026, 6, 2, 9) })],
@@ -798,7 +798,7 @@ describe('computeAdherence — removedWithCompletedSessionCount (Phase 155, D-07
     expect(result.plannedCount).toBe(1);
   });
 
-  it('P155 D-07 the explanation is verbatim in the protocol', () => {
+  it('the explanation is verbatim in the protocol', () => {
     expect(REMOVED_WITH_COMPLETED_SESSION_EXPLANATION).toBe(
       protocolExplanation('REMOVED_WITH_COMPLETED_SESSION_EXPLANATION'),
     );

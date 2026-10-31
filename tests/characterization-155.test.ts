@@ -238,8 +238,8 @@ const loadPins = (): Record<string, unknown> => JSON.parse(readFileSync(PIN_PATH
 // get_history and get_adherence are read with their declared deltas applied (pin files unchanged).
 const pinOf = (key: string): unknown => applyDeclaredDeltas('characterization-150.json', key, loadPins()[key]);
 
-describe('P155 SC2 characterization — foreign data moves no old number', () => {
-  it('P155 SC2 the fixture carries foreign data on template and session days', () => {
+describe('characterization — foreign data moves no old number', () => {
+  it('the fixture carries foreign data on template and session days', () => {
     expect(CHAR_SNAPSHOT).not.toHaveProperty('foreignActivities');
     expect(CHAR_155_SNAPSHOT.foreignActivityTypes).toHaveLength(2);
     expect(CHAR_155_SNAPSHOT.foreignActivities).toHaveLength(5);
@@ -251,15 +251,15 @@ describe('P155 SC2 characterization — foreign data moves no old number', () =>
     expect(activityDays.some((d) => plannedDays.has(d))).toBe(true);
   });
 
-  it('P155 SC2 getHistory old keys unchanged with foreign data', () => {
+  it('getHistory old keys unchanged with foreign data', () => {
     expectOldKeysUnchanged(getHistory(CHAR_HISTORY_ARGS, CHAR_155_SNAPSHOT), pinOf('getHistory'));
   });
 
-  it('P155 SC2 getHistory with exercise filter old keys unchanged with foreign data', () => {
+  it('getHistory with exercise filter old keys unchanged with foreign data', () => {
     expectOldKeysUnchanged(getHistory(CHAR_HISTORY_ARGS_EXERCISE, CHAR_155_SNAPSHOT), pinOf('getHistoryExercise'));
   });
 
-  it('P155 SC2 getTemplate old keys unchanged with foreign data', () => {
+  it('getTemplate old keys unchanged with foreign data', () => {
     const pins = loadPins();
     const actual = {
       withBlock: getTemplate({ templateId: CHAR_TEMPLATE_ID_LIVE }, CHAR_155_SNAPSHOT),
@@ -268,7 +268,7 @@ describe('P155 SC2 characterization — foreign data moves no old number', () =>
     expectOldKeysUnchanged(actual, pins.getTemplate);
   });
 
-  it('P155 SC2 getTrainingState old keys unchanged with foreign data', () => {
+  it('getTrainingState old keys unchanged with foreign data', () => {
     const actual = getTrainingState(
       CHAR_TRAINING_STATE_ARGS,
       { ...CHAR_TRAINING_STATE_DATA, snapshot: CHAR_155_SNAPSHOT },
@@ -278,7 +278,7 @@ describe('P155 SC2 characterization — foreign data moves no old number', () =>
     expect(actual.narrative).toBe((pinOf('getTrainingState') as { narrative: string }).narrative);
   });
 
-  it('P155 SC2 getStats exercise old keys unchanged with foreign data', () => {
+  it('getStats exercise old keys unchanged with foreign data', () => {
     const actual = getStats(
       { by: 'exercise', exerciseId: CHAR_CATALOG_EX_PUSHUP },
       { ...CHAR_STATS_DATA, snapshot: CHAR_155_SNAPSHOT },
@@ -286,17 +286,17 @@ describe('P155 SC2 characterization — foreign data moves no old number', () =>
     expectOldKeysUnchanged(actual, pinOf('getStatsExercise'));
   });
 
-  it('P155 SC2 getStats muscle old keys unchanged with foreign data', () => {
+  it('getStats muscle old keys unchanged with foreign data', () => {
     const actual = getStats({ by: 'muscle', muscle: 'chest' }, { ...CHAR_STATS_DATA, snapshot: CHAR_155_SNAPSHOT });
     expectOldKeysUnchanged(actual, pinOf('getStatsMuscle'));
   });
 
-  it('P155 SC2 getStats capabilities old keys unchanged with foreign data', () => {
+  it('getStats capabilities old keys unchanged with foreign data', () => {
     const actual = getStats({ by: 'capabilities' }, { ...CHAR_STATS_DATA, snapshot: CHAR_155_SNAPSHOT });
     expectOldKeysUnchanged(actual, pinOf('getStatsCapabilities'));
   });
 
-  it('P155 SC2 getAdherence old keys unchanged with foreign data', () => {
+  it('getAdherence old keys unchanged with foreign data', () => {
     const actual = getAdherence(
       CHAR_ADHERENCE_ARGS,
       { ...CHAR_ADHERENCE_DATA, snapshot: CHAR_155_SNAPSHOT },
@@ -305,24 +305,24 @@ describe('P155 SC2 characterization — foreign data moves no old number', () =>
     expectOldKeysUnchanged(actual, pinOf('getAdherence'));
   });
 
-  it('P155 SC2 getProgress all exercises old keys unchanged with foreign data', () => {
+  it('getProgress all exercises old keys unchanged with foreign data', () => {
     const pins = loadPins();
     const actual = getProgress(CHAR_PROGRESS_ARGS_ALL, { ...CHAR_PROGRESS_DATA, snapshot: CHAR_155_SNAPSHOT });
     expectOldKeysUnchanged(actual, pins.getProgressExerciseAll);
   });
 
-  it('P155 SC2 getProgress one exercise old keys unchanged with foreign data', () => {
+  it('getProgress one exercise old keys unchanged with foreign data', () => {
     const pins = loadPins();
     const actual = getProgress(CHAR_PROGRESS_ARGS_ONE, { ...CHAR_PROGRESS_DATA, snapshot: CHAR_155_SNAPSHOT });
     expectOldKeysUnchanged(actual, pins.getProgressExerciseOne);
   });
 
-  it('P155 SC2 getPlannedWorkouts old keys unchanged with foreign data', () => {
+  it('getPlannedWorkouts old keys unchanged with foreign data', () => {
     const pins = loadPins();
     expectOldKeysUnchanged(getPlannedWorkouts(CHAR_PLANNED_WORKOUTS_ARGS, CHAR_155_SNAPSHOT), pins.getPlannedWorkouts);
   });
 
-  it('P155 SC2 buildNewPlanPayload old keys unchanged with foreign data', () => {
+  it('buildNewPlanPayload old keys unchanged with foreign data', () => {
     // buildNewPlanPayload reads the catalog, not the snapshot; pinned here anyway so the
     // whole 150 pin set is covered by this file.
     const pins = loadPins();
@@ -335,8 +335,8 @@ describe('P155 SC2 characterization — foreign data moves no old number', () =>
 if (!process.env.CHAR_155_PIN_GENERATE) {
   const PIN_155_PATH = join(__dirname, 'vectors', 'characterization-155.json');
 
-  describe('P155 SC2 characterization — new foreign outputs (155-09)', () => {
-    it('P155 SC2 new foreign outputs match their pins', () => {
+  describe('characterization — new foreign outputs', () => {
+    it('new foreign outputs match their pins', () => {
       const pins = JSON.parse(readFileSync(PIN_155_PATH, 'utf-8')) as Record<string, unknown>;
       // Round-trip through JSON: the pins are what the tools put on the wire.
       const actual = JSON.parse(JSON.stringify(collectForeignOutputs())) as Record<string, unknown>;
@@ -396,9 +396,9 @@ function catalogNameOutputs(snapshot: DecryptedSnapshot, lang?: string): { names
   return { names, localized };
 }
 
-describe('P166 E-16 names without lang follow the app language (166-20)', () => {
+describe('names without lang follow the app language', () => {
   it.each(['get_history', 'get_training_state', 'get_adherence', 'get_planned_workouts'])(
-    'P166 E-16 %s without lang names predefined foreign types in the app language',
+    '%s without lang names predefined foreign types in the app language',
     (tool) => {
       const entries = builtinTypeEntries(JSON.parse(JSON.stringify(foreignToolOutputs(CHAR_155_SNAPSHOT_EFFECTIVE_DE)[tool])));
       // NICHT GEMESSEN guard: the fixture plans and records predefined types for every tool.
@@ -411,7 +411,7 @@ describe('P166 E-16 names without lang follow the app language (166-20)', () => 
     },
   );
 
-  it('P166 E-16 lang wins over the app language in every name tool', () => {
+  it('lang wins over the app language in every name tool', () => {
     // Foreign type names of the two foreign tools with a lang parameter.
     const foreign = foreignToolOutputs(CHAR_155_SNAPSHOT_EFFECTIVE_DE, 'en');
     let typeEntries = 0;
@@ -434,7 +434,7 @@ describe('P166 E-16 names without lang follow the app language (166-20)', () => 
     expect(catalogNameOutputs(CHAR_155_SNAPSHOT_EFFECTIVE_DE)).not.toEqual(english);
   });
 
-  it('P166 E-16 without lang and without an app language every name stays English', () => {
+  it('without lang and without an app language every name stays English', () => {
     const outputs = foreignToolOutputs(CHAR_155_SNAPSHOT);
     let typeEntries = 0;
     for (const [tool, output] of Object.entries(outputs)) {

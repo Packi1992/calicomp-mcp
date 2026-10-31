@@ -41,7 +41,7 @@ describe('decodeReportOf', () => {
 });
 
 describe('assertEntitiesReadable', () => {
-  it('P150 D-11 assertEntitiesReadable throws when every encrypted row of a kind failed', () => {
+  it('assertEntitiesReadable throws when every encrypted row of a kind failed', () => {
     const report: DecodeReport = {
       unreadable: [{ entity: 'session', id: 'sess-1', reason: 'decrypt_failed' }],
       encryptedCount: { ...emptyCounts(), session: 1 },
@@ -53,7 +53,7 @@ describe('assertEntitiesReadable', () => {
     );
   });
 
-  it('P150 D-11 assertEntitiesReadable passes when only some rows failed or none were encrypted', () => {
+  it('assertEntitiesReadable passes when only some rows failed or none were encrypted', () => {
     const partialFailure: DecodeReport = {
       unreadable: [{ entity: 'session', id: 'sess-1', reason: 'decrypt_failed' }],
       encryptedCount: { ...emptyCounts(), session: 3 },
@@ -72,7 +72,7 @@ describe('assertEntitiesReadable', () => {
   // Phase 150 review WR-01: `failedCount` also counts rows that never carried ciphertext
   // (the empty-payload tombstone shape), so it must not be compared against
   // `encryptedCount`. Only `decrypt_failed` rows speak about the key.
-  it('P150 WR-01 a readable setting plus an empty-payload setting is no key alarm', () => {
+  it('a readable setting plus an empty-payload setting is no key alarm', () => {
     // One valid training_timezone_id row (encrypted, decoded) + one empty-payload row
     // (no ciphertext, malformed_payload): encrypted = 1, failed = 1 — the old
     // `failed === encrypted` test read that as "every encrypted row failed".
@@ -84,7 +84,7 @@ describe('assertEntitiesReadable', () => {
     expect(() => assertEntitiesReadable(report, ['session', 'setLog', 'setting'], 'Training state error')).not.toThrow();
   });
 
-  it('P150 WR-01 a wrong key is still detected when an empty-payload row is present', () => {
+  it('a wrong key is still detected when an empty-payload row is present', () => {
     // Wrong key: both ciphertext rows fail to decrypt; a third row has no ciphertext.
     // encrypted = 2, failed = 3 — the old `===` test never fired.
     const report: DecodeReport = {
@@ -101,7 +101,7 @@ describe('assertEntitiesReadable', () => {
     );
   });
 
-  it('P150 WR-01 an unknown payload version is not blamed on the key', () => {
+  it('an unknown payload version is not blamed on the key', () => {
     // A single planned row with v=2 decrypted fine — the key works. The calendar guard
     // must be the one that speaks, with the real cause.
     const report: DecodeReport = {
@@ -113,7 +113,7 @@ describe('assertEntitiesReadable', () => {
     expect(() => assertCalendarReadable(report, 'Propose planned update error')).toThrow(/row-v2: unknown_version/);
   });
 
-  it('P150 WR-01 a malformed-but-decrypted payload of every row is not blamed on the key', () => {
+  it('a malformed-but-decrypted payload of every row is not blamed on the key', () => {
     const report: DecodeReport = {
       unreadable: [{ entity: 'session', id: 'sess-1', reason: 'malformed_payload' }],
       encryptedCount: { ...emptyCounts(), session: 1 },
@@ -124,7 +124,7 @@ describe('assertEntitiesReadable', () => {
 });
 
 describe('assertCalendarReadable', () => {
-  it('P150 D-09 assertCalendarReadable names the row id and reason', () => {
+  it('assertCalendarReadable names the row id and reason', () => {
     const report: DecodeReport = {
       unreadable: [{ entity: 'plannedWorkout', id: 'row-1', reason: 'unknown_version' }],
       encryptedCount: { ...emptyCounts(), plannedWorkout: 1 },
@@ -147,7 +147,7 @@ describe('assertCalendarReadable', () => {
 });
 
 describe('assertTimeZoneReadable', () => {
-  it('P150 assertTimeZoneReadable throws its own message for an unreadable tz setting', () => {
+  it('assertTimeZoneReadable throws its own message for an unreadable tz setting', () => {
     const report: DecodeReport = {
       unreadable: [{ entity: 'setting', id: 'row-tz', reason: 'malformed_payload', key: 'training_timezone_id' }],
       encryptedCount: { ...emptyCounts(), setting: 1 },
@@ -171,7 +171,7 @@ describe('assertTimeZoneReadable', () => {
 });
 
 describe('secrets discipline', () => {
-  it('P150 D-12 guard messages never contain key or PAT material', () => {
+  it('guard messages never contain key or PAT material', () => {
     const report: DecodeReport = {
       unreadable: [
         { entity: 'session', id: 'sess-1', reason: 'decrypt_failed' },

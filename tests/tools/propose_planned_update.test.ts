@@ -321,7 +321,7 @@ describe('propose_planned_update — registered MCP handler', () => {
     expect(httpModule.postSuggest).not.toHaveBeenCalled();
   });
 
-  it('P150 D-09 propose_planned_update fails on an unreadable planned row', async () => {
+  it('propose_planned_update fails on an unreadable planned row', async () => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
       ...mockCache([RECURRING_ROOT]),
       decodeReport: {
@@ -374,7 +374,7 @@ describe('propose_planned_update — registered MCP handler', () => {
     expect(httpModule.postSuggest).not.toHaveBeenCalled();
   });
 
-  it('a stored recurrenceRule the allowlist rejects: isError naming the reason code, no network call (T-136-01)', async () => {
+  it('a stored recurrenceRule the allowlist rejects: isError naming the reason code, no network call', async () => {
     const badRoot = root({
       id: ROOT_ID_RECURRING,
       scheduledDate: epochMs(2026, 6, 2),
@@ -662,7 +662,7 @@ describe('schedule_workout — registered MCP handler', () => {
     expect(envelope.roots[0].root.recurrenceRule).toBeNull();
   });
 
-  it('templateId + valid recurrenceRule: emits one create of a recurring root (D-03)', async () => {
+  it('templateId + valid recurrenceRule: emits one create of a recurring root', async () => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCache([]));
     vi.mocked(httpModule.postSuggest).mockResolvedValue(MOCK_SUGGESTION);
 
@@ -688,7 +688,7 @@ describe('schedule_workout — registered MCP handler', () => {
     expect(envelope.roots[0].root.scheduledTime).toBe('19:00');
   });
 
-  it('a recurrenceRule outside the allowlist: isError naming the reason code + substitute, no network call (T-136-06)', async () => {
+  it('a recurrenceRule outside the allowlist: isError naming the reason code + substitute, no network call', async () => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCache([]));
 
     const server = new McpServer({ name: 'test', version: '0.1.0' });
@@ -1067,7 +1067,7 @@ describe('change_series_rule — registered MCP handler', () => {
 // the envelope's contract, not the member splitter's.
 // ---------------------------------------------------------------------------
 
-describe('splitMemberAtCutoff — pure helper, three-case cutoff boundary (CR-01)', () => {
+describe('splitMemberAtCutoff — pure helper, three-case cutoff boundary', () => {
   const SPLIT_MEMBER = root({
     id: ROOT_ID_SPLIT,
     scheduledDate: epochMs(2026, 6, 2), // DTSTART Tuesday 2026-06-02
@@ -1076,7 +1076,7 @@ describe('splitMemberAtCutoff — pure helper, three-case cutoff boundary (CR-01
   });
   const NEW_RULE = 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU,FR';
 
-  it('Test A — cutoff strictly AFTER the member\'s own scheduledDate: replace(UNTIL=cutoff-1) + create(cutoff) — unchanged behaviour', () => {
+  it('cutoff strictly AFTER the member\'s own scheduledDate: replace(UNTIL=cutoff-1) + create(cutoff) — unchanged behaviour', () => {
     const ops = splitMemberAtCutoff(SPLIT_MEMBER, '2026-07-07', NEW_RULE);
 
     expect(ops).toHaveLength(2);
@@ -1092,7 +1092,7 @@ describe('splitMemberAtCutoff — pure helper, three-case cutoff boundary (CR-01
     expect(createOp.root.recurrenceRule).toBe(NEW_RULE);
   });
 
-  it('Test B — cutoff EQUAL to the member\'s own scheduledDate: exactly one replace, no UNTIL appended, no create — unchanged behaviour, previously untested by name', () => {
+  it('cutoff EQUAL to the member\'s own scheduledDate: exactly one replace, no UNTIL appended, no create — unchanged behaviour, previously untested by name', () => {
     const ops = splitMemberAtCutoff(SPLIT_MEMBER, '2026-06-02', NEW_RULE);
 
     expect(ops).toHaveLength(1);
@@ -1102,7 +1102,7 @@ describe('splitMemberAtCutoff — pure helper, three-case cutoff boundary (CR-01
     expect(ops[0].root.recurrenceRule).toBe(NEW_RULE);
   });
 
-  it("Test C — cutoff strictly BEFORE the member's own scheduledDate: exactly one replace at the member's OWN date (never the cutoff), no create, no UNTIL anywhere — this is the case that was broken (CR-01)", () => {
+  it("cutoff strictly BEFORE the member's own scheduledDate: exactly one replace at the member's OWN date (never the cutoff), no create, no UNTIL anywhere — this is the case that was broken", () => {
     const ops = splitMemberAtCutoff(SPLIT_MEMBER, '2026-05-01', NEW_RULE);
 
     expect(ops).toHaveLength(1);
@@ -1113,7 +1113,7 @@ describe('splitMemberAtCutoff — pure helper, three-case cutoff boundary (CR-01
     expect(ops[0].root.recurrenceRule).not.toContain('UNTIL');
   });
 
-  it('Test D — staggered two-member group split through buildChangeSeriesRuleEnvelope: earlier member yields the Test-A pair, later member yields the Test-C single, envelope carries both member ids (D-11 completeness), 3 operations total', () => {
+  it('staggered two-member group split through buildChangeSeriesRuleEnvelope: earlier member yields the after-cutoff pair, later member yields the before-cutoff single, envelope carries both member ids (completeness), 3 operations total', () => {
     const GROUP_STAGGERED_ID = '99998888-7777-4666-8555-444433332222';
     const earlierMember = root({
       id: 'aaaa9999-0000-4000-8000-00000000a001',
@@ -1281,7 +1281,7 @@ describe('assertRuleEmittableOnRoot — driven through buildChangeSeriesRuleEnve
 // root unnoticed (protocol §1.6 "Read only").
 // ---------------------------------------------------------------------------
 
-describe('propose_planned_update — foreign sport roots (Phase 155)', () => {
+describe('propose_planned_update — foreign sport roots', () => {
   beforeEach(() => {
     vi.mocked(httpModule.postSuggest).mockReset();
     vi.mocked(httpModule.fetchSuggestion).mockReset();
@@ -1321,7 +1321,7 @@ describe('propose_planned_update — foreign sport roots (Phase 155)', () => {
       'change_series_rule',
       { intent: 'change_series_rule', scope: 'whole_series', newRecurrenceRule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=WE' },
     ],
-  ])('P155 FA-F2 propose_planned_update rejects a foreign sport root as not found (%s)', async (_name, intentArgs) => {
+  ])('propose_planned_update rejects a foreign sport root as not found (%s)', async (_name, intentArgs) => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(cacheWithForeignRoot());
 
     const server = new McpServer({ name: 'test', version: '0.1.0' });

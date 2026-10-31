@@ -31,17 +31,17 @@ const DELETED_TEMPLATE: SyncTemplateDto = {
 };
 
 describe('classifySession', () => {
-  it('P150 D-01 a quick challenge with a templateId is quick_challenge', () => {
+  it('a quick challenge with a templateId is quick_challenge', () => {
     const result = classifySession({ templateId: 'tpl-live', isQuickChallenge: true });
     expect(result).toEqual({ sessionKind: 'quick_challenge' });
   });
 
-  it('P150 D-01 a session with templateId and no quick flag is template', () => {
+  it('a session with templateId and no quick flag is template', () => {
     const result = classifySession({ templateId: 'tpl-live', isQuickChallenge: false });
     expect(result.sessionKind).toBe('template');
   });
 
-  it('P150 D-01 a session without templateId is templateless', () => {
+  it('a session without templateId is templateless', () => {
     const result = classifySession({ isQuickChallenge: false });
     expect(result).toEqual({ sessionKind: 'templateless' });
   });
@@ -52,13 +52,13 @@ describe('classifySession', () => {
     expect(result.templateStatus).toBeUndefined();
   });
 
-  it('P150 D-02 a tombstoned template yields templateStatus deleted', () => {
+  it('a tombstoned template yields templateStatus deleted', () => {
     const templatesById = buildTemplateIndex([DELETED_TEMPLATE]);
     const result = classifySession({ templateId: 'tpl-deleted', isQuickChallenge: false }, templatesById);
     expect(result).toEqual({ sessionKind: 'template', templateStatus: 'deleted' });
   });
 
-  it('P150 D-02 a template missing from the snapshot yields templateStatus unknown', () => {
+  it('a template missing from the snapshot yields templateStatus unknown', () => {
     const templatesById = buildTemplateIndex([LIVE_TEMPLATE]);
     const result = classifySession({ templateId: 'tpl-nowhere', isQuickChallenge: false }, templatesById);
     expect(result).toEqual({ sessionKind: 'template', templateStatus: 'unknown' });

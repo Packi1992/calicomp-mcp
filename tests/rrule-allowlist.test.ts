@@ -109,7 +109,7 @@ describe('validateRRule — boundary and check-order assertions', () => {
   });
 });
 
-describe('validateRRule — schedule_workout create path is guarded too (136-02, T-136-06)', () => {
+describe('validateRRule — schedule_workout create path is guarded too', () => {
   const mockProfile: UserProfileResponse = {
     userId: 'user-test-1',
     email: 'test@example.com',

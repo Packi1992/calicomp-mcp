@@ -121,8 +121,8 @@ function buildSnapshot(overrides: Partial<DecryptedSnapshot> = {}): DecryptedSna
 // Plan 151-23, Task 1 (tracer)
 // ---------------------------------------------------------------------------
 
-describe('computeTemplateFeedbackSeries — Task 1 (tracer)', () => {
-  it('P151 FB-12 a template session with stored goals reports achieved and total sets with basis stored_goals', () => {
+describe('computeTemplateFeedbackSeries — one entry', () => {
+  it('a template session with stored goals reports achieved and total sets with basis stored_goals', () => {
     const snapshot = buildSnapshot({
       templates: [template({ id: 'tpl-1' })],
       sessions: [
@@ -147,7 +147,7 @@ describe('computeTemplateFeedbackSeries — Task 1 (tracer)', () => {
     expect(series[0].sessions[0].goalAttainment).toEqual({ achievedSets: 2, totalSets: 3, basis: 'stored_goals' });
   });
 
-  it('P151 D-27 an entry carries both scales, the calendar date and hasComment but never the comment text', () => {
+  it('an entry carries both scales, the calendar date and hasComment but never the comment text', () => {
     const secret = 'a very private comment nobody else should read';
     const snapshot = buildSnapshot({
       templates: [template({ id: 'tpl-1' })],
@@ -179,8 +179,8 @@ describe('computeTemplateFeedbackSeries — Task 1 (tracer)', () => {
 // Plan 151-23, Task 2 (full rules)
 // ---------------------------------------------------------------------------
 
-describe('computeTemplateFeedbackSeries — Task 2 (full rules)', () => {
-  it('P151 D-27 at most eight sessions per template newest first regardless of the window', () => {
+describe('computeTemplateFeedbackSeries — selection and counting rules', () => {
+  it('at most eight sessions per template newest first regardless of the window', () => {
     const sessions: DecryptedSession[] = [];
     for (let i = 0; i < 10; i++) {
       sessions.push(session({ id: `sess-${i}`, templateId: 'tpl-1', startTime: 1_000_000 * (i + 1) }));
@@ -195,7 +195,7 @@ describe('computeTemplateFeedbackSeries — Task 2 (full rules)', () => {
     ]);
   });
 
-  it('P151 D-27 at most twenty templates ordered by their latest session', () => {
+  it('at most twenty templates ordered by their latest session', () => {
     const templates: SyncTemplateDto[] = [];
     const sessions: DecryptedSession[] = [];
     for (let i = 0; i < 25; i++) {
@@ -213,7 +213,7 @@ describe('computeTemplateFeedbackSeries — Task 2 (full rules)', () => {
     expect(series.map((s) => s.templateId)).not.toContain('tpl-0');
   });
 
-  it('P151 D-29 a session without stored goals uses the current template and is marked approximation', () => {
+  it('a session without stored goals uses the current template and is marked approximation', () => {
     const snapshot = buildSnapshot({
       templates: [template({ id: 'tpl-1' })],
       templateExercises: [
@@ -230,7 +230,7 @@ describe('computeTemplateFeedbackSeries — Task 2 (full rules)', () => {
     expect(attainment).toEqual({ achievedSets: 1, totalSets: 2, basis: 'approximation_current_template' });
   });
 
-  it('P151 D-29 a deleted template without stored goals has no attainment and status deleted', () => {
+  it('a deleted template without stored goals has no attainment and status deleted', () => {
     const snapshot = buildSnapshot({
       templates: [template({ id: 'tpl-1', deletedAt: 999 })],
       templateExercises: [],
@@ -243,7 +243,7 @@ describe('computeTemplateFeedbackSeries — Task 2 (full rules)', () => {
     expect(series[0].sessions[0].goalAttainment).toBeNull();
   });
 
-  it('P151 D-29 MAX exercises never count', () => {
+  it('MAX exercises never count', () => {
     const snapshot = buildSnapshot({
       templates: [template({ id: 'tpl-1' })],
       sessions: [
@@ -267,7 +267,7 @@ describe('computeTemplateFeedbackSeries — Task 2 (full rules)', () => {
     expect(attainment).toEqual({ achievedSets: 1, totalSets: 1, basis: 'stored_goals' });
   });
 
-  it('P151 D-29 weight never counts', () => {
+  it('weight never counts', () => {
     const snapshot = buildSnapshot({
       templates: [template({ id: 'tpl-1' })],
       sessions: [
@@ -287,7 +287,7 @@ describe('computeTemplateFeedbackSeries — Task 2 (full rules)', () => {
     expect(attainment).toEqual({ achievedSets: 1, totalSets: 1, basis: 'stored_goals' });
   });
 
-  it('P151 D-29 set logs without workoutExerciseId count neither way', () => {
+  it('set logs without workoutExerciseId count neither way', () => {
     const snapshot = buildSnapshot({
       templates: [template({ id: 'tpl-1' })],
       sessions: [
@@ -308,7 +308,7 @@ describe('computeTemplateFeedbackSeries — Task 2 (full rules)', () => {
     expect(attainment).toEqual({ achievedSets: 1, totalSets: 1, basis: 'stored_goals' });
   });
 
-  it('P151 D-29 the nth set is judged against round target n and falls back to the exercise target', () => {
+  it('the nth set is judged against round target n and falls back to the exercise target', () => {
     const snapshot = buildSnapshot({
       templates: [template({ id: 'tpl-1' })],
       sessions: [
@@ -339,7 +339,7 @@ describe('computeTemplateFeedbackSeries — Task 2 (full rules)', () => {
     expect(attainment).toEqual({ achievedSets: 1, totalSets: 2, basis: 'stored_goals' });
   });
 
-  it('P151 D-29 a goal without a target for its mode does not count', () => {
+  it('a goal without a target for its mode does not count', () => {
     const snapshot = buildSnapshot({
       templates: [template({ id: 'tpl-1' })],
       sessions: [
@@ -363,7 +363,7 @@ describe('computeTemplateFeedbackSeries — Task 2 (full rules)', () => {
     expect(attainment).toEqual({ achievedSets: 1, totalSets: 1, basis: 'stored_goals' });
   });
 
-  it('P151 D-27 missed exercises carry names from the resolver and appear once in first-miss order', () => {
+  it('missed exercises carry names from the resolver and appear once in first-miss order', () => {
     const snapshot = buildSnapshot({
       templates: [template({ id: 'tpl-1' })],
       sessions: [
@@ -402,7 +402,7 @@ describe('computeTemplateFeedbackSeries — Task 2 (full rules)', () => {
     ]);
   });
 
-  it('P156 D-10 missedExercises carries the own name beside the catalog name', () => {
+  it('missedExercises carries the own name beside the catalog name', () => {
     // Protocol §1.7 "Tool outputs": wherever the resolver sets exerciseName and exerciseKey,
     // a catalog exercise with a live override in the effective language also carries
     // exerciseOwnName (envelope) and exerciseOwnNameLanguage; every other entry stays as before.
@@ -472,7 +472,7 @@ describe('computeTemplateFeedbackSeries — Task 2 (full rules)', () => {
     expect(JSON.stringify(missed(withOverride))).not.toContain('own text');
   });
 
-  it('P151 D-27 quick challenges, templateless, running and deleted sessions are excluded', () => {
+  it('quick challenges, templateless, running and deleted sessions are excluded', () => {
     const snapshot = buildSnapshot({
       templates: [template({ id: 'tpl-1' })],
       sessions: [
@@ -489,7 +489,7 @@ describe('computeTemplateFeedbackSeries — Task 2 (full rules)', () => {
     expect(series[0].sessions.map((s) => s.sessionId)).toEqual(['sess-good']);
   });
 
-  it('P151 D-27 a session without feedback reports never_asked', () => {
+  it('a session without feedback reports never_asked', () => {
     const bareSession: DecryptedSession = {
       id: 'sess-1',
       templateId: 'tpl-1',

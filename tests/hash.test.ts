@@ -85,7 +85,7 @@ describe('canonWeight', () => {
   //   BigDecimal(w.toString()).setScale(2, RoundingMode.HALF_UP).toPlainString()
   // MUST reproduce every one of these byte-for-byte (input as Double; Room Floats
   // widened via f.toString().toDouble(), never f.toDouble() — see src/hash.ts header).
-  it('pins tie-adjacent parity vectors: HALF_UP on the shortest round-trip digit string (CR-01)', () => {
+  it('pins tie-adjacent parity vectors: HALF_UP on the shortest round-trip digit string', () => {
     // Tie-adjacent doubles where binary-value recipes (%.2f / toFixed) yield "x.x1":
     // the pinned recipe rounds the DIGIT STRING "0.615"/"2.675"/"1.005" HALF_UP.
     expect(canonWeight(0.615)).toBe('0.62');
@@ -103,14 +103,10 @@ describe('canonWeight', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeChangeHash', () => {
-  it('is deterministic across different key-insertion orders of the same payload (SC3)', () => {
+  it('is deterministic across different key-insertion orders of the same payload', () => {
     const payloadA = { op: 'addExercise', sets: 3, exerciseId: 'ex-1' };
     const payloadB = { exerciseId: 'ex-1', op: 'addExercise', sets: 3 };
     expect(computeChangeHash('plan_update', payloadA)).toBe(computeChangeHash('plan_update', payloadB));
-  });
-
-  it('returns a 64-char lowercase hex string', () => {
-    expect(computeChangeHash('new_exercise', { name: 'Test' })).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('changes when the type discriminant changes (same payload, different type)', () => {
@@ -303,7 +299,7 @@ describe('computePlanHash — exact canonical-string cross-language contract', (
     expect(computePlanHash(TEMPLATE_ID, fixtureSnapshot)).toBe(expectedHash);
   });
 
-  it('excludes a LIVE templateExercise whose blockId references a soft-deleted block (WR-04 rule 3)', () => {
+  it('excludes a LIVE templateExercise whose blockId references a soft-deleted block (rule 3)', () => {
     // Behavioral (non-snapshot) assertion: removing the orphan row changes nothing —
     // it was never part of the canonical structure. Its exerciseId also must not
     // appear in the pinned string above.
@@ -327,10 +323,6 @@ describe('computePlanHash — exact canonical-string cross-language contract', (
     expect(hash).toBe(computePlanHash(TEMPLATE_ID, fixtureSnapshot));
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
   });
-
-  it('returns a 64-char lowercase hex string', () => {
-    expect(computePlanHash(TEMPLATE_ID, fixtureSnapshot)).toMatch(/^[0-9a-f]{64}$/);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -346,7 +338,7 @@ describe('computePlanHash — exact canonical-string cross-language contract', (
 // test author chose to omit it.
 // ---------------------------------------------------------------------------
 
-describe('G-134-37 — wire-default normalization at the decode boundary', () => {
+describe('wire-default normalization at the decode boundary', () => {
   const WIRE_TEMPLATE_ID = '1de89b3a-d1aa-40be-872e-7166dccb2f32';
 
   // Wörtlich aus der Debug-Sitzung übernommen (2026-09-02, UAT-Runde 10, Vorschlag 8a259525) —
@@ -445,7 +437,7 @@ describe('G-134-37 — wire-default normalization at the decode boundary', () =>
     );
   });
 
-  it('the same rows WITHOUT normalization now throw — the old wrong value is no longer producible (Task 2)', () => {
+  it('the same rows WITHOUT normalization now throw — the old wrong value is no longer producible', () => {
     const { blocks, templateExercises } = parseWire();
     // Grabinschrift: fa7b2de1394c4d1e95aae8e9682210c8f689ca35d18199e72e054794c6461fe4 was the
     // server-stored plan_hash of proposal 8a259525 (UAT-Runde 10) — the undefined-token hash

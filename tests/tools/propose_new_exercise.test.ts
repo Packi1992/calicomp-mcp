@@ -184,7 +184,7 @@ const PINNED_NAME_ONLY_PAYLOAD =
   '{"name":"Dragon Flag","mode":"TIME","usesWeight":false,"description":"Hold the body straight."}';
 const PINNED_NAME_ONLY_CHANGE_HASH = '4fd3d2005da0eaea18b47fd137b9f8eff72071479f3149bde18d8dbd4ff0c9d2';
 
-describe('propose_new_exercise — links and translations (166-08, D-11)', () => {
+describe('propose_new_exercise — links and translations', () => {
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, catalog: LINK_CATALOG });
     vi.mocked(httpModule.postSuggest).mockReset();
@@ -197,7 +197,7 @@ describe('propose_new_exercise — links and translations (166-08, D-11)', () =>
     return getHandler(server)(ProposeNewExerciseSchema.parse({ mode: 'TIME', usesWeight: false, rationale: 'links', ...input }));
   };
 
-  it('P166 an unknown capability or equipment key fails with the key named', async () => {
+  it('an unknown capability or equipment key fails with the key named', async () => {
     const capability = await call({ name: 'Juggling Drill', capabilities: [{ key: 'juggling', level: 'HAUPTREIZ' }] });
     expect(capability.isError).toBe(true);
     expect(capability.content[0].text).toContain('juggling');
@@ -217,7 +217,7 @@ describe('propose_new_exercise — links and translations (166-08, D-11)', () =>
     expect(httpModule.postSuggest).toHaveBeenCalledTimes(1);
   });
 
-  it('P166 a payload without the new fields keeps its bytes and changeHash', async () => {
+  it('a payload without the new fields keeps its bytes and changeHash', async () => {
     const result = await call({ name: 'Dragon Flag', description: 'Hold the body straight.' });
     expect(result.isError).toBeFalsy();
     const [body] = vi.mocked(httpModule.postSuggest).mock.calls[0];
@@ -225,7 +225,7 @@ describe('propose_new_exercise — links and translations (166-08, D-11)', () =>
     expect(body.changeHash).toBe(PINNED_NAME_ONLY_CHANGE_HASH);
   });
 
-  it('P166 propose_new_exercise sends the four new fields exactly as set', async () => {
+  it('propose_new_exercise sends the four new fields exactly as set', async () => {
     const input = {
       name: 'Kettlebell Halo',
       translations: [{ languageCode: 'de', name: 'Kettlebell-Halo', description: null }],
@@ -247,7 +247,7 @@ describe('propose_new_exercise — links and translations (166-08, D-11)', () =>
     });
   });
 
-  it('P166 a translation name matching a catalog exercise answers dedupedTo', async () => {
+  it('a translation name matching a catalog exercise answers dedupedTo', async () => {
     const result = await call({ name: 'Brand new name', translations: [{ languageCode: 'de', name: 'Liegestütz' }] });
     expect(result.isError).toBeFalsy();
     expect(JSON.parse(result.content[0].text)).toStrictEqual({ dedupedTo: CATALOG_EXERCISE_ID_PUSHUP });

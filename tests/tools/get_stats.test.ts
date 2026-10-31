@@ -88,7 +88,7 @@ describe('get_stats — schema validation', () => {
     expect(result.success).toBe(true);
   });
 
-  it('P150 D-14 get_stats accepts lang on the strict capabilities branch', () => {
+  it('get_stats accepts lang on the strict capabilities branch', () => {
     const result = GetStatsSchema.safeParse({ by: 'capabilities', lang: 'de' });
     expect(result.success).toBe(true);
   });
@@ -188,7 +188,7 @@ describe('get_stats — by muscle', () => {
     expect(result.totalVolume).toBe(140);
   });
 
-  it('a PRIMARY-only muscle group (fixture "back"): weightedSetCount === setCount (D-03 backward-compat case)', () => {
+  it('a PRIMARY-only muscle group (fixture "back"): weightedSetCount === setCount (backward-compat case)', () => {
     const result = getStats({ by: 'muscle', muscle: 'back' }, data);
     if (result.by !== 'muscle') throw new Error('expected by-muscle result');
     expect(result.weightedSetCount).toBe(result.setCount);
@@ -340,7 +340,7 @@ describe('get_stats — weightedSetCount', () => {
     expect(result.weightedSetCount).toBe(5);
   });
 
-  it('totalVolume is the exact unweighted Σ reps × weight in all three cases — never scaled by an involvement factor (D-18)', () => {
+  it('totalVolume is the exact unweighted Σ reps × weight in all three cases — never scaled by an involvement factor', () => {
     const secondaryResult = getStats({ by: 'muscle', muscle: 'triceps' }, weightedData);
     // 4 sets × (5 reps × 10 kg) = 200
     expect(secondaryResult.totalVolume).toBe(200);
@@ -772,7 +772,7 @@ describe('get_stats — by capabilities', () => {
 // result into `getStats` — proving the fix at the actual production data-flow boundary.
 // ---------------------------------------------------------------------------
 
-describe('get_stats — by capabilities, wire catalog with genuinely omitted fields (CAP-05 gap-closure)', () => {
+describe('get_stats — by capabilities, wire catalog with genuinely omitted fields', () => {
   const EX_OMITTED_ID = 'aaaaaaaa-0012-4000-a000-000000000001';
 
   // Deliberately typed as CatalogExerciseWire and built as an object literal with NO
@@ -854,12 +854,12 @@ function getHandler(
   return (server as any)._registeredTools['get_stats'].handler;
 }
 
-describe('get_stats — registered MCP handler (Phase 150, D-10/D-11)', () => {
+describe('get_stats — registered MCP handler', () => {
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockReset();
   });
 
-  it('P150 D-10 get_stats carries unreadable and leaves the broken session out of its counts', async () => {
+  it('get_stats carries unreadable and leaves the broken session out of its counts', async () => {
     // The broken session ("sess-broken") never appears in `mockSnapshot.sessions` — exactly
     // as `decryptMerge` (cache.ts) already excludes an unreadable row from the snapshot
     // itself; this decode report is the ONLY place the failure is still visible.
@@ -887,7 +887,7 @@ describe('get_stats — registered MCP handler (Phase 150, D-10/D-11)', () => {
     expect(body.sessionCount).toBe(pure.sessionCount);
   });
 
-  it('P150 D-11 get_stats refuses when every encrypted set-log failed', async () => {
+  it('get_stats refuses when every encrypted set-log failed', async () => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
       ...mockCacheFor(mockSnapshot),
       decodeReport: {
@@ -915,12 +915,12 @@ describe('get_stats — registered MCP handler (Phase 150, D-10/D-11)', () => {
 // exercise the registered handler, where `withExerciseNames` does the enrichment.
 // ---------------------------------------------------------------------------
 
-describe('get_stats — registered MCP handler (Phase 150, D-15/D-35 exercise names)', () => {
+describe('get_stats — registered MCP handler (exercise names)', () => {
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockReset();
   });
 
-  it('P150 D-15 get_stats by exercise names the echoed exerciseId', async () => {
+  it('get_stats by exercise names the echoed exerciseId', async () => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(mockSnapshot));
     const server = new McpServer({ name: 'test', version: '0.1.0' });
     registerToolGetStats(server, DUMMY_CFG);
@@ -938,7 +938,7 @@ describe('get_stats — registered MCP handler (Phase 150, D-15/D-35 exercise na
     expect(body.exerciseKey).toBe('pull_up');
   });
 
-  it('P150 D-35 get_stats matchingExercises parallels matchingExerciseIds in order', async () => {
+  it('get_stats matchingExercises parallels matchingExerciseIds in order', async () => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(mockSnapshot));
     const server = new McpServer({ name: 'test', version: '0.1.0' });
     registerToolGetStats(server, DUMMY_CFG);
@@ -960,7 +960,7 @@ describe('get_stats — registered MCP handler (Phase 150, D-15/D-35 exercise na
     expect(pullup?.exerciseKey).toBe('pull_up');
   });
 
-  it('P150 D-35 get_stats contributingExercises parallels contributingExerciseIds per axis', async () => {
+  it('get_stats contributingExercises parallels contributingExerciseIds per axis', async () => {
     const EX_ID = 'aaaaaaaa-0013-4000-a000-000000000001';
     const catalogWithCapability: CatalogExercise[] = [
       {
@@ -1061,7 +1061,7 @@ describe('get_stats — registered MCP handler (Phase 150, D-15/D-35 exercise na
 // expected numbers below are derived by hand from Rule P.
 // ---------------------------------------------------------------------------
 
-describe('get_stats — Rule P (Phase 166)', () => {
+describe('get_stats — Rule P', () => {
   const T = (iso: string): number => Date.parse(iso);
   const EX_PUSH = 'p166-gs-push';
   const EX_STRETCH = 'p166-gs-stretch';
@@ -1177,7 +1177,7 @@ describe('get_stats — Rule P (Phase 166)', () => {
   };
   const dataP = { snapshot: snapshotP, catalog: catalogP };
 
-  it('P166 get_stats leaves out unfinished sessions and deleted sets and resolves via workoutExerciseId', () => {
+  it('get_stats leaves out unfinished sessions and deleted sets and resolves via workoutExerciseId', () => {
     const r = getStats({ by: 'exercise', exerciseId: EX_PUSH }, dataP);
     // Rule P: a1 (S1) and a3 (S2, via workoutExerciseId); a2 deleted, a4 unfinished, a5 deleted session.
     expect(r.setCount).toBe(2);
@@ -1205,7 +1205,7 @@ describe('get_stats — Rule P (Phase 166)', () => {
     expect(tri.weightedSetCount).toBe(1); // SECONDARY: 2 sets at 0.5
   });
 
-  it('P166 get_stats capabilities axes count by rule P', () => {
+  it('get_stats capabilities axes count by rule P', () => {
     const r = getStats({ by: 'capabilities' }, dataP);
     expect(r.axes.map((a) => a.key)).toEqual(['power', 'mobility', 'flexibility']);
     const axis = (key: string) => r.axes.find((a) => a.key === key)!;
@@ -1222,7 +1222,7 @@ describe('get_stats — Rule P (Phase 166)', () => {
     });
   });
 
-  it('P166 get_stats by muscle keeps stretch-only exercises', () => {
+  it('get_stats by muscle keeps stretch-only exercises', () => {
     // D-20: Rule S excludes this exercise from the strength heatmap, not from get_stats.
     const r = getStats({ by: 'muscle', muscle: 'hamstrings' }, dataP);
     expect(r.matchingExerciseIds).toEqual([EX_STRETCH]);
@@ -1232,7 +1232,7 @@ describe('get_stats — Rule P (Phase 166)', () => {
     expect(r.firstSessionDate).toBe('2026-04-01');
   });
 
-  it('P166 getStats signature and result shape stay unchanged', () => {
+  it('getStats signature and result shape stay unchanged', () => {
     // Signature: (args, data), two parameters, as Phase 121 and the characterization tests import it.
     expect(getStats.length).toBe(2);
     // Shape: key set and order as before 166 (the pins of characterization-166.json, written

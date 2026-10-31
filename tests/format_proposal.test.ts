@@ -57,7 +57,7 @@ const DELIBERATE_ZOD_BOUNDARY_REASONS: ReadonlySet<FormatRefusalReason> = new Se
  * file's header comment and `FormatProposalApplierTest.kt`'s matching acknowledgment. */
 const KNOWN_INCIDENTAL_ZOD_BOUNDARY_VECTOR = 'format-type-mismatch-circuit-target-amrap-discriminator';
 
-describe('shared formatProposal corpus — MCP/Kotlin enforcement-point parity (G-134-12)', () => {
+describe('shared formatProposal corpus — MCP/Kotlin enforcement-point parity', () => {
   const corpus = loadCoachPlanningVectors();
 
   it('carries at least one vector for all eight formats plus the CLASSIC refusal case', () => {

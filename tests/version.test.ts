@@ -79,7 +79,7 @@ async function handshakeServerInfo(): Promise<{ name: string; version: string }>
   }
 }
 
-describe('server version (IN-02)', () => {
+describe('server version', () => {
   it('SERVER_VERSION is the version from package.json', async () => {
     expect(SERVER_VERSION).toBe(await packageVersion());
     expect(SERVER_NAME).toBe('calicomp');

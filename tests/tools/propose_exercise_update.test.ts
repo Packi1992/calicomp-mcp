@@ -110,8 +110,8 @@ beforeEach(() => {
   vi.mocked(httpModule.fetchSuggestion).mockReset();
 });
 
-describe('propose_exercise_update (166-08, D-15)', () => {
-  it('P166 propose_exercise_update posts type exercise_update', async () => {
+describe('propose_exercise_update', () => {
+  it('propose_exercise_update posts type exercise_update', async () => {
     const input = {
       exerciseId: OWN_EXERCISE_ID,
       translations: [
@@ -142,7 +142,7 @@ describe('propose_exercise_update (166-08, D-15)', () => {
     expect(body.changeHash).not.toBe(computeChangeHash('new_exercise', payload));
   });
 
-  it('P166 muscle groups or capabilities on a catalog exercise are refused', async () => {
+  it('muscle groups or capabilities on a catalog exercise are refused', async () => {
     const withMuscles = await propose({
       exerciseId: CATALOG_EXERCISE_ID_PULLUP,
       translations: [{ languageCode: 'de', name: 'Mein Klimmzug' }],
@@ -173,7 +173,7 @@ describe('propose_exercise_update (166-08, D-15)', () => {
     });
   });
 
-  it('P166 an exerciseId missing from the catalog is refused', async () => {
+  it('an exerciseId missing from the catalog is refused', async () => {
     const result = await propose({
       exerciseId: UNKNOWN_EXERCISE_ID,
       translations: [{ languageCode: 'de', name: 'Irgendwas' }],
@@ -183,14 +183,14 @@ describe('propose_exercise_update (166-08, D-15)', () => {
     expect(httpModule.postSuggest).not.toHaveBeenCalled();
   });
 
-  it('P166 an unknown capability key on an own exercise is refused with the key named', async () => {
+  it('an unknown capability key on an own exercise is refused with the key named', async () => {
     const result = await propose({ exerciseId: OWN_EXERCISE_ID, capabilities: [{ key: 'juggling', level: 'GERING' }] });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('juggling');
     expect(httpModule.postSuggest).not.toHaveBeenCalled();
   });
 
-  it('P166 an exercise_update without any field and one with equipment are refused by the schema', () => {
+  it('an exercise_update without any field and one with equipment are refused by the schema', () => {
     expect(ProposeExerciseUpdateSchema.safeParse({ exerciseId: OWN_EXERCISE_ID, rationale: 'r' }).success).toBe(false);
     const withEquipment = ProposeExerciseUpdateSchema.safeParse({
       exerciseId: OWN_EXERCISE_ID,
@@ -213,14 +213,14 @@ describe('propose_exercise_update (166-08, D-15)', () => {
     ).toBe(false);
   });
 
-  it('P166 a server error surfaces only the status', async () => {
+  it('a server error surfaces only the status', async () => {
     vi.mocked(httpModule.postSuggest).mockRejectedValue(new HttpError(400, '/api/mcp/suggest'));
     const result = await propose({ exerciseId: OWN_EXERCISE_ID, translations: [{ languageCode: 'de', name: 'Neu' }] });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toBe('Server rejected proposal: HTTP 400');
   });
 
-  it('P166 get_suggestions lists an exercise_update proposal', async () => {
+  it('get_suggestions lists an exercise_update proposal', async () => {
     const summary: SuggestionSummaryDtoResponse = {
       id: 'suggestion-eu-1',
       type: 'exercise_update',

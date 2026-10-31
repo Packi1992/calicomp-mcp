@@ -88,7 +88,7 @@ const DUMMY_CFG = { pat: 'calicomp_pat_test', keyB64: 'AAAA', serverUrl: 'https:
  */
 const CORPUS_TEMPLATE_ID = '22222222-2222-4222-8222-222222222222';
 
-describe('shared plannedUpdate corpus — MCP producer replay (Phase 136-01/136-02)', () => {
+describe('shared plannedUpdate corpus — MCP producer replay', () => {
   const corpus = loadCoachPlanningVectors();
 
   beforeEach(() => {

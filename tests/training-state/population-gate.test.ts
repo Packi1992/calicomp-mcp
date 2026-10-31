@@ -71,8 +71,8 @@ export function scanPopulationGate(
   return { measured, problems };
 }
 
-describe('population gate (Rule P, D-03)', () => {
-  it('P166 counts of section 1.11 read only the shared population', () => {
+describe('population gate (Rule P)', () => {
+  it('counts of section 1.11 read only the shared population', () => {
     const sources: Record<string, string> = {};
     for (const { file } of POPULATION_COUNT_FUNCTIONS) sources[file] = readFileSync(join(MCP_ROOT, file), 'utf8');
     const { measured, problems } = scanPopulationGate(sources, POPULATION_COUNT_FUNCTIONS);
@@ -81,7 +81,7 @@ describe('population gate (Rule P, D-03)', () => {
     expect(measured.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('P166 the population gate catches a planted own template exercise map', () => {
+  it('the population gate catches a planted own template exercise map', () => {
     const list = [
       { name: 'plantedOwnResolution', file: 'planted.ts' },
       { name: 'plantedShared', file: 'planted.ts' },

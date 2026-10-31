@@ -147,8 +147,8 @@ function resolveExportDir(raw: string | undefined, home?: string, prunedDir?: st
   return fn(raw, home, prunedDir);
 }
 
-describe('P166 configured export dir', () => {
-  it('P166 the export dir comes from CALICOMP_EXPORT_DIR and a leading tilde expands to the home dir', async () => {
+describe('configured export dir', () => {
+  it('the export dir comes from CALICOMP_EXPORT_DIR and a leading tilde expands to the home dir', async () => {
     const home = join(testDir, 'home');
     await mkdir(join(home, 'training', 'personal'), { recursive: true });
     const dir = await resolveExportDir('~/training/personal', home);
@@ -160,7 +160,7 @@ describe('P166 configured export dir', () => {
     expect(index).toMatch(/resolveExportDir\(\s*process\.env\.CALICOMP_EXPORT_DIR\s*\)/);
   });
 
-  it('P166 a relative export dir is rejected at start', async () => {
+  it('a relative export dir is rejected at start', async () => {
     for (const raw of ['training/personal', './exports', '~other/exports']) {
       const failure = await resolveExportDir(raw, testDir).then(
         () => null,
@@ -181,7 +181,7 @@ describe('P166 configured export dir', () => {
     }
   });
 
-  it('P166 a symlinked export dir is resolved once at start', async () => {
+  it('a symlinked export dir is resolved once at start', async () => {
     const real = join(testDir, 'real');
     const other = join(testDir, 'other');
     await mkdir(real);
@@ -199,7 +199,7 @@ describe('P166 configured export dir', () => {
     expect(handle.path.startsWith(dir + '/')).toBe(true);
   });
 
-  it('P166 a symlink at the target name is refused', async () => {
+  it('a symlink at the target name is refused', async () => {
     const dir = await resolveExportDir(testDir, testDir);
     const victim = join(testDir, 'victim.txt');
     await writeFile(victim, 'untouched');
@@ -216,13 +216,13 @@ describe('P166 configured export dir', () => {
     expect(source).toMatch(/O_WRONLY\s*\|\s*constants\.O_CREAT\s*\|\s*constants\.O_EXCL\s*\|\s*constants\.O_NOFOLLOW/);
   });
 
-  it('P166 export files are created with mode 0600', async () => {
+  it('export files are created with mode 0600', async () => {
     const dir = await resolveExportDir(testDir, testDir);
     const handle = await writeExportFile({ a: 1 }, 1, dir);
     expect((await stat(handle.path)).mode & 0o777).toBe(0o600);
   });
 
-  it('P166 an old file in the configured dir survives the prune', async () => {
+  it('an old file in the configured dir survives the prune', async () => {
     const configured = join(testDir, 'configured');
     const pruned = join(testDir, 'pruned');
     await mkdir(configured);
@@ -249,7 +249,7 @@ describe('P166 configured export dir', () => {
     expect(index).toMatch(/await\s+pruneExports\(\)/);
   });
 
-  it('P166 without the variable exports go to the tmpdir dir as before', async () => {
+  it('without the variable exports go to the tmpdir dir as before', async () => {
     expect(await resolveExportDir(undefined, testDir)).toBe(EXPORT_DIR);
     expect(await resolveExportDir('', testDir)).toBe(EXPORT_DIR);
     expect(EXPORT_DIR).toBe(join(tmpdir(), 'calicomp-mcp-exports'));

@@ -254,7 +254,7 @@ function getSuggestionHandler(
   return (server as any)._registeredTools['get_suggestion'].handler;
 }
 
-describe('get_suggestion — payloadResolved/appliedPayloadResolved (Phase 150, D-35)', () => {
+describe('get_suggestion — payloadResolved/appliedPayloadResolved', () => {
   const PLAN_UPDATE_PAYLOAD = JSON.stringify({
     ops: [
       {
@@ -300,7 +300,7 @@ describe('get_suggestion — payloadResolved/appliedPayloadResolved (Phase 150, 
     appliedPayload: APPLIED_PLAN_STATE_PAYLOAD,
   };
 
-  it('P150 D-35 get_suggestion adds payloadResolved with names next to every catalog exerciseId', async () => {
+  it('get_suggestion adds payloadResolved with names next to every catalog exerciseId', async () => {
     vi.mocked(httpModule.fetchSuggestion).mockResolvedValue(ROW_WITH_APPLIED);
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockSnapshotCache());
     const server = new McpServer({ name: 'calicomp', version: '0.1.0' });
@@ -320,7 +320,7 @@ describe('get_suggestion — payloadResolved/appliedPayloadResolved (Phase 150, 
     });
   });
 
-  it('P150 D-16 get_suggestion leaves payload and appliedPayload byte-identical', async () => {
+  it('get_suggestion leaves payload and appliedPayload byte-identical', async () => {
     vi.mocked(httpModule.fetchSuggestion).mockResolvedValue(ROW_WITH_APPLIED);
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockSnapshotCache());
     const server = new McpServer({ name: 'calicomp', version: '0.1.0' });
@@ -333,7 +333,7 @@ describe('get_suggestion — payloadResolved/appliedPayloadResolved (Phase 150, 
     expect(body.appliedPayload).toBe(ROW_WITH_APPLIED.appliedPayload);
   });
 
-  it('P150 D-35 an unparsable payload yields payloadResolvedSkipped unparsable_payload', async () => {
+  it('an unparsable payload yields payloadResolvedSkipped unparsable_payload', async () => {
     vi.mocked(httpModule.fetchSuggestion).mockResolvedValue({ ...FULL_ROW, payload: '{not json', appliedPayload: undefined });
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockSnapshotCache());
     const server = new McpServer({ name: 'calicomp', version: '0.1.0' });
@@ -347,7 +347,7 @@ describe('get_suggestion — payloadResolved/appliedPayloadResolved (Phase 150, 
     expect(body.payloadResolved).toBeUndefined();
   });
 
-  it('P150 D-35 a failing snapshot yields payloadResolvedSkipped catalog_unavailable and still returns the row', async () => {
+  it('a failing snapshot yields payloadResolvedSkipped catalog_unavailable and still returns the row', async () => {
     vi.mocked(httpModule.fetchSuggestion).mockResolvedValue(ROW_WITH_APPLIED);
     vi.mocked(cacheModule.getSnapshot).mockRejectedValue(new Error('snapshot fetch failed'));
     const server = new McpServer({ name: 'calicomp', version: '0.1.0' });
@@ -362,7 +362,7 @@ describe('get_suggestion — payloadResolved/appliedPayloadResolved (Phase 150, 
     expect(body.id).toBe(ROW_WITH_APPLIED.id);
   });
 
-  it('P150 D-35 appliedPayloadResolved resolves a plan after-state', async () => {
+  it('appliedPayloadResolved resolves a plan after-state', async () => {
     vi.mocked(httpModule.fetchSuggestion).mockResolvedValue(ROW_WITH_APPLIED);
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockSnapshotCache());
     const server = new McpServer({ name: 'calicomp', version: '0.1.0' });
@@ -394,7 +394,7 @@ describe('get_suggestion — payloadResolved/appliedPayloadResolved (Phase 150, 
   // Plan 166-10 (D-19, 156-IN-MCP-03): a stored payload may carry resolver keys from an earlier
   // annotation (an appliedPayload written from a resolved view). They are removed before the
   // payload is annotated again, so no stale own name survives next to a fresh catalog name.
-  it('P166 IN-MCP-03 annotateCatalogRefs removes stale exerciseOwnName keys from an applied payload', async () => {
+  it('annotateCatalogRefs removes stale exerciseOwnName keys from an applied payload', async () => {
     const stale = {
       exerciseName: 'Alter Name',
       exerciseKey: 'old_key',
@@ -436,7 +436,7 @@ describe('get_suggestion — payloadResolved/appliedPayloadResolved (Phase 150, 
     expect(body.appliedPayload).toBe(appliedWithStaleKeys);
   });
 
-  it('P150 D-31 appliedPayloadResolved names standalone entries of a plan after-state', async () => {
+  it('appliedPayloadResolved names standalone entries of a plan after-state', async () => {
     const APPLIED_PLAN_STATE_WITH_STANDALONE = JSON.stringify({
       templateId: 'template-1',
       name: 'Push A',

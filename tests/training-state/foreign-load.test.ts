@@ -40,8 +40,8 @@ function activity(overrides: Partial<DecryptedForeignActivity> & { id: string })
 const FROM_7 = '2026-03-10';
 const TO = '2026-03-16';
 
-describe('computeForeignLoadWindow (D-16)', () => {
-  it('P155 D-16 intensityMinutes sums intensity times minutes inside the window', () => {
+describe('computeForeignLoadWindow', () => {
+  it('intensityMinutes sums intensity times minutes inside the window', () => {
     const activities = [
       activity({ id: 'a-first-day', performedOn: '2026-03-10', durationMinutes: 40, intensity: 2 }), // asOfDate-6: in
       activity({ id: 'a-today', performedOn: '2026-03-16', durationMinutes: 25, intensity: 5 }), // asOfDate: in
@@ -78,7 +78,7 @@ describe('computeForeignLoadWindow (D-16)', () => {
     });
   });
 
-  it('P155 D-16 an activity without intensity is counted apart and never as zero', () => {
+  it('an activity without intensity is counted apart and never as zero', () => {
     const activities = [
       activity({ id: 'a-rated', performedOn: '2026-03-14', durationMinutes: 30, intensity: 4 }),
       activity({ id: 'a-unrated', performedOn: '2026-03-15', durationMinutes: 50, intensity: null }),
@@ -105,7 +105,7 @@ describe('computeForeignLoadWindow (D-16)', () => {
     expect(unratedOnly.totalMinutes).toBe(50);
   });
 
-  it('P155 D-16 byType carries own, unknown and localized predefined type fields', () => {
+  it('byType carries own, unknown and localized predefined type fields', () => {
     const activities = [
       activity({ id: 'a-own', typeId: FT_CUSTOM, performedOn: '2026-03-11' }),
       activity({ id: 'a-unknown', typeId: FT_UNKNOWN, performedOn: '2026-03-11' }),
@@ -122,7 +122,7 @@ describe('computeForeignLoadWindow (D-16)', () => {
     expect(byId.get(FT_UNKNOWN)).toMatchObject({ typeName: null, typeSource: 'unknown', typeUnknown: true });
   });
 
-  it('P155 D-16 an empty window reports zero activities and an empty byType', () => {
+  it('an empty window reports zero activities and an empty byType', () => {
     const window = computeForeignLoadWindow([], FROM_7, TO, TYPES, undefined);
     expect(window).toEqual({
       from: FROM_7,

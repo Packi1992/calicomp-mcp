@@ -141,7 +141,7 @@ describe('get_planned_workouts — transform', () => {
     expect(result.occurrences[0].templateName).toBe('Push Day');
   });
 
-  it('D-04: sorts occurrences by date, then scheduledTime ascending with null last, then rootId', () => {
+  it('sorts occurrences by date, then scheduledTime ascending with null last, then rootId', () => {
     const snapshot = snapshotWith([
       root({ id: 'root-z-null-time', scheduledDate: epochMs(2026, 6, 10), scheduledTime: null }),
       root({ id: 'root-a-evening', scheduledDate: epochMs(2026, 6, 10), scheduledTime: '18:00' }),
@@ -153,7 +153,7 @@ describe('get_planned_workouts — transform', () => {
     expect(result.occurrences.map((o) => o.rootId)).toEqual(['root-b-morning', 'root-a-evening', 'root-z-null-time']);
   });
 
-  it('two consecutive calls over the same snapshot return deep-equal results (D-04 determinism)', () => {
+  it('two consecutive calls over the same snapshot return deep-equal results (determinism)', () => {
     const snapshot = snapshotWith([
       root({
         id: 'root-weekly',
@@ -180,7 +180,7 @@ describe('get_planned_workouts — transform', () => {
     expect(result.roots[0]).not.toHaveProperty('createdAt');
   });
 
-  it('passes completedSessionId through onto the root object (D-06)', () => {
+  it('passes completedSessionId through onto the root object', () => {
     const snapshot = snapshotWith([
       root({ id: 'root-completed', scheduledDate: epochMs(2026, 6, 10), completedSessionId: 'session-xyz' }),
     ]);
@@ -203,7 +203,7 @@ describe('get_planned_workouts — transform', () => {
   // Series fields (phase 135-03, SCHED-02, D-07/D-08)
   // -----------------------------------------------------------------------
 
-  it('D-07: weekOffset is computed over the WHOLE snapshot — a surviving root reports the same offset whether or not its group-mate is inside the window', () => {
+  it('weekOffset is computed over the WHOLE snapshot — a surviving root reports the same offset whether or not its group-mate is inside the window', () => {
     const GROUP = 'group-window-independence';
     const snapshot = snapshotWith([
       root({
@@ -303,7 +303,7 @@ describe('get_planned_workouts — registered MCP handler', () => {
     vi.mocked(cacheModule.getSnapshot).mockReset();
   });
 
-  it('P150 D-09 get_planned_workouts fails on one unreadable planned row and names its id', async () => {
+  it('get_planned_workouts fails on one unreadable planned row and names its id', async () => {
     const snapshot = snapshotWith([root({ id: 'root-inside', scheduledDate: epochMs(2026, 6, 10) })]);
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
       ...mockCacheFor(snapshot),
@@ -327,7 +327,7 @@ describe('get_planned_workouts — registered MCP handler', () => {
     expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
   });
 
-  it('P150 D-33 get_planned_workouts carries unreadable as an empty list when nothing is broken', async () => {
+  it('get_planned_workouts carries unreadable as an empty list when nothing is broken', async () => {
     const snapshot = snapshotWith([root({ id: 'root-inside', scheduledDate: epochMs(2026, 6, 10) })]);
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
 
@@ -343,7 +343,7 @@ describe('get_planned_workouts — registered MCP handler', () => {
     expect(body).not.toHaveProperty('droppedValues');
   });
 
-  it('P166 IN-06 get_planned_workouts names a foreign time outside HH:mm in droppedValues after unreadable', async () => {
+  it('get_planned_workouts names a foreign time outside HH:mm in droppedValues after unreadable', async () => {
     const snapshot = snapshotWith([root({ id: 'root-inside', scheduledDate: epochMs(2026, 6, 10) })]);
     const dropped = [{ entity: 'plannedForeignActivity' as const, id: 'row-pfa-bad', field: 'scheduledTime' as const, reason: 'not_hh_mm' as const }];
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
@@ -439,8 +439,8 @@ const FOREIGN_ROOT_KEYS = [
   'scheduledTime', 'note', 'recurrenceRule', 'freq', 'interval', 'byDay', 'until', 'deletedOccurrences',
 ];
 
-describe('get_planned_workouts — foreign appointments (Phase 155)', () => {
-  it('P155 FA-08 get_planned_workouts lists foreign appointments in their own keys and leaves occurrences and roots byte-identical', () => {
+describe('get_planned_workouts — foreign appointments', () => {
+  it('get_planned_workouts lists foreign appointments in their own keys and leaves occurrences and roots byte-identical', () => {
     const args = { from: '2026-06-01', to: '2026-06-14' };
     const foreign = [
       foreignRoot({ id: 'fr-single', scheduledDate: epochMs(2026, 6, 3), scheduledTime: '07:00', note: HOSTILE }),
@@ -505,7 +505,7 @@ describe('get_planned_workouts — foreign appointments (Phase 155)', () => {
     expect(wrapped).toBe(total);
   });
 
-  it('P155 E-7 foreign occurrences carry no fulfilment information', () => {
+  it('foreign occurrences carry no fulfilment information', () => {
     // A matching activity (same type, same day) exists — the raw calendar still says nothing about it.
     const snapshot = foreignPlannedSnapshot(
       [],
@@ -522,7 +522,7 @@ describe('get_planned_workouts — foreign appointments (Phase 155)', () => {
     expect(json).not.toMatch(/fulfil|fulfill|activityId|completed|missed|upcoming|fa-match/i);
   });
 
-  it('P155 FA-08 a foreign series root shows its rule fields and its cancelled dates, a cancelled date yields no foreign occurrence', () => {
+  it('a foreign series root shows its rule fields and its cancelled dates, a cancelled date yields no foreign occurrence', () => {
     const snapshot = foreignPlannedSnapshot(
       [],
       [
@@ -566,7 +566,7 @@ describe('get_planned_workouts — foreign appointments (Phase 155)', () => {
     expect(byId.get('fr-cancelled-only')!.deletedOccurrences).toEqual(['2026-06-12']);
   });
 
-  it('P155 E-8 get_planned_workouts returns null foreign lists with a reason and still lists template appointments', async () => {
+  it('get_planned_workouts returns null foreign lists with a reason and still lists template appointments', async () => {
     const snapshot = foreignPlannedSnapshot(TEMPLATE_ROOTS, [foreignRoot({ id: 'fr-1' })]);
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
       ...mockCacheFor(snapshot),
@@ -597,7 +597,7 @@ describe('get_planned_workouts — foreign appointments (Phase 155)', () => {
     expect(old.foreignUnavailableReason).toBe('server_without_foreign_sport');
   });
 
-  it('P155 E-8 a foreign root whose rule the expander refuses degrades only the foreign lists', () => {
+  it('a foreign root whose rule the expander refuses degrades only the foreign lists', () => {
     const snapshot = foreignPlannedSnapshot(TEMPLATE_ROOTS, [
       foreignRoot({ id: 'fr-bad', recurrenceRule: 'FREQ=WEEKLY;INTERVAL=0;BYDAY=WE' }),
     ]);
@@ -612,7 +612,7 @@ describe('get_planned_workouts — foreign appointments (Phase 155)', () => {
     expect(JSON.stringify(result.roots)).toBe(JSON.stringify(templateOnly.roots));
   });
 
-  it('P155 FA-08 the description explains the raw foreign appointments', () => {
+  it('the description explains the raw foreign appointments', () => {
     const server = new McpServer({ name: 'test', version: '0.1.0' });
     registerToolGetPlannedWorkouts(server, DUMMY_CFG);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

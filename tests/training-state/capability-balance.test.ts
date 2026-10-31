@@ -144,7 +144,7 @@ describe('weightFor', () => {
     expect(WEIGHT_GERING).toBe(0.25);
   });
 
-  it('throws on a null level — D-04, unlike the muscle axis where null resolves to PRIMARY', () => {
+  it('throws on a null level — unlike the muscle axis where null resolves to PRIMARY', () => {
     expect(() => weightFor(null)).toThrow();
   });
 
@@ -291,7 +291,7 @@ describe('capabilitySetCountsInPeriod', () => {
   // wires it up against a catalog sourced straight from the wire. Proves the fetch-boundary fix
   // (cache.ts's normalizeCatalog(), not a change to this file) already covers it: normalize a
   // genuinely field-omitting wire entry through the real seam, then feed the result in here.
-  it('does not throw when the catalog was normalized from wire data that omitted `capabilities` entirely (138.1-REVIEW.md IN-01, latent sibling)', () => {
+  it('does not throw when the catalog was normalized from wire data that omitted `capabilities` entirely', () => {
     const wireExercise = {
       id: 'ex-wire-omitted',
       key: 'ex-wire-omitted',
@@ -323,7 +323,7 @@ describe('computeCapabilityBalance', () => {
   const NOW = Date.parse('2026-05-20T12:00:00Z');
   const DAY = 24 * 60 * 60 * 1000;
 
-  it('P166 capabilityBalance has three windows weighted like the capabilityBalance corpus', () => {
+  it('capabilityBalance has three windows weighted like the capabilityBalance corpus', () => {
     // Every non-rejecting corpus vector, rebuilt as training: one exercise per level row, rated
     // with that row's axis and level, and `setCount` sets in a finished session of yesterday.
     const corpus = loadCoachPlanningVectors().capabilityBalance.filter((v) => v.expectRejection !== true);
@@ -380,7 +380,7 @@ describe('computeCapabilityBalance', () => {
     });
   });
 
-  it('P166 capabilityBalance counts finished sessions only and ignores unrated links', () => {
+  it('capabilityBalance counts finished sessions only and ignores unrated links', () => {
     const EX_UNRATED: CatalogExercise = {
       ...buildExercise('cb-unrated', [{ key: 'balance', level: 'HAUPTREIZ' }]),
       capabilities: [

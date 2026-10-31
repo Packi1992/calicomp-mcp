@@ -70,8 +70,8 @@ beforeEach(() => {
   mockFetchCatalog.mockResolvedValue([]);
 });
 
-describe('decryptMerge: own exercises (Phase 164)', () => {
-  it('P164 decryptMerge turns ciphertext rows back into exercise and translation rows', async () => {
+describe('decryptMerge: own exercises', () => {
+  it('decryptMerge turns ciphertext rows back into exercise and translation rows', async () => {
     const ex = ownExercisePair(
       { id: EX_ID, name: 'Ringstütz tief', mode: 'TIME', usesWeight: true, description: 'Ellbogen eng.' },
       TIMES,
@@ -99,7 +99,7 @@ describe('decryptMerge: own exercises (Phase 164)', () => {
     expect(decodeReport?.unreadable).toEqual([]);
   });
 
-  it('P164 plaintext rows pass unchanged', async () => {
+  it('plaintext rows pass unchanged', async () => {
     const ex = ownExercisePair({ id: EX_ID, name: 'Klimmzug breit', mode: 'REPS', usesWeight: false, description: null }, TIMES);
     const tr = ownTranslationPair({ id: TR_ID, exerciseId: EX_ID, languageCode: 'en', name: 'Wide pull-up', description: 'Slow.' }, TIMES);
     mockFetchSnapshot.mockResolvedValueOnce(makePull({ exercises: [ex.plaintext], exerciseTranslations: [tr.plaintext] }));
@@ -116,7 +116,7 @@ describe('decryptMerge: own exercises (Phase 164)', () => {
     expect(snapshot.ownExerciseLinks).toBeUndefined();
   });
 
-  it('P164 an unreadable row goes to the decode report and never shows a placeholder name', async () => {
+  it('an unreadable row goes to the decode report and never shows a placeholder name', async () => {
     const good = ownExercisePair({ id: EX_ID, name: 'Lesbar', mode: 'REPS', usesWeight: false, description: null }, TIMES);
     const tamperedId = '16400000-0000-4000-8000-0000000000c1';
     const emptyId = '16400000-0000-4000-8000-0000000000c2';
@@ -174,7 +174,7 @@ describe('decryptMerge: own exercises (Phase 164)', () => {
     }
   });
 
-  it('P164 links of an own exercise map to catalog keys and an unknown id is reported', async () => {
+  it('links of an own exercise map to catalog keys and an unknown id is reported', async () => {
     const MG_LATS = '16400000-0000-4000-8000-000000000101';
     const MG_BICEPS = '16400000-0000-4000-8000-000000000102';
     const MG_UNKNOWN = '16400000-0000-4000-8000-000000000199';

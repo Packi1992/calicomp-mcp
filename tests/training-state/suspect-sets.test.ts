@@ -145,8 +145,8 @@ function protocolExplanations(): Record<string, string> {
   return out;
 }
 
-describe('suspect marks (protocol §1.11, STAT-05)', () => {
-  it('P166 a reps value on a time station is marked reps_on_time_station unless the template exercise has targetReps', () => {
+describe('suspect marks (protocol §1.11)', () => {
+  it('a reps value on a time station is marked reps_on_time_station unless the template exercise has targetReps', () => {
     const s1 = session('ss-s1', '2026-05-01T08:00:00Z');
     const te = [
       templateExercise('ss-te-time', EX_REPS.id, 'TIME', { targetTimeSeconds: 30 }),
@@ -177,7 +177,7 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
     for (const id of ['ss-a', 'ss-b', 'ss-e', 'ss-f']) expect(marks.has(id), id).toBe(false);
   });
 
-  it('P166 a zero set is marked zero_set', () => {
+  it('a zero set is marked zero_set', () => {
     const s1 = session('ss-s1', '2026-05-01T08:00:00Z');
     // The pattern of zero sets an athlete keeps on purpose (D-17): one zero set alone in a
     // session that was never finished. It is marked, nothing else happens to it.
@@ -210,7 +210,7 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
     expect(snap).toEqual(before);
   });
 
-  it('P166 166-17-FUND-01 a set at a time station with zero repetitions and no time is marked zero_set', () => {
+  it('a set at a time station with zero repetitions and no time is marked zero_set', () => {
     // Protocol 1.51 §1.11 "Suspect sets", zero_set: the value of the set's kind, otherwise the
     // other value. The constellation of the zero sets an athlete keeps on purpose (D-17), with
     // invented ids: a repetition exercise at a TIME station without targetReps, before app plan
@@ -241,7 +241,7 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
     expect(reasonsOf(marks, 'ss-f01-reps-kind-time-zero')).toEqual(['zero_set']);
   });
 
-  it('P166 166-17-FUND-02 repetitions of a repetition exercise at a time station are no reps_on_time_station', () => {
+  it('repetitions of a repetition exercise at a time station are no reps_on_time_station', () => {
     // Protocol 1.51 §1.11 "Suspect sets": before app plan 165-02 the app took the counted
     // repetitions at a TIME station of a repetition exercise, often with the station time. They
     // are real counts. Invented constellation: a finished classic session at such a station
@@ -266,7 +266,7 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
     }
   });
 
-  it('P166 166-17-FUND-02 repetitions on a hold exercise stay reps_on_time_station in every mode that records a time', () => {
+  it('repetitions on a hold exercise stay reps_on_time_station in every mode that records a time', () => {
     const s1 = session('ss-f02-hold', '2026-05-08T08:00:00Z');
     const te = [
       templateExercise('ss-te-f02-hold-time', EX_HOLD.id, 'TIME', { targetTimeSeconds: 20 }),
@@ -301,7 +301,7 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
     for (const id of ['ss-f02-hold-reps', 'ss-f02-reps-max', 'ss-f02-hold-target']) expect(marks.has(id), id).toBe(false);
   });
 
-  it('P166 a missing measured time after measurements began is marked measured_time_missing', () => {
+  it('a missing measured time after measurements began is marked measured_time_missing', () => {
     const sessions = Array.from({ length: 8 }, (_, i) => session(`ss-m${i}`, `2026-05-0${i + 1}T08:00:00Z`));
     const at = (i: number) => sessions[i].startTime + 1;
     const timed = (id: string, i: number, exerciseId: string, measured: number | null) =>
@@ -333,7 +333,7 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
     expect([...marks.keys()]).toEqual(['ss-h6']);
   });
 
-  it('P166 manual sessions and quick challenges are never marked measured_time_missing', () => {
+  it('manual sessions and quick challenges are never marked measured_time_missing', () => {
     const normal = Array.from({ length: 7 }, (_, i) => session(`ss-n${i}`, `2026-05-0${i + 1}T08:00:00Z`));
     const manual = session('ss-manual', '2026-05-02T12:00:00Z', { isManual: true });
     const quick = session('ss-quick', '2026-04-30T12:00:00Z', { isQuickChallenge: true });
@@ -370,7 +370,7 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
     }
   });
 
-  it('P166 every suspect mark names its reason and an explanation without exercise names', () => {
+  it('every suspect mark names its reason and an explanation without exercise names', () => {
     const explanations = protocolExplanations();
     expect(Object.keys(explanations).sort()).toEqual([...SUSPECT_REASONS].sort());
     const s1 = session('ss-s1', '2026-05-01T08:00:00Z');
@@ -409,7 +409,7 @@ describe('suspect marks (protocol §1.11, STAT-05)', () => {
     }
   });
 
-  it('P166 dataQuality counts by reason and lists at most twenty newest', () => {
+  it('dataQuality counts by reason and lists at most twenty newest', () => {
     // 25 zero sets, one per day; two of them also carry reps_on_time_station; one more is
     // created at 23:30 UTC, already the next day in Europe/Berlin; two share a creation time.
     const sessions: DecryptedSession[] = [];

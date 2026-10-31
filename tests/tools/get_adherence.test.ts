@@ -227,7 +227,7 @@ describe('getAdherence', () => {
     expect(result.window.from).toBe('2026-05-28'); // 1 week = 7 days, not the parameter's 10
   });
 
-  it('P155 FA-06 get_adherence counts a same-day same-type activity as fulfilled', () => {
+  it('get_adherence counts a same-day same-type activity as fulfilled', () => {
     const templateOnly = snapshotWithZone(TZ, {
       plannedWorkouts: [root({ id: 'r1', scheduledDate: epochMs(2026, 6, 2) })],
     });
@@ -266,7 +266,7 @@ describe('getAdherence', () => {
     });
   });
 
-  it('P166 get_adherence returns the phantom fixture with the real session matched', () => {
+  it('get_adherence returns the phantom fixture with the real session matched', () => {
     // The pattern of 2026-10-13 (protocol §1.6 "Several candidates for one occurrence"), with
     // invented ids: the real session was recorded on the watch with all its sets and imported
     // after its end (createdAt after endTime); a second session of the same template started
@@ -459,7 +459,7 @@ describe('get_adherence — registered MCP handler', () => {
   // unreadable / decode-fault-tolerance guards (Phase 150, D-09/D-11)
   // -------------------------------------------------------------------------
 
-  it('P150 D-09 get_adherence fails on an unreadable planned row', async () => {
+  it('get_adherence fails on an unreadable planned row', async () => {
     const snapshot = snapshotWithZone(TZ);
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
       ...mockCacheFor(snapshot),
@@ -485,7 +485,7 @@ describe('get_adherence — registered MCP handler', () => {
     expect(result.content[0].text).toContain('partial calendar');
   });
 
-  it('P150 D-11 get_adherence refuses when every encrypted session failed', async () => {
+  it('get_adherence refuses when every encrypted session failed', async () => {
     const snapshot = snapshotWithZone(TZ);
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
       ...mockCacheFor(snapshot),
@@ -512,7 +512,7 @@ describe('get_adherence — registered MCP handler', () => {
     expect(result.content[0].text).not.toContain(DUMMY_CFG.keyB64);
   });
 
-  it('P150 get_adherence names the unreadable tz setting instead of a missing key', async () => {
+  it('get_adherence names the unreadable tz setting instead of a missing key', async () => {
     const snapshot = snapshotWithZone(null);
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
       ...mockCacheFor(snapshot),
@@ -556,7 +556,7 @@ describe('get_adherence — registered MCP handler', () => {
     });
   }
 
-  it('P155 E-9 get_adherence reports server_without_foreign_sport and still returns template numbers', async () => {
+  it('get_adherence reports server_without_foreign_sport and still returns template numbers', async () => {
     const snapshot = snapshotWithZone(TZ, {
       plannedWorkouts: [root({ id: 'r1', scheduledDate: epochMs(2026, 6, 4) })],
     });
@@ -582,7 +582,7 @@ describe('get_adherence — registered MCP handler', () => {
     expect(Object.keys(body).indexOf('foreignSport')).toBeGreaterThan(Object.keys(body).indexOf('explanation'));
   });
 
-  it('P155 E-8 get_adherence reports foreign_rows_unreadable for an unreadable foreign row and still returns template numbers', async () => {
+  it('get_adherence reports foreign_rows_unreadable for an unreadable foreign row and still returns template numbers', async () => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
       ...mockCacheFor(foreignSnapshot()),
       decodeReport: {
@@ -610,7 +610,7 @@ describe('get_adherence — registered MCP handler', () => {
     expect(body.unreadable).toEqual([{ entity: 'foreignActivity', id: 'fa-broken', reason: 'malformed_payload' }]);
   });
 
-  it('P155 FA-06 the outputFile summary carries the foreign counts', async () => {
+  it('the outputFile summary carries the foreign counts', async () => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(foreignSnapshot()));
     vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
       params: COACH_PARAMETER_DEFAULTS,
@@ -644,7 +644,7 @@ describe('get_adherence — registered MCP handler', () => {
     });
   });
 
-  it('P155 FA-06 the outputFile summary carries the reason when foreign sport is unavailable', async () => {
+  it('the outputFile summary carries the reason when foreign sport is unavailable', async () => {
     const snapshot = snapshotWithZone(TZ, { plannedWorkouts: [root({ id: 'r1', scheduledDate: epochMs(2026, 6, 4) })] });
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(mockCacheFor(snapshot));
     vi.mocked(coachParametersModule.loadCoachParameters).mockResolvedValue({
@@ -664,7 +664,7 @@ describe('get_adherence — registered MCP handler', () => {
     expect(body.foreignSport).toEqual({ available: false, reason: 'server_without_foreign_sport' });
   });
 
-  it('P155 FA-06 the description says template counts exclude foreign sport', () => {
+  it('the description says template counts exclude foreign sport', () => {
     const server = new McpServer({ name: 'test', version: '0.1.0' });
     registerToolGetAdherence(server, DUMMY_CFG);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -677,7 +677,7 @@ describe('get_adherence — registered MCP handler', () => {
     expect(description).not.toMatch(/propose[^.]*foreign/i);
   });
 
-  it('P155 D-07 the outputFile summary and the description carry removedWithCompletedSessionCount', async () => {
+  it('the outputFile summary and the description carry removedWithCompletedSessionCount', async () => {
     const snapshot = snapshotWithZone(TZ, {
       plannedWorkouts: [
         root({

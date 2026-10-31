@@ -146,8 +146,8 @@ const loadPins = (): Record<string, unknown> => JSON.parse(readFileSync(PIN_PATH
 // fixtures; CHAR_156_SNAPSHOT differs from CHAR_SNAPSHOT only by its name overrides.
 const pinOf = (key: string): unknown => applyDeclaredDeltas('characterization-150.json', key, loadPins()[key]);
 
-describe('P156 SC4 characterization — overrides in the snapshot move no old output', () => {
-  it('P156 SC4 the fixture carries overrides for catalog exercises used in templates and sessions', () => {
+describe('characterization — overrides in the snapshot move no old output', () => {
+  it('the fixture carries overrides for catalog exercises used in templates and sessions', () => {
     expect(CHAR_SNAPSHOT).not.toHaveProperty('exerciseNameOverrides');
     expect(CHAR_156_SNAPSHOT.exerciseNameOverrides).toHaveLength(3);
     const catalogIds = new Set(CHAR_CATALOG.map((e) => e.id));
@@ -164,15 +164,15 @@ describe('P156 SC4 characterization — overrides in the snapshot move no old ou
     expect(CHAR156_OVERRIDES.some((o) => o.description !== null)).toBe(true);
   });
 
-  it('P156 SC4 getHistory old keys unchanged with overrides', () => {
+  it('getHistory old keys unchanged with overrides', () => {
     expectOldKeysUnchanged(getHistory(CHAR_HISTORY_ARGS, CHAR_156_SNAPSHOT), pinOf('getHistory'));
   });
 
-  it('P156 SC4 getHistory with exercise filter old keys unchanged with overrides', () => {
+  it('getHistory with exercise filter old keys unchanged with overrides', () => {
     expectOldKeysUnchanged(getHistory(CHAR_HISTORY_ARGS_EXERCISE, CHAR_156_SNAPSHOT), pinOf('getHistoryExercise'));
   });
 
-  it('P156 SC4 getTemplate old keys unchanged with overrides', () => {
+  it('getTemplate old keys unchanged with overrides', () => {
     const pins = loadPins();
     const actual = {
       withBlock: getTemplate({ templateId: CHAR_TEMPLATE_ID_LIVE }, CHAR_156_SNAPSHOT),
@@ -181,7 +181,7 @@ describe('P156 SC4 characterization — overrides in the snapshot move no old ou
     expectOldKeysUnchanged(actual, pins.getTemplate);
   });
 
-  it('P156 SC4 getTrainingState old keys unchanged with overrides', () => {
+  it('getTrainingState old keys unchanged with overrides', () => {
     const actual = getTrainingState(
       CHAR_TRAINING_STATE_ARGS,
       { ...CHAR_TRAINING_STATE_DATA, snapshot: CHAR_156_SNAPSHOT },
@@ -191,7 +191,7 @@ describe('P156 SC4 characterization — overrides in the snapshot move no old ou
     expect(actual.narrative).toBe((pinOf('getTrainingState') as { narrative: string }).narrative);
   });
 
-  it('P156 SC4 getStats exercise old keys unchanged with overrides', () => {
+  it('getStats exercise old keys unchanged with overrides', () => {
     const actual = getStats(
       { by: 'exercise', exerciseId: CHAR_CATALOG_EX_PUSHUP },
       { ...CHAR_STATS_DATA, snapshot: CHAR_156_SNAPSHOT },
@@ -199,17 +199,17 @@ describe('P156 SC4 characterization — overrides in the snapshot move no old ou
     expectOldKeysUnchanged(actual, pinOf('getStatsExercise'));
   });
 
-  it('P156 SC4 getStats muscle old keys unchanged with overrides', () => {
+  it('getStats muscle old keys unchanged with overrides', () => {
     const actual = getStats({ by: 'muscle', muscle: 'chest' }, { ...CHAR_STATS_DATA, snapshot: CHAR_156_SNAPSHOT });
     expectOldKeysUnchanged(actual, pinOf('getStatsMuscle'));
   });
 
-  it('P156 SC4 getStats capabilities old keys unchanged with overrides', () => {
+  it('getStats capabilities old keys unchanged with overrides', () => {
     const actual = getStats({ by: 'capabilities' }, { ...CHAR_STATS_DATA, snapshot: CHAR_156_SNAPSHOT });
     expectOldKeysUnchanged(actual, pinOf('getStatsCapabilities'));
   });
 
-  it('P156 SC4 getAdherence old keys unchanged with overrides', () => {
+  it('getAdherence old keys unchanged with overrides', () => {
     const actual = getAdherence(
       CHAR_ADHERENCE_ARGS,
       { ...CHAR_ADHERENCE_DATA, snapshot: CHAR_156_SNAPSHOT },
@@ -218,24 +218,24 @@ describe('P156 SC4 characterization — overrides in the snapshot move no old ou
     expectOldKeysUnchanged(actual, pinOf('getAdherence'));
   });
 
-  it('P156 SC4 getProgress all exercises old keys unchanged with overrides', () => {
+  it('getProgress all exercises old keys unchanged with overrides', () => {
     const pins = loadPins();
     const actual = getProgress(CHAR_PROGRESS_ARGS_ALL, { ...CHAR_PROGRESS_DATA, snapshot: CHAR_156_SNAPSHOT });
     expectOldKeysUnchanged(actual, pins.getProgressExerciseAll);
   });
 
-  it('P156 SC4 getProgress one exercise old keys unchanged with overrides', () => {
+  it('getProgress one exercise old keys unchanged with overrides', () => {
     const pins = loadPins();
     const actual = getProgress(CHAR_PROGRESS_ARGS_ONE, { ...CHAR_PROGRESS_DATA, snapshot: CHAR_156_SNAPSHOT });
     expectOldKeysUnchanged(actual, pins.getProgressExerciseOne);
   });
 
-  it('P156 SC4 getPlannedWorkouts old keys unchanged with overrides', () => {
+  it('getPlannedWorkouts old keys unchanged with overrides', () => {
     const pins = loadPins();
     expectOldKeysUnchanged(getPlannedWorkouts(CHAR_PLANNED_WORKOUTS_ARGS, CHAR_156_SNAPSHOT), pins.getPlannedWorkouts);
   });
 
-  it('P156 SC4 every pinned call returns the same output with and without overrides, apart from the new own-name keys', () => {
+  it('every pinned call returns the same output with and without overrides, apart from the new own-name keys', () => {
     // The 150 pins carry `exerciseName` only in getProgress and getTrainingState: the
     // resolver fields of get_template, get_history and get_stats are younger than the pins.
     // This comparison closes that gap for D-10 ("exerciseName stays the catalog name, byte
@@ -282,7 +282,7 @@ describe('P156 SC4 characterization — overrides in the snapshot move no old ou
     expect(withOverrides).toStrictEqual(withoutOverrides);
   });
 
-  it('P156 SC4 buildNewPlanPayload old keys unchanged with overrides', () => {
+  it('buildNewPlanPayload old keys unchanged with overrides', () => {
     // buildNewPlanPayload reads the catalog, not the snapshot; pinned here anyway so the
     // whole 150 pin set is covered by this file (and the duplicate check never sees own names).
     const pins = loadPins();
@@ -492,13 +492,13 @@ const CHAR_156_SNAPSHOT_EFFECTIVE_DE: DecryptedSnapshot = {
   settings: [...CHAR_156_SNAPSHOT.settings, { key: 'effective_language', type: 's', value: 'de' }],
 };
 
-describe('P156 D-10 own names in every resolver tool', () => {
+describe('own names in every resolver tool', () => {
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockReset();
     vi.mocked(httpModule.fetchSuggestion).mockReset();
   });
 
-  it('P156 D-10 every resolver tool carries the own name for an overridden exercise', async () => {
+  it('every resolver tool carries the own name for an overridden exercise', async () => {
     // Without lang, the app language de applies (D-17): the push-up override (de) shows,
     // the squat override (en) and the pull-up (no override) do not. Since 166-20 (E-16) the
     // catalog name follows the app language too, so the effective name language is de.
@@ -521,7 +521,7 @@ describe('P156 D-10 own names in every resolver tool', () => {
     );
   });
 
-  it('P166 E-16 without lang every resolver tool names catalog exercises in the app language', async () => {
+  it('without lang every resolver tool names catalog exercises in the app language', async () => {
     const outputs = await runResolverTools(CHAR_156_SNAPSHOT_EFFECTIVE_DE);
     let checked = 0;
     for (const [tool, output] of Object.entries(outputs)) {
@@ -543,7 +543,7 @@ describe('P156 D-10 own names in every resolver tool', () => {
     expectOwnNames(outputs, { key: PUSHUP_KEY, name: PUSHUP_OVERRIDE.name, language: 'de' }, 'de');
   });
 
-  it('P156 D-10 no tool output carries the own description', async () => {
+  it('no tool output carries the own description', async () => {
     expect(SQUAT_OVERRIDE.description).not.toBeNull();
     const description = SQUAT_OVERRIDE.description as string;
     const descriptionKeys = /"(exerciseOwnDescription|ownDescription|exerciseDescription)"/;

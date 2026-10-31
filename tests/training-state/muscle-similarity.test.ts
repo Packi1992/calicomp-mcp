@@ -219,7 +219,7 @@ describe('buildCombinedVector', () => {
     expect(combinedSimilarity).toBeLessThan(muscleSimilarity);
   });
 
-  it('two empty vectors yield a defined result instead of a division by zero — the pure-Breathhold case reachable since 138.1-15', () => {
+  it('two empty vectors yield a defined result instead of a division by zero — the pure-Breathhold case reachable since', () => {
     // An exercise with no muscle link at all (like Breathhold post-138.1-15) but a capability
     // axis: buildMuscleVector alone would produce two EMPTY vectors here (ruzickaSimilarity
     // returns 0 = 'none', wrongly, for two literally identical sessions — the finding 138.1-15
@@ -310,7 +310,7 @@ describe('ruzickaSimilarity', () => {
   });
 
   it(
-    'D-21 magnitude case, with the research numbers: {chest:1,triceps:1,shoulders:1} vs ' +
+    'magnitude case, with the research numbers: {chest:1,triceps:1,shoulders:1} vs ' +
       '{chest:6,triceps:6,shoulders:6} is 3/18 ≈ 0.167, NOT 1, and falls below the default uncertainThreshold',
     () => {
       const oneSet = new Map([['chest', 1], ['triceps', 1], ['shoulders', 1]]);

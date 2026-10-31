@@ -271,7 +271,7 @@ describe('propose_new_plan — registered MCP handler', () => {
   // Phase 150-08 (D-22/D-24/D-30): blockless standalone entries.
   // -------------------------------------------------------------------------
 
-  it('P150 D-22 a Freitag-shaped plan posts standalone before the block', async () => {
+  it('a Freitag-shaped plan posts standalone before the block', async () => {
     vi.mocked(httpModule.postSuggest).mockResolvedValue(MOCK_SUGGESTION);
 
     const server = new McpServer({ name: 'test', version: '0.1.0' });
@@ -329,7 +329,7 @@ describe('propose_new_plan — registered MCP handler', () => {
     expect(payload.standalone[1].orderIndex).toBe(1);
   });
 
-  it('P150 D-30 a blocks-only plan posts no standalone key and keeps its changeHash', async () => {
+  it('a blocks-only plan posts no standalone key and keeps its changeHash', async () => {
     vi.mocked(httpModule.postSuggest).mockResolvedValue(MOCK_SUGGESTION);
 
     const server = new McpServer({ name: 'test', version: '0.1.0' });
@@ -351,7 +351,7 @@ describe('propose_new_plan — registered MCP handler', () => {
     expect(secondHash).toBe(firstHash);
   });
 
-  it('P150 D-20 a block with rounds 1 is accepted without warning', async () => {
+  it('a block with rounds 1 is accepted without warning', async () => {
     vi.mocked(httpModule.postSuggest).mockResolvedValue(MOCK_SUGGESTION);
 
     const server = new McpServer({ name: 'test', version: '0.1.0' });

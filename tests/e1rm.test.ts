@@ -39,28 +39,15 @@ describe('e1RM (Epley port)', () => {
   });
 
   describe('setE1rm — null gates', () => {
-    it('returns null when weight is 0 (weight gate)', () => {
-      expect(setE1rm(0, 10)).toBeNull();
-    });
-
-    it('returns null when weight is negative', () => {
-      expect(setE1rm(-5, 10)).toBeNull();
-    });
-
-    it('returns null when reps is 0 (rep gate)', () => {
-      expect(setE1rm(100, 0)).toBeNull();
-    });
-
-    it('returns null when reps is negative', () => {
-      expect(setE1rm(100, -1)).toBeNull();
-    });
-
-    it('returns null when weight is null', () => {
-      expect(setE1rm(null, 5)).toBeNull();
-    });
-
-    it('returns null when reps is null', () => {
-      expect(setE1rm(100, null)).toBeNull();
+    it.each([
+      ['returns null when weight is 0 (weight gate)', 0, 10],
+      ['returns null when weight is negative', -5, 10],
+      ['returns null when reps is 0 (rep gate)', 100, 0],
+      ['returns null when reps is negative', 100, -1],
+      ['returns null when weight is null', null, 5],
+      ['returns null when reps is null', 100, null],
+    ] as const)('%s', (_name, weight, reps) => {
+      expect(setE1rm(weight, reps)).toBeNull();
     });
   });
 

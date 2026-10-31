@@ -75,20 +75,20 @@ if (!process.env.CHAR_150_PIN_GENERATE) {
   // tests/vectors/characterization-166-deltas.json applied; the pin file itself never changes.
   const pinOf = (key: string): unknown => applyDeclaredDeltas('characterization-150.json', key, loadPins()[key]);
 
-  describe('P150 D-07 characterization', () => {
-    it('P150 D-07 helper flags a changed old value', () => {
+  describe('characterization', () => {
+    it('helper flags a changed old value', () => {
       expect(() => expectOldKeysUnchanged({ a: 2 }, { a: 1 })).toThrow();
     });
 
-    it('P150 D-07 helper flags a missing old key', () => {
+    it('helper flags a missing old key', () => {
       expect(() => expectOldKeysUnchanged({ a: 1 }, { a: 1, b: 2 })).toThrow();
     });
 
-    it('P150 D-07 helper accepts an added new key', () => {
+    it('helper accepts an added new key', () => {
       expect(() => expectOldKeysUnchanged({ a: 1, b: 2 }, { a: 1 })).not.toThrow();
     });
 
-    it('P150 D-07 getHistory old keys unchanged', () => {
+    it('getHistory old keys unchanged', () => {
       const actualNoExercise = getHistory(CHAR_HISTORY_ARGS, CHAR_SNAPSHOT);
       const actualWithExercise = getHistory(CHAR_HISTORY_ARGS_EXERCISE, CHAR_SNAPSHOT);
       expectOldKeysUnchanged(actualNoExercise, pinOf('getHistory'));
@@ -98,7 +98,7 @@ if (!process.env.CHAR_150_PIN_GENERATE) {
     // Phase 151 (D-07/D-26): feedback/goalSnapshot on every fixture session are
     // ADDITIVE — the pin file is untouched (Phase 150), and the old getHistory keys
     // must stay byte-identical even once every session carries the new fields.
-    it('P151 D-07 getHistory old keys unchanged with feedback on every fixture session', () => {
+    it('getHistory old keys unchanged with feedback on every fixture session', () => {
       const snapshotWithFeedback: DecryptedSnapshot = {
         ...CHAR_SNAPSHOT,
         sessions: CHAR_SNAPSHOT.sessions.map((s) => ({
@@ -127,7 +127,7 @@ if (!process.env.CHAR_150_PIN_GENERATE) {
       expectOldKeysUnchanged(actual, pinOf('getHistory'));
     });
 
-    it('P150 D-07 getTemplate old keys unchanged', () => {
+    it('getTemplate old keys unchanged', () => {
       const pins = loadPins();
       const actual = {
         withBlock: getTemplate({ templateId: CHAR_TEMPLATE_ID_LIVE }, CHAR_SNAPSHOT),
@@ -136,34 +136,34 @@ if (!process.env.CHAR_150_PIN_GENERATE) {
       expectOldKeysUnchanged(actual, pins.getTemplate);
     });
 
-    it('P150 D-07 getTrainingState old keys unchanged', () => {
+    it('getTrainingState old keys unchanged', () => {
       const actual = getTrainingState(CHAR_TRAINING_STATE_ARGS, CHAR_TRAINING_STATE_DATA, CHAR_NOW_MS);
       expectOldKeysUnchanged(actual, pinOf('getTrainingState'));
       expect(typeof (pinOf('getTrainingState') as { narrative: unknown }).narrative).toBe('string');
       expect(actual.narrative).toBe((pinOf('getTrainingState') as { narrative: string }).narrative);
     });
 
-    it('P150 D-07 getStats exercise old keys unchanged', () => {
+    it('getStats exercise old keys unchanged', () => {
       const actual = getStats({ by: 'exercise', exerciseId: CHAR_CATALOG_EX_PUSHUP }, CHAR_STATS_DATA);
       expectOldKeysUnchanged(actual, pinOf('getStatsExercise'));
     });
 
-    it('P150 D-07 getStats muscle old keys unchanged', () => {
+    it('getStats muscle old keys unchanged', () => {
       const actual = getStats({ by: 'muscle', muscle: 'chest' }, CHAR_STATS_DATA);
       expectOldKeysUnchanged(actual, pinOf('getStatsMuscle'));
     });
 
-    it('P150 D-07 getStats capabilities old keys unchanged', () => {
+    it('getStats capabilities old keys unchanged', () => {
       const actual = getStats({ by: 'capabilities' }, CHAR_STATS_DATA);
       expectOldKeysUnchanged(actual, pinOf('getStatsCapabilities'));
     });
 
-    it('P150 D-07 getAdherence old keys unchanged', () => {
+    it('getAdherence old keys unchanged', () => {
       const actual = getAdherence(CHAR_ADHERENCE_ARGS, CHAR_ADHERENCE_DATA, CHAR_NOW_MS);
       expectOldKeysUnchanged(actual, pinOf('getAdherence'));
     });
 
-    it('P150 D-07 getProgress exercise old keys unchanged', () => {
+    it('getProgress exercise old keys unchanged', () => {
       const pins = loadPins();
       const actualAll = getProgress(CHAR_PROGRESS_ARGS_ALL, CHAR_PROGRESS_DATA);
       const actualOne = getProgress(CHAR_PROGRESS_ARGS_ONE, CHAR_PROGRESS_DATA);
@@ -171,13 +171,13 @@ if (!process.env.CHAR_150_PIN_GENERATE) {
       expectOldKeysUnchanged(actualOne, pins.getProgressExerciseOne);
     });
 
-    it('P150 D-07 getPlannedWorkouts old keys unchanged', () => {
+    it('getPlannedWorkouts old keys unchanged', () => {
       const pins = loadPins();
       const actual = getPlannedWorkouts(CHAR_PLANNED_WORKOUTS_ARGS, CHAR_SNAPSHOT);
       expectOldKeysUnchanged(actual, pins.getPlannedWorkouts);
     });
 
-    it('P150 D-07 new_plan blocks-only payload and changeHash unchanged', () => {
+    it('new_plan blocks-only payload and changeHash unchanged', () => {
       const pins = loadPins();
       const payload = buildNewPlanPayload(CHAR_NEW_PLAN_ARGS, CHAR_CATALOG);
       const payloadJson = JSON.stringify(payload);
@@ -193,7 +193,7 @@ if (!process.env.CHAR_150_PIN_GENERATE) {
     // design. Every OLD key, and the narrative sentence verbatim, must stay
     // byte-identical against the Phase-150 pin even once every fixture session
     // carries feedback and a goal snapshot. The pin file itself is untouched.
-    it('P151 D-07 old metrics unchanged with feedback and goals on every fixture session', () => {
+    it('old metrics unchanged with feedback and goals on every fixture session', () => {
       const pins = loadPins();
       const snapshotWithFeedback: DecryptedSnapshot = {
         ...CHAR_SNAPSHOT,

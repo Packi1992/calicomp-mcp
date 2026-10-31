@@ -452,7 +452,7 @@ describe('computeConsistency', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeSessionsByKind', () => {
-  it('P150 D-03 sessionsByKind sums to totalCompletedSessions', () => {
+  it('sessionsByKind sums to totalCompletedSessions', () => {
     const sessions = [
       completedSession({ id: 's1', startTime: 1_700_000_000_000, templateId: 'tpl-1' }),
       completedSession({ id: 's2', startTime: 1_700_100_000_000 }),
@@ -466,7 +466,7 @@ describe('computeSessionsByKind', () => {
     expect(byKind).toEqual({ template: 1, templateless: 1, quick_challenge: 1 });
   });
 
-  it('P150 D-03 sessionsByKind counts a quick challenge with templateId as quick_challenge', () => {
+  it('sessionsByKind counts a quick challenge with templateId as quick_challenge', () => {
     const sessions = [
       completedSession({
         id: 's1',
@@ -481,7 +481,7 @@ describe('computeSessionsByKind', () => {
     expect(byKind).toEqual({ template: 0, templateless: 0, quick_challenge: 1 });
   });
 
-  it('P150 D-03 running and deleted sessions are not counted in sessionsByKind', () => {
+  it('running and deleted sessions are not counted in sessionsByKind', () => {
     const running = session({ id: 's-running', startTime: 1_700_000_000_000 }); // no endTime
     const deleted = completedSession({ id: 's-deleted', startTime: 1_700_100_000_000, deletedAt: 1_700_100_500_000 });
     const completed = completedSession({ id: 's-ok', startTime: 1_700_200_000_000 });
@@ -497,8 +497,8 @@ describe('computeSessionsByKind', () => {
 // Phase 166 (plan 166-04, STAT-02, D-02, D-04 in the version E-15): Rule M in the existing form
 // ---------------------------------------------------------------------------
 
-describe('computePersonalRecords — Rule M (Phase 166)', () => {
-  it('P166 personalRecords counts by rule M in its existing entry form', () => {
+describe('computePersonalRecords — Rule M', () => {
+  it('personalRecords counts by rule M in its existing entry form', () => {
     // Expected by hand from Rule M over the characterization fixture of 166 (population of
     // Rule P WITHOUT the finished-session requirement): the 40 repetitions on the time station
     // (workout exercise TIME) and the 15 on MAX of the TIME catalog exercise record a time, so

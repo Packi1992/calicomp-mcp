@@ -58,7 +58,7 @@ describe('capability-catalog', () => {
     expect(axis.translations).toContainEqual({ languageCode: 'de', name: 'Atem' });
   });
 
-  it('D-04 invariant: an exercise with an empty capabilities array stays fully resolvable — no axis is added, no level is defaulted', () => {
+  it('invariant: an exercise with an empty capabilities array stays fully resolvable — no axis is added, no level is defaulted', () => {
     const exercise = buildExercise({ id: 'ex-plain-strength', capabilities: [] });
 
     const result = getExerciseCatalog({}, [exercise]);
@@ -92,7 +92,7 @@ describe('capability-catalog', () => {
  * The 138.1-01 D-04 invariant (an exercise with no capability axis stays fully resolvable) is
  * the empty-capabilities case of the describe above.
  */
-describe('capability-catalog — isSkill (138.1-21, CAP-07/D-07)', () => {
+describe('capability-catalog — isSkill', () => {
   it('an entry with isSkill set is passed through by get_exercise_catalog with the flag intact', () => {
     const exercise = buildExercise({ id: 'ex-handstand', isSkill: true });
 

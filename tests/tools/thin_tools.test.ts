@@ -152,13 +152,7 @@ describe('listTemplates — pure handler', () => {
     expect(ids).not.toContain('deleted-tmpl-1111-1111-111111111111');
   });
 
-  it('result is JSON-parseable', () => {
-    const result = listTemplates(mockSnapshot);
-    const json = JSON.stringify(result);
-    expect(() => JSON.parse(json)).not.toThrow();
-  });
-
-  it('includes workoutType when the snapshot carries it (Phase 134, G-134-12)', () => {
+  it('includes workoutType when the snapshot carries it', () => {
     const snapshotWithFormat = {
       ...mockSnapshot,
       templates: [
@@ -239,13 +233,7 @@ describe('getTemplate — pure handler', () => {
     expect(result).toBeNull();
   });
 
-  it('result is JSON-parseable', () => {
-    const result = getTemplate({ templateId: TEMPLATE_ID_PUSH }, mockSnapshot);
-    const json = JSON.stringify(result);
-    expect(() => JSON.parse(json)).not.toThrow();
-  });
-
-  it('includes workoutType and formatParams when the snapshot carries them (Phase 134, G-134-12)', () => {
+  it('includes workoutType and formatParams when the snapshot carries them', () => {
     const snapshotWithFormat = {
       ...mockSnapshot,
       templates: [
@@ -291,8 +279,8 @@ describe('getTemplate — pure handler', () => {
 // get_template — Phase 150 (D-15, D-34, tracer)
 // ---------------------------------------------------------------------------
 
-describe('getTemplate — Phase 150 (D-15/D-34)', () => {
-  it('P150 D-34 getTemplate drops tombstones and sorts blocks and exercises in display order', () => {
+describe('getTemplate', () => {
+  it('getTemplate drops tombstones and sorts blocks and exercises in display order', () => {
     const templateId = 'ffffaaaa-0007-4000-a000-000000000001';
     const snapshot = {
       ...mockSnapshot,
@@ -320,7 +308,7 @@ describe('getTemplate — Phase 150 (D-15/D-34)', () => {
   });
 
   // Phase 150 review WR-03 — two cases where the display order used to diverge from the app.
-  it('P150 WR-03 getTemplate drops live exercises under a deleted, unknown or foreign block', () => {
+  it('getTemplate drops live exercises under a deleted, unknown or foreign block', () => {
     const templateId = 'ffffaaaa-0007-4000-a000-000000000002';
     const otherTemplateId = 'ffffaaaa-0007-4000-a000-000000000003';
     const base = { exerciseSource: 'CATALOG' as const, mode: 'REPS' as const, restTimeSeconds: 60, sets: 1, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 };
@@ -350,7 +338,7 @@ describe('getTemplate — Phase 150 (D-15/D-34)', () => {
     expect(result!.templateExercises.map((te) => te.id)).toEqual(['te-standalone', 'te-in-block']);
   });
 
-  it('P150 WR-03 getTemplate keeps the exercises of two blocks with the same orderIndex grouped per block', () => {
+  it('getTemplate keeps the exercises of two blocks with the same orderIndex grouped per block', () => {
     const templateId = 'ffffaaaa-0007-4000-a000-000000000004';
     const base = { exerciseSource: 'CATALOG' as const, mode: 'REPS' as const, restTimeSeconds: 60, sets: 1, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 };
     const snapshot = {
@@ -378,7 +366,7 @@ describe('getTemplate — Phase 150 (D-15/D-34)', () => {
     expect(result!.templateExercises.map((te) => te.id)).toEqual(['te-a0', 'te-a1', 'te-b0', 'te-b1', 'te-standalone']);
   });
 
-  it('P150 SC5 getTemplate names every template exercise including a user exercise', () => {
+  it('getTemplate names every template exercise including a user exercise', () => {
     const userExerciseId = 'ffffaaaa-0007-4000-a000-000000000099';
     const snapshot = {
       ...mockSnapshot,
@@ -418,7 +406,7 @@ describe('getTemplate — Phase 150 (D-15/D-34)', () => {
     expect(userTe!.exerciseKey).toBe(`user_exercise:${userExerciseId}`);
   });
 
-  it('P150 getTemplate without a resolver adds no name fields', () => {
+  it('getTemplate without a resolver adds no name fields', () => {
     const result = getTemplate({ templateId: TEMPLATE_ID_PUSH }, mockSnapshot);
     expect('exerciseName' in result!.templateExercises[0]).toBe(false);
     expect('exerciseKey' in result!.templateExercises[0]).toBe(false);
@@ -503,12 +491,6 @@ describe('getExerciseCatalog — pure handler', () => {
       expect((ex as { localizedName?: string }).localizedName).toBeUndefined();
     }
   });
-
-  it('result is JSON-parseable', () => {
-    const result = getExerciseCatalog({ lang: 'de' }, mockCatalog);
-    const json = JSON.stringify(result);
-    expect(() => JSON.parse(json)).not.toThrow();
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -567,12 +549,12 @@ function catalogSnapshot(opts: { appLanguage?: string; overrides?: boolean }): D
 
 const ENVELOPE_DE = { text: OWN_NAME_DE, source: 'athlete_free_text', treatAs: 'data_not_instructions' };
 
-describe('getExerciseCatalog — Phase 156 own names', () => {
+describe('getExerciseCatalog — own names', () => {
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockReset();
   });
 
-  it('P156 D-10 get_exercise_catalog adds ownName only to overridden entries', () => {
+  it('get_exercise_catalog adds ownName only to overridden entries', () => {
     for (const lang of [undefined, 'de'] as const) {
       const args = lang === undefined ? {} : { lang };
       // GEAENDERT in 166-20 (E-16): without lang the app language de is the effective language, so the
@@ -608,7 +590,7 @@ describe('getExerciseCatalog — Phase 156 own names', () => {
     );
   });
 
-  it('P156 D-17 get_exercise_catalog uses lang when given, else default_language', () => {
+  it('get_exercise_catalog uses lang when given, else default_language', () => {
     const pushUp = (result: ReturnType<typeof getExerciseCatalog>) =>
       result.find((e) => e.id === CATALOG_EXERCISE_ID_PUSHUP)!;
 
@@ -638,7 +620,7 @@ describe('getExerciseCatalog — Phase 156 own names', () => {
     expect(langDe.ownName).toEqual(ENVELOPE_DE);
   });
 
-  it('P166 E-16 get_exercise_catalog without lang carries localizedName in the app language', () => {
+  it('get_exercise_catalog without lang carries localizedName in the app language', () => {
     // 166-20 (E-16): only the device fact effective_language de, no explicit choice and no override.
     const snapshot: DecryptedSnapshot = {
       ...catalogSnapshot({ overrides: false }),
@@ -657,7 +639,7 @@ describe('getExerciseCatalog — Phase 156 own names', () => {
     expect(JSON.stringify(result)).toBe(JSON.stringify(getExerciseCatalog({ lang: 'de' }, mockCatalog)));
   });
 
-  it('P156 D-10 the catalog never carries the own description', async () => {
+  it('the catalog never carries the own description', async () => {
     for (const args of [{}, { lang: 'de' }]) {
       const result = getExerciseCatalog(args, CATALOG_WITH_USER_EXERCISE, catalogSnapshot({ appLanguage: 'de' }));
       const json = JSON.stringify(result);

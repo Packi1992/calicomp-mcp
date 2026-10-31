@@ -103,9 +103,4 @@ describe('encoding rules (protocol §4)', () => {
     const canonical = canonicalSeriesString([root]);
     expect(canonical).toContain('"deletedOccurrences":["2026-06-02","2026-06-09"]');
   });
-
-  it('computeSeriesHash returns 64 lowercase hex characters', () => {
-    const hash = computeSeriesHash([baseRoot]);
-    expect(hash).toMatch(/^[0-9a-f]{64}$/);
-  });
 });

@@ -92,7 +92,7 @@ describe('WRITE schemas — positive controls', () => {
 // ---------------------------------------------------------------------------
 
 describe('ProposePlanUpdateSchema — negative inputs', () => {
-  it('rejects a dangling tempId ref (source:"new" without a newExercises definition) — WR-01/refine', () => {
+  it('rejects a dangling tempId ref (source:"new" without a newExercises definition) — refine', () => {
     const bad = {
       ...validUpdate,
       ops: [{ ...validAddOp, exercise: { source: 'new', tempId: 'temp-undefined' } }],
@@ -101,7 +101,7 @@ describe('ProposePlanUpdateSchema — negative inputs', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects duplicate newExercises[].tempId values — WR-07', () => {
+  it('rejects duplicate newExercises[].tempId values', () => {
     const bad = {
       ...validUpdate,
       newExercises: [
@@ -112,13 +112,13 @@ describe('ProposePlanUpdateSchema — negative inputs', () => {
     expect(ProposePlanUpdateSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects an oversized ops array (> 50) — T-121-03', () => {
+  it('rejects an oversized ops array (> 50)', () => {
     const op = { op: 'removeExercise', workoutExerciseId: VALID_UUID };
     const bad = { ...validUpdate, newExercises: [], ops: Array.from({ length: 51 }, () => op) };
     expect(ProposePlanUpdateSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects an oversized reorder.order array (> 200) — WR-02', () => {
+  it('rejects an oversized reorder.order array (> 200)', () => {
     const bad = {
       ...validUpdate,
       newExercises: [],
@@ -127,12 +127,12 @@ describe('ProposePlanUpdateSchema — negative inputs', () => {
     expect(ProposePlanUpdateSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects negative targetReps — WR-02', () => {
+  it('rejects negative targetReps', () => {
     const bad = { ...validUpdate, ops: [{ ...validAddOp, targetReps: -1 }] };
     expect(ProposePlanUpdateSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects negative targetWeight inside roundTargets — WR-02', () => {
+  it('rejects negative targetWeight inside roundTargets', () => {
     const bad = {
       ...validUpdate,
       ops: [{ ...validAddOp, roundTargets: [{ round: 1, targetWeight: -5 }] }],
@@ -140,7 +140,7 @@ describe('ProposePlanUpdateSchema — negative inputs', () => {
     expect(ProposePlanUpdateSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects an unknown op discriminant — T-121-06', () => {
+  it('rejects an unknown op discriminant', () => {
     const bad = {
       ...validUpdate,
       newExercises: [],
@@ -159,7 +159,7 @@ describe('ProposePlanUpdateSchema — negative inputs', () => {
 // ---------------------------------------------------------------------------
 
 describe('ProposeNewPlanSchema — negative inputs', () => {
-  it('rejects a dangling tempId ref in blocks[].exercises — WR-01', () => {
+  it('rejects a dangling tempId ref in blocks[].exercises', () => {
     const bad = {
       ...validNewPlan,
       blocks: [
@@ -177,7 +177,7 @@ describe('ProposeNewPlanSchema — negative inputs', () => {
     expect(ProposeNewPlanSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects duplicate newExercises[].tempId values — WR-07', () => {
+  it('rejects duplicate newExercises[].tempId values', () => {
     const bad = {
       ...validNewPlan,
       newExercises: [
@@ -188,7 +188,7 @@ describe('ProposeNewPlanSchema — negative inputs', () => {
     expect(ProposeNewPlanSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects duplicate blocks[].tempBlockId values — WR-07', () => {
+  it('rejects duplicate blocks[].tempBlockId values', () => {
     const bad = {
       ...validNewPlan,
       blocks: [validNewPlan.blocks[0], { ...validNewPlan.blocks[0], orderIndex: 1 }],
@@ -196,7 +196,7 @@ describe('ProposeNewPlanSchema — negative inputs', () => {
     expect(ProposeNewPlanSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects an oversized exercises-per-block array (> 50) — WR-02', () => {
+  it('rejects an oversized exercises-per-block array (> 50)', () => {
     const catalogExercise = {
       exercise: { source: 'catalog', exerciseId: VALID_UUID },
       mode: 'REPS',
@@ -217,12 +217,12 @@ describe('ProposeNewPlanSchema — negative inputs', () => {
     expect(ProposeNewPlanSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects an empty exercises array in a block — WR-02', () => {
+  it('rejects an empty exercises array in a block', () => {
     const bad = { ...validNewPlan, newExercises: [], blocks: [{ ...validNewPlan.blocks[0], exercises: [] }] };
     expect(ProposeNewPlanSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects negative targetReps in a block exercise — WR-02', () => {
+  it('rejects negative targetReps in a block exercise', () => {
     const bad = {
       ...validNewPlan,
       blocks: [
@@ -235,7 +235,7 @@ describe('ProposeNewPlanSchema — negative inputs', () => {
     expect(ProposeNewPlanSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects an unknown exercise-ref source discriminant — T-121-06', () => {
+  it('rejects an unknown exercise-ref source discriminant', () => {
     const bad = {
       ...validNewPlan,
       blocks: [
@@ -263,7 +263,7 @@ describe('ProposeNewExerciseSchema — negative inputs', () => {
     expect(ProposeNewExerciseSchema.safeParse({ ...validNewExercise, name: '' }).success).toBe(false);
   });
 
-  it('rejects an unknown mode discriminant — T-121-06', () => {
+  it('rejects an unknown mode discriminant', () => {
     expect(ProposeNewExerciseSchema.safeParse({ ...validNewExercise, mode: 'HOLD' }).success).toBe(false);
   });
 
@@ -745,7 +745,7 @@ describe('ProposePlanUpdateSchema — formatParams New-ref tempId declaration (T
 // exactly like an addExercise ref (Pitfall 11, T-166-24).
 // ---------------------------------------------------------------------------
 
-describe('ProposePlanUpdateSchema — block ops (166-08, D-12)', () => {
+describe('ProposePlanUpdateSchema — block ops', () => {
   const BLOCK_ID = '22222222-2222-4222-8222-222222222222';
 
   const blockEntry = (exercise: Record<string, unknown>, orderIndex: number) => ({
@@ -764,7 +764,7 @@ describe('ProposePlanUpdateSchema — block ops (166-08, D-12)', () => {
     ops,
   });
 
-  it('P166 addBlock exercises with an undeclared tempId are rejected', () => {
+  it('addBlock exercises with an undeclared tempId are rejected', () => {
     const declared = withOps(
       [{ op: 'addBlock', rounds: 3, orderIndex: 0, exercises: [blockEntry({ source: 'new', tempId: 't1' }, 0)] }],
       [{ tempId: 't1', name: 'Dragon Flag', mode: 'REPS', usesWeight: false }],
@@ -789,7 +789,7 @@ describe('ProposePlanUpdateSchema — block ops (166-08, D-12)', () => {
     }
   });
 
-  it('P166 updateBlock rounds outside 1 to 100 are rejected', () => {
+  it('updateBlock rounds outside 1 to 100 are rejected', () => {
     for (const rounds of [1, 100]) {
       expect(ProposePlanUpdateSchema.safeParse(withOps([{ op: 'updateBlock', blockId: BLOCK_ID, rounds }])).success, `rounds ${rounds}`).toBe(true);
     }
@@ -804,7 +804,7 @@ describe('ProposePlanUpdateSchema — block ops (166-08, D-12)', () => {
     expect(ProposePlanUpdateSchema.safeParse(addBlock(0)).success).toBe(false);
   });
 
-  it('P166 updateBlock needs a UUID blockId and addBlock between 1 and 50 exercises', () => {
+  it('updateBlock needs a UUID blockId and addBlock between 1 and 50 exercises', () => {
     expect(ProposePlanUpdateSchema.safeParse(withOps([{ op: 'updateBlock', blockId: 'not-a-uuid', rounds: 3 }])).success).toBe(false);
     expect(ProposePlanUpdateSchema.safeParse(withOps([{ op: 'addBlock', rounds: 3, orderIndex: 0, exercises: [] }])).success).toBe(false);
     const fiftyOne = Array.from({ length: 51 }, (_, i) => blockEntry({ source: 'catalog', exerciseId: VALID_UUID }, i));
@@ -827,7 +827,7 @@ const updateWith = (translations: unknown[]) => ({
   translations,
 });
 
-describe('translations languageCode — normalised to lower case (166-REVIEW WR-03)', () => {
+describe('translations languageCode — normalised to lower case', () => {
   it('lowers DE in propose_new_exercise, newExercises[] and propose_exercise_update', () => {
     const asTool = ProposeNewExerciseSchema.safeParse({ ...validNewExercise, translations: [tr('DE')] });
     expect(asTool.success).toBe(true);
@@ -854,7 +854,7 @@ describe('translations languageCode — normalised to lower case (166-REVIEW WR-
   });
 });
 
-describe('base description — at most 1000 (166-REVIEW WR-04)', () => {
+describe('base description — at most 1000', () => {
   it('accepts 1000 and refuses 1001 in propose_new_exercise and newExercises[]', () => {
     expect(ProposeNewExerciseSchema.safeParse({ ...validNewExercise, description: 'a'.repeat(1000) }).success).toBe(true);
     expect(ProposeNewExerciseSchema.safeParse({ ...validNewExercise, description: 'a'.repeat(1001) }).success).toBe(false);

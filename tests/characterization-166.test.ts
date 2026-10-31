@@ -47,11 +47,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PIN_166: PinFile = 'characterization-166.json';
 
 if (!process.env.CHAR_166_PIN_GENERATE) {
-  describe('P166 characterization — pins of the state before 166 with declared deltas', () => {
+  describe('characterization — pins of the state before 166 with declared deltas', () => {
     const pins = loadPinFile(PIN_166);
     const actual = collectPinnedOutputs166();
 
-    it('P166 the fixture carries every rule case of the phase', () => {
+    it('the fixture carries every rule case of the phase', () => {
       const stretch = CHAR166_CATALOG.find((e) => e.id === CHAR166_EX_STRETCH);
       const mixed = CHAR166_CATALOG.find((e) => e.id === CHAR166_EX_MIXED);
       expect(stretch?.capabilities.map((c) => c.key).sort()).toEqual(['flexibility', 'mobility']);
@@ -68,31 +68,31 @@ if (!process.env.CHAR_166_PIN_GENERATE) {
       expect(Object.keys(pins)).toEqual([...CHAR166_PIN_KEYS]);
     });
 
-    it('P166 getTrainingState keeps its pins except declared deltas', () => {
+    it('getTrainingState keeps its pins except declared deltas', () => {
       expectPinsWithDeltas(actual.getTrainingState, PIN_166, 'getTrainingState', pins.getTrainingState);
     });
 
-    it('P166 getStats exercise keeps its pins except declared deltas', () => {
+    it('getStats exercise keeps its pins except declared deltas', () => {
       expectPinsWithDeltas(actual.getStatsExercise, PIN_166, 'getStatsExercise', pins.getStatsExercise);
     });
 
-    it('P166 getStats muscle keeps its pins except declared deltas', () => {
+    it('getStats muscle keeps its pins except declared deltas', () => {
       expectPinsWithDeltas(actual.getStatsMuscle, PIN_166, 'getStatsMuscle', pins.getStatsMuscle);
     });
 
-    it('P166 getStats capabilities keeps its pins except declared deltas', () => {
+    it('getStats capabilities keeps its pins except declared deltas', () => {
       expectPinsWithDeltas(actual.getStatsCapabilities, PIN_166, 'getStatsCapabilities', pins.getStatsCapabilities);
     });
 
-    it('P166 getHistory keeps its pins except declared deltas', () => {
+    it('getHistory keeps its pins except declared deltas', () => {
       expectPinsWithDeltas(actual.getHistory, PIN_166, 'getHistory', pins.getHistory);
     });
 
-    it('P166 getAdherence keeps its pins except declared deltas', () => {
+    it('getAdherence keeps its pins except declared deltas', () => {
       expectPinsWithDeltas(actual.getAdherence, PIN_166, 'getAdherence', pins.getAdherence);
     });
 
-    it('P166 every declared delta matches its pin and names its rule', () => {
+    it('every declared delta matches its pin and names its rule', () => {
       const file = loadDeltaFile();
       expect(Array.isArray(file.deltas)).toBe(true);
       expect(Array.isArray(file.additions)).toBe(true);
@@ -126,7 +126,7 @@ if (!process.env.CHAR_166_PIN_GENERATE) {
       expect(problems.some((p) => p.includes('additions[1]') && p.includes('parallel field'))).toBe(true);
     });
 
-    it('P166 E-17 a chained delta continues exactly where the earlier delta of its path ends', () => {
+    it('a chained delta continues exactly where the earlier delta of its path ends', () => {
       // Gap plan 166-22 (protocol 1.52): station sets leave maxHoldSeconds. The delta of rule M (166-04) at that
       // path keeps its origin; the E-17 delta continues it, its before being exactly the earlier after.
       const allPins: Partial<Record<PinFile, Record<string, unknown>>> = {};
@@ -174,7 +174,7 @@ if (!process.env.CHAR_166_PIN_GENERATE) {
       expect(checkDeltaFile(outside, allPins).some((p) => p.includes('E-17 acts only'))).toBe(true);
     });
 
-    it('P166 an undeclared change or addition fails the pin check', () => {
+    it('an undeclared change or addition fails the pin check', () => {
       // Self-contained: the base is the pin with its declared deltas applied, so this control
       // measures the check, not the code under test.
       // The base carries the declared deltas but no declared addition (166-06: the declared

@@ -101,7 +101,7 @@ function available(result: ReturnType<typeof computeForeignAdherence>): ForeignA
 }
 
 describe('computeForeignAdherence', () => {
-  it('P155 FA-06 computeForeignAdherence expands a series, skips and counts a cancelled date, and treats an activity on it as unplanned', () => {
+  it('computeForeignAdherence expands a series, skips and counts a cancelled date, and treats an activity on it as unplanned', () => {
     // Weekly on Tuesdays from 2026-06-02; 2026-06-09 cancelled by the athlete.
     const snapshot = snapshotWith({
       roots: [
@@ -134,7 +134,7 @@ describe('computeForeignAdherence', () => {
     expect(result.plannedCount).toBe(result.fulfilledCount + result.missedCount + result.upcomingCount);
   });
 
-  it('P155 D-11 an appointment today without an activity is upcoming and one yesterday is missed', () => {
+  it('an appointment today without an activity is upcoming and one yesterday is missed', () => {
     // 2026-06-03 22:30 UTC is already 2026-06-04 00:30 in Europe/Berlin: the athlete's
     // today is 2026-06-04, not the UTC date.
     const nowMs = epochMs(2026, 6, 3, 22, 30);
@@ -156,7 +156,7 @@ describe('computeForeignAdherence', () => {
     expect(foreign.fulfilmentRatio).toBe(0); // 0 fulfilled / (0 + 1 missed); upcoming not in the denominator
   });
 
-  it('P155 FA-06 byType carries the resolved type fields', () => {
+  it('byType carries the resolved type fields', () => {
     const snapshot = snapshotWith({
       types: [
         customType({ id: FT_CUSTOM, name: 'Wandern' }),
@@ -228,7 +228,7 @@ describe('computeForeignAdherence', () => {
     ]);
   });
 
-  it('P155 FA-06 activities outside the window are ignored', () => {
+  it('activities outside the window are ignored', () => {
     const snapshot = snapshotWith({
       roots: [foreignRoot({ id: 'fr-1', scheduledDate: epochMs(2026, 6, 3) })],
       activities: [
@@ -248,7 +248,7 @@ describe('computeForeignAdherence', () => {
     expect(result.window).toEqual({ from: '2026-06-01', to: '2026-06-07' });
   });
 
-  it('P155 E-8 an unavailable foreign block carries only available, reason and explanation', () => {
+  it('an unavailable foreign block carries only available, reason and explanation', () => {
     const result = computeForeignAdherence(
       { from: '2026-06-01', to: '2026-06-07', asOfDate: '2026-06-05' },
       { snapshot: snapshotWith({}), availability: { available: false, reason: 'foreign_rows_unreadable' } },
@@ -260,7 +260,7 @@ describe('computeForeignAdherence', () => {
     });
   });
 
-  it('P155 E-8 a foreign root whose rule the expander refuses degrades only the foreign block', () => {
+  it('a foreign root whose rule the expander refuses degrades only the foreign block', () => {
     const snapshot = snapshotWith({
       roots: [foreignRoot({ id: 'fr-bad', recurrenceRule: 'FREQ=WEEKLY;INTERVAL=0;BYDAY=TU' })],
     });
@@ -277,7 +277,7 @@ describe('computeForeignAdherence', () => {
 // ---------------------------------------------------------------------------
 
 describe('foreign adherence explanation', () => {
-  it('P155 D-16 the foreign adherence explanation is verbatim in the protocol', () => {
+  it('the foreign adherence explanation is verbatim in the protocol', () => {
     expect(FOREIGN_ADHERENCE_EXPLANATION).toBe(protocolExplanation('FOREIGN_ADHERENCE_EXPLANATION'));
   });
 });

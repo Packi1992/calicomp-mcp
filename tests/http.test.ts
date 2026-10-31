@@ -347,7 +347,7 @@ describe('putCoachParameters', () => {
 // Phase 164 (CRYPT-01, protocol 1.45 §1.3/§1.9, Recherche Pitfall 6): the data pull asks for the
 // ciphertext rows of own exercises. Without the parameter the server leaves every row with
 // ciphertext out (an older MCP never sees placeholder names); with it the MCP decrypts them.
-describe('fetchSnapshot (Phase 164)', () => {
+describe('fetchSnapshot', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -359,7 +359,7 @@ describe('fetchSnapshot (Phase 164)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('P164 the data pull asks for exerciseCipher=1', async () => {
+  it('the data pull asks for exerciseCipher=1', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { syncedAt: 1 }));
     await fetchSnapshot(CFG.pat, CFG.serverUrl);
     expect(fetchMock).toHaveBeenCalledTimes(1);

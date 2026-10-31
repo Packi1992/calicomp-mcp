@@ -228,7 +228,7 @@ describe('propose_plan_update — registered MCP handler', () => {
     vi.mocked(httpModule.postSuggest).mockReset();
   });
 
-  it('unknown-templateId: isError, no network call (A4/SC5 fast-fail)', async () => {
+  it('unknown-templateId: isError, no network call (fast-fail)', async () => {
     const server = new McpServer({ name: 'test', version: '0.1.0' });
     registerToolProposePlanUpdate(server, DUMMY_CFG);
     const handler = getHandler(server);
@@ -240,7 +240,7 @@ describe('propose_plan_update — registered MCP handler', () => {
     expect(httpModule.postSuggest).not.toHaveBeenCalled();
   });
 
-  it('soft-deleted templateId: isError, no network call (WR-03 — deleted plans reject proposals)', async () => {
+  it('soft-deleted templateId: isError, no network call (deleted plans reject proposals)', async () => {
     const snapshotWithDeletedPush = {
       ...mockSnapshot,
       templates: mockSnapshot.templates.map((t) =>
@@ -365,7 +365,7 @@ describe('propose_plan_update — registered MCP handler', () => {
 // FormatProposalApplier.validate (Kotlin, enforcement point #2, the app).
 // ---------------------------------------------------------------------------
 
-describe('propose_plan_update — format-template plan_update (G-134-12)', () => {
+describe('propose_plan_update — format-template plan_update', () => {
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
       ...MOCK_CACHE,
@@ -524,7 +524,7 @@ describe('propose_plan_update — format-template plan_update (G-134-12)', () =>
 // in the describe block above.
 // ---------------------------------------------------------------------------
 
-describe('propose_plan_update — G-136-R2-7a: formatParams against an untyped template', () => {
+describe('propose_plan_update — formatParams against an untyped template', () => {
   beforeEach(() => {
     vi.mocked(httpModule.postSuggest).mockReset();
   });
@@ -585,7 +585,7 @@ describe('propose_plan_update — G-136-R2-7a: formatParams against an untyped t
 // the seam that keeps this guard from rotting into dead code.
 // ---------------------------------------------------------------------------
 
-describe('propose_plan_update — G-136-R2-7a Task 2: fail-closed invariant guard', () => {
+describe('propose_plan_update — fail-closed invariant guard', () => {
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue(MOCK_CACHE);
     vi.mocked(httpModule.postSuggest).mockReset();
@@ -631,7 +631,7 @@ const remap = (value: unknown): unknown => {
 };
 const pushSnapshot = remap(mockSnapshot) as DecryptedSnapshot;
 
-describe('propose_plan_update — block ops (166-08, D-12)', () => {
+describe('propose_plan_update — block ops', () => {
   beforeEach(() => {
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, snapshot: pushSnapshot });
     vi.mocked(httpModule.postSuggest).mockReset();
@@ -664,7 +664,7 @@ describe('propose_plan_update — block ops (166-08, D-12)', () => {
     },
   ];
 
-  it('P166 propose_plan_update sends updateBlock and addBlock unchanged to the server', async () => {
+  it('propose_plan_update sends updateBlock and addBlock unchanged to the server', async () => {
     vi.mocked(httpModule.postSuggest).mockResolvedValue(MOCK_SUGGESTION);
     const server = new McpServer({ name: 'test', version: '0.1.0' });
     registerToolProposePlanUpdate(server, DUMMY_CFG);
@@ -689,7 +689,7 @@ describe('propose_plan_update — block ops (166-08, D-12)', () => {
     expect(payload.newExercises.map((e) => e.tempId)).toStrictEqual(['t-hollow']);
   });
 
-  it('P166 a deduped tempId inside addBlock is rewritten to the catalog exercise', () => {
+  it('a deduped tempId inside addBlock is rewritten to the catalog exercise', () => {
     const args = ProposePlanUpdateSchema.parse({
       templateId: PUSH_TEMPLATE_ID,
       rationale: 'dedupe inside a new block',
@@ -717,7 +717,7 @@ describe('propose_plan_update — block ops (166-08, D-12)', () => {
 // same optional fields as new_exercise (protocol §2.7), with the same key check.
 // ---------------------------------------------------------------------------
 
-describe('plan proposals — newExercises[] links (166-08, D-11)', () => {
+describe('plan proposals — newExercises[] links', () => {
   const LINK_CATALOG = mockCatalog.map((ex, i) =>
     i === 0
       ? {
@@ -759,7 +759,7 @@ describe('plan proposals — newExercises[] links (166-08, D-11)', () => {
     standalone: [ref],
   });
 
-  it('P166 newExercises entries of a plan proposal accept the same fields', async () => {
+  it('newExercises entries of a plan proposal accept the same fields', async () => {
     // Both schemas keep the four fields.
     const update = ProposePlanUpdateSchema.parse(updateArgs(linkedEntry));
     const plan = ProposeNewPlanSchema.parse(newPlanArgs(linkedEntry));

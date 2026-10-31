@@ -190,7 +190,7 @@ describe('decrypt-merge: session', () => {
 // ── Decrypt-merge: session fault tolerance (Phase 150, D-08/D-12/D-13) ──────────
 
 describe('decrypt-merge: session fault tolerance', () => {
-  it('P150 D-13 SC4 one corrupt session of three is reported, the other two are read', async () => {
+  it('one corrupt session of three is reported, the other two are read', async () => {
     const PAYLOAD = '{"iv":"i","ct":"c"}';
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
@@ -240,7 +240,7 @@ describe('decrypt-merge: session fault tolerance', () => {
     expect(decodeReport.failedCount.session).toBe(1);
   });
 
-  it('P150 D-12 a session payload without numeric st is malformed_payload', async () => {
+  it('a session payload without numeric st is malformed_payload', async () => {
     const PAYLOAD = '{"iv":"i","ct":"c"}';
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
@@ -340,7 +340,7 @@ describe('decrypt-merge: set-log', () => {
 // ── Decrypt-merge: set-log and hr-sample fault tolerance (Phase 150, D-10/D-12) ──
 
 describe('decrypt-merge: set-log and hr-sample fault tolerance', () => {
-  it('P150 D-10 a corrupt set-log inside a readable session is reported with its sessionId', async () => {
+  it('a corrupt set-log inside a readable session is reported with its sessionId', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         sessions: [
@@ -376,7 +376,7 @@ describe('decrypt-merge: set-log and hr-sample fault tolerance', () => {
     });
   });
 
-  it('P150 D-10 set-logs of an unreadable session are removed and counted on the session row', async () => {
+  it('set-logs of an unreadable session are removed and counted on the session row', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         sessions: [
@@ -407,7 +407,7 @@ describe('decrypt-merge: set-log and hr-sample fault tolerance', () => {
     expect(sessionRow?.affectedHrSampleCount).toBeUndefined();
   });
 
-  it('P150 D-12 a corrupt hr sample is reported as malformed_payload', async () => {
+  it('a corrupt hr sample is reported as malformed_payload', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         hrSamples: [
@@ -515,7 +515,7 @@ describe('decrypt-merge: planned workouts', () => {
     expect(mockDecrypt).toHaveBeenCalledWith(ENCRYPTED_PW_PAYLOAD, KEY_B64);
   });
 
-  it('P150 D-37 planned v=2 is reported as unknown_version instead of failing getSnapshot', async () => {
+  it('planned v=2 is reported as unknown_version instead of failing getSnapshot', async () => {
     const ENCRYPTED_PW_PAYLOAD = '{"iv":"pwIv","ct":"pwCt"}';
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
@@ -546,7 +546,7 @@ describe('decrypt-merge: planned workouts', () => {
     expect(JSON.stringify(decodeReport)).not.toContain(KEY_B64);
   });
 
-  it('P150 D-37 an empty planned payload is reported as malformed_payload', async () => {
+  it('an empty planned payload is reported as malformed_payload', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         plannedWorkouts: [
@@ -576,7 +576,7 @@ describe('decrypt-merge: planned workouts', () => {
     expect(JSON.stringify(decodeReport)).not.toContain(KEY_B64);
   });
 
-  it('P150 D-37 a planned decrypt failure is reported as decrypt_failed and the row is left out', async () => {
+  it('a planned decrypt failure is reported as decrypt_failed and the row is left out', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         plannedWorkouts: [
@@ -638,7 +638,7 @@ describe('decrypt-merge: settings', () => {
     expect(mockDecrypt).toHaveBeenCalledWith(ENCRYPTED_SETTING_PAYLOAD, KEY_B64);
   });
 
-  it('P150 D-37 an empty settings payload is reported as malformed_payload with its key', async () => {
+  it('an empty settings payload is reported as malformed_payload with its key', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         settings: [
@@ -672,7 +672,7 @@ describe('decrypt-merge: settings', () => {
   // Phase 150 review WR-01 — the D-11 guard run over the REAL decode counters, not a
   // hand-built report: proves `decodeSettings` and `assertEntitiesReadable` agree on
   // which rows form the denominator.
-  it('P150 WR-01 a readable tz setting plus an empty-payload setting does not trip the key guard', async () => {
+  it('a readable tz setting plus an empty-payload setting does not trip the key guard', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         settings: [
@@ -698,7 +698,7 @@ describe('decrypt-merge: settings', () => {
     expect(() => assertEntitiesReadable(decodeReport, ['session', 'setLog', 'setting'], 'Training state error')).not.toThrow();
   });
 
-  it('P150 WR-01 a wrong key is detected even when an empty-payload setting is present', async () => {
+  it('a wrong key is detected even when an empty-payload setting is present', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         settings: [
@@ -727,7 +727,7 @@ describe('decrypt-merge: settings', () => {
     );
   });
 
-  it('a wire response whose settings key is entirely absent yields an empty array (server predates Plan 137-03)', async () => {
+  it('a wire response whose settings key is entirely absent yields an empty array (older server)', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(makePull({}));
 
     const { snapshot } = await getSnapshot(PAT, KEY_B64, URL);
@@ -781,7 +781,7 @@ describe('TTL re-fetch', () => {
 // `isSkill` is `undefined` instead of `false` — that is the exact TypeError the phase
 // verifier reproduced against the live catalog (`get_stats.ts`'s `ex.capabilities.length`).
 
-describe('catalog normalization (CAP-05 gap-closure)', () => {
+describe('catalog normalization of omitted fields', () => {
   it('a wire catalog entry that OMITS capabilities/equipment/isSkill entirely normalizes to [] / [] / false on snapshot.catalog, not undefined', async () => {
     const wireCatalogEntry: CatalogExerciseWire = {
       id: 'ex-omitted-fields',
@@ -971,7 +971,7 @@ describe('user-exercise merge into catalog (G-141-2-SCOPE)', () => {
 // of undefined (reading 'filter')` — taking down three of four read tools and all ten
 // `propose_new_plan` calls of Plan 146-07, while `plannedWorkouts`, absent in the SAME
 // response, passed through silently because its `?? []` was already there.
-describe('decrypt-merge: every optional list key may be absent from the wire (Phase 146)', () => {
+describe('decrypt-merge: every optional list key may be absent from the wire', () => {
   const LIST_KEYS = [
     'exercises',
     'exerciseTranslations',
@@ -1049,7 +1049,7 @@ describe('decryptSession: session-feedback decode tolerance', () => {
     };
   }
 
-  it('P151 FB-03 a legacy payload yields never_asked on both scales', () => {
+  it('a legacy payload yields never_asked on both scales', () => {
     const row = makeEncryptedSessionRow({ st: 1_709_000_000_000, et: 1_709_003_600_000 });
     const decoded = decryptSession(row, FEEDBACK_TEST_KEY_B64);
     expect(decoded.feedback).toEqual({
@@ -1060,7 +1060,7 @@ describe('decryptSession: session-feedback decode tolerance', () => {
     expect(decoded.goalSnapshot).toBeNull();
   });
 
-  it('P151 FB-03 an unrecognized state is treated as absent', () => {
+  it('an unrecognized state is treated as absent', () => {
     const row = makeEncryptedSessionRow({
       st: 1_709_000_000_000, et: 1_709_003_600_000,
       fe: 5, fes: 'bogus_eighth_state', fel: 1_709_100_000_000,
@@ -1069,7 +1069,7 @@ describe('decryptSession: session-feedback decode tolerance', () => {
     expect(decoded.feedback?.execution).toEqual({ value: null, state: 'never_asked', setLaterAt: null });
   });
 
-  it('P151 FB-03 a value outside one to five is dropped', () => {
+  it('a value outside one to five is dropped', () => {
     const row = makeEncryptedSessionRow({
       st: 1_709_000_000_000, et: 1_709_003_600_000,
       fe: 9, fes: 'confirmed',
@@ -1078,7 +1078,7 @@ describe('decryptSession: session-feedback decode tolerance', () => {
     expect(decoded.feedback?.execution).toEqual({ value: null, state: 'confirmed', setLaterAt: null });
   });
 
-  it('P151 FB-03 a value with a non-answer state is dropped', () => {
+  it('a value with a non-answer state is dropped', () => {
     const row = makeEncryptedSessionRow({
       st: 1_709_000_000_000, et: 1_709_003_600_000,
       fe: 3, fes: 'skipped',
@@ -1087,7 +1087,7 @@ describe('decryptSession: session-feedback decode tolerance', () => {
     expect(decoded.feedback?.execution).toEqual({ value: null, state: 'skipped', setLaterAt: null });
   });
 
-  it('P151 FB-03 a malformed feedback field never makes the row unreadable', () => {
+  it('a malformed feedback field never makes the row unreadable', () => {
     const row = makeEncryptedSessionRow({
       st: 1_709_000_000_000, et: 1_709_003_600_000,
       fes: 12345,               // wrong type — should read as absent, never throw
@@ -1107,7 +1107,7 @@ describe('decryptSession: session-feedback decode tolerance', () => {
     expect(decoded.goalSnapshot).toBeNull();
   });
 
-  it('P151 FB-03 a plaintext pre-encryption row yields never_asked', () => {
+  it('a plaintext pre-encryption row yields never_asked', () => {
     const row: SyncSessionDto = {
       id: 'sess-plaintext',
       startTime: 1_709_000_000_000,
@@ -1128,7 +1128,7 @@ describe('decryptSession: session-feedback decode tolerance', () => {
     expect(decoded.goalSnapshot).toBeNull();
   });
 
-  it('P151 D-28 a malformed goal entry is dropped and valid entries are kept', () => {
+  it('a malformed goal entry is dropped and valid entries are kept', () => {
     const row = makeEncryptedSessionRow({
       st: 1_709_000_000_000, et: 1_709_003_600_000,
       tg: [
@@ -1152,7 +1152,7 @@ describe('decryptSession: session-feedback decode tolerance', () => {
 // `decrypt` defaults to the real implementation in this file (see the `vi.mock` above).
 // ---------------------------------------------------------------------------
 
-describe('decrypt-merge: foreign sport (Phase 155)', () => {
+describe('decrypt-merge: foreign sport', () => {
   const FOREIGN_KEY_B64 = Buffer.from(Array.from({ length: 32 }, (_, i) => i)).toString('base64');
   let ivCounter = 0;
 
@@ -1209,7 +1209,7 @@ describe('decrypt-merge: foreign sport (Phase 155)', () => {
     isFavoriteForWatch: false,
   };
 
-  it('P155 E-9 decryptMerge leaves foreign fields absent when the server sends none', async () => {
+  it('decryptMerge leaves foreign fields absent when the server sends none', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(makePull({ sessions: [PLAINTEXT_SESSION], templates: [TEMPLATE] }));
 
     const cache = await getSnapshot(PAT, FOREIGN_KEY_B64, URL);
@@ -1228,7 +1228,7 @@ describe('decrypt-merge: foreign sport (Phase 155)', () => {
     expect(cache.decodeReport!.unreadable).toEqual([]);
   });
 
-  it('P155 E-8 one unreadable foreign activity makes foreign sport unavailable but leaves sessions readable', async () => {
+  it('one unreadable foreign activity makes foreign sport unavailable but leaves sessions readable', async () => {
     const readable = encryptForeign(activityPayload());
     // A real envelope with one flipped ciphertext byte: GCM authentication fails.
     const broken = JSON.parse(encryptForeign(activityPayload({ id: 'fa-2' }))) as { iv: string; ct: string };
@@ -1280,7 +1280,7 @@ describe('decrypt-merge: foreign sport (Phase 155)', () => {
     expect(reportJson).not.toContain(PAT);
   });
 
-  it('P155 D-16 an activity with an unreadable intensity decodes with intensity null', async () => {
+  it('an activity with an unreadable intensity decodes with intensity null', async () => {
     const odd: Array<[string, Record<string, unknown>]> = [
       ['fa-i0', { intensity: 0 }],
       ['fa-i6', { intensity: 6 }],
@@ -1317,7 +1317,7 @@ describe('decrypt-merge: foreign sport (Phase 155)', () => {
     expect(foreignSportAvailability(cache.snapshot, cache.decodeReport!)).toEqual({ available: true });
   });
 
-  it('P155 E-8 a foreign activity without a readable required field is unreadable', async () => {
+  it('a foreign activity without a readable required field is unreadable', async () => {
     const bad: Array<[string, Record<string, unknown>]> = [
       ['fa-v2', { v: 2 }],
       ['fa-nodate', { performedOn: '7.10.2026' }],
@@ -1353,7 +1353,7 @@ describe('decrypt-merge: foreign sport (Phase 155)', () => {
     expect(JSON.stringify(report)).not.toContain(SECRET_NOTE);
   });
 
-  it('P155 E-8 an unreadable foreign type or planned row makes foreign sport unavailable', async () => {
+  it('an unreadable foreign type or planned row makes foreign sport unavailable', async () => {
     const goodType = encryptForeign({
       v: 1, id: 'ft-1', name: 'Klettersteig', createdAt: 1, updatedAt: 2, deletedAt: null,
     });
@@ -1422,7 +1422,7 @@ describe('decrypt-merge: foreign sport (Phase 155)', () => {
     expect(JSON.stringify(typeCache.decodeReport)).not.toContain(SECRET_NOTE);
   });
 
-  it('P155 E-9 a server that sends only some foreign fields counts as a server without foreign sport', async () => {
+  it('a server that sends only some foreign fields counts as a server without foreign sport', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(makePull({ foreignActivities: [], plannedForeignActivities: [] }));
     const cache = await getSnapshot(PAT, FOREIGN_KEY_B64, URL);
     expect(cache.snapshot).not.toHaveProperty('foreignActivityTypes');
@@ -1433,7 +1433,7 @@ describe('decrypt-merge: foreign sport (Phase 155)', () => {
     });
   });
 
-  it('P155 E-9 an empty but present foreign block is available', async () => {
+  it('an empty but present foreign block is available', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({ foreignActivityTypes: [], foreignActivities: [], plannedForeignActivities: [] }),
     );
@@ -1447,7 +1447,7 @@ describe('decrypt-merge: foreign sport (Phase 155)', () => {
 
 // ── Decrypt-merge: own names of catalog exercises (Phase 156) ───────────────
 
-describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
+describe('decrypt-merge: exercise name overrides', () => {
   const OVERRIDE_KEY_B64 = Buffer.from(Array.from({ length: 32 }, (_, i) => i)).toString('base64');
   let ivCounter = 0;
 
@@ -1507,7 +1507,7 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
     isFavoriteForWatch: false,
   };
 
-  it('P156 D-11 decryptMerge leaves exerciseNameOverrides absent when the server sends none', async () => {
+  it('decryptMerge leaves exerciseNameOverrides absent when the server sends none', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(makePull({ sessions: [PLAINTEXT_SESSION], templates: [TEMPLATE] }));
 
     const cache = await getSnapshot(PAT, OVERRIDE_KEY_B64, URL);
@@ -1527,7 +1527,7 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
     expect(fresh.snapshot.exerciseNameOverrides).toEqual([]);
   });
 
-  it('P156 D-10 one unreadable override row lands in the decode report and leaves sessions, templates and other overrides readable', async () => {
+  it('one unreadable override row lands in the decode report and leaves sessions, templates and other overrides readable', async () => {
     const consoleSpies = (['log', 'warn', 'error', 'info', 'debug'] as const).map((m) =>
       vi.spyOn(console, m).mockImplementation(() => undefined),
     );
@@ -1612,7 +1612,7 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
     }
   });
 
-  it('P156 D-01 an empty description decodes as null', async () => {
+  it('an empty description decodes as null', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         exerciseNameOverrides: [
@@ -1675,7 +1675,7 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
     return { ...overrideRow(id, clientLocalId, encryptedPayload), updatedAt: rowUpdatedAt };
   }
 
-  it('P156 WR-MCP-03 two rows on the same key keep the one with the newer payload updatedAt', async () => {
+  it('two rows on the same key keep the one with the newer payload updatedAt', async () => {
     const payloadA = (name: string, updatedAt: number) =>
       encryptOverride(overridePayload({ exerciseId: ID_A, name, updatedAt }));
     const other = encryptOverride(overridePayload({ exerciseId: ID_B, name: 'P156 B bleibt', updatedAt: 5 }));
@@ -1734,7 +1734,7 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
     }
   });
 
-  it('P156 WR-MCP-03 a row whose payload names another exercise than its key is unreadable and gives no own name', async () => {
+  it('a row whose payload names another exercise than its key is unreadable and gives no own name', async () => {
     const consoleSpies = (['log', 'warn', 'error', 'info', 'debug'] as const).map((m) =>
       vi.spyOn(console, m).mockImplementation(() => undefined),
     );
@@ -1771,7 +1771,7 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
     }
   });
 
-  it('P156 D-04 a pulled override with a blank name is unreadable and leaves no own name', async () => {
+  it('a pulled override with a blank name is unreadable and leaves no own name', async () => {
     const zeroWidth = encryptOverride(overridePayload({ exerciseId: ID_C, name: '\u200B\uFEFF' }));
     const spaces = encryptOverride(overridePayload({ exerciseId: ID_D, name: '   ' }));
     // A visible name with code units from W at its edges stays byte for byte as it is.
@@ -1806,7 +1806,7 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
     expect(resolver.forExerciseId(ID_E).exerciseOwnName?.text).toBe('\uFEFFDips ');
   });
 
-  it('P156 D-04 isBlankOverrideText tests exactly the set W of §1.7, never trim()', () => {
+  it('isBlankOverrideText tests exactly the set W of §1.7, never trim()', () => {
     // The set W of protocol §1.7 "Blank text", written out as code unit ranges.
     const W: Array<[number, number]> = [
       [0x0009, 0x000d], [0x001c, 0x0020], [0x00a0, 0x00a0], [0x1680, 0x1680], [0x2000, 0x200d],
@@ -1839,8 +1839,8 @@ describe('decrypt-merge: exercise name overrides (Phase 156)', () => {
 // The template and catalog tools name an own exercise the server holds only as ciphertext
 // byte for byte as they named the plaintext row: the same pull once in plaintext (reference)
 // and once encrypted, both through the REAL getSnapshot() → decryptMerge → catalog projection.
-describe('decrypt-merge: own exercises, encrypted (Phase 164)', () => {
-  it('P164 template and catalog tools name an encrypted own exercise like before', async () => {
+describe('decrypt-merge: own exercises, encrypted', () => {
+  it('template and catalog tools name an encrypted own exercise like before', async () => {
     const OWN = '16400000-0000-4000-8000-0000000000d1';
     const TEMPLATE = '16400000-0000-4000-8000-0000000000f1';
     const BLOCK = '16400000-0000-4000-8000-0000000000f2';
@@ -1895,7 +1895,7 @@ describe('decrypt-merge: own exercises, encrypted (Phase 164)', () => {
 
 // ── Phase 166 plan 166-10: review findings of 155 and 156 at the decoders (D-19, MCP-09) ──
 
-describe('decrypt-merge: review findings of 155 and 156 (Phase 166, plan 166-10)', () => {
+describe('decrypt-merge: invalid times, null elements and unreadable overrides', () => {
   const P166_KEY_B64 = Buffer.from(Array.from({ length: 32 }, (_, i) => 31 - i)).toString('base64');
   let ivCounter = 0;
 
@@ -1928,7 +1928,7 @@ describe('decrypt-merge: review findings of 155 and 156 (Phase 166, plan 166-10)
     };
   }
 
-  it('P166 IN-06 a performedTime or scheduledTime outside HH:mm is reported and not used', async () => {
+  it('a performedTime or scheduledTime outside HH:mm is reported and not used', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         foreignActivityTypes: [],
@@ -1971,7 +1971,7 @@ describe('decrypt-merge: review findings of 155 and 156 (Phase 166, plan 166-10)
     for (const value of ['25:00', '7:05', '1830', 'noon']) expect(reportText).not.toContain(value);
   });
 
-  it('P166 IN-06 a pull whose times are all HH:mm or null carries no droppedValues key', async () => {
+  it('a pull whose times are all HH:mm or null carries no droppedValues key', async () => {
     mockFetchSnapshot.mockResolvedValueOnce(
       makePull({
         foreignActivityTypes: [],
@@ -1985,7 +1985,7 @@ describe('decrypt-merge: review findings of 155 and 156 (Phase 166, plan 166-10)
     expect(cache.snapshot.plannedForeignActivities?.[0].scheduledTime).toBe('23:59');
   });
 
-  it('P166 IN-MCP-05 a null element in a wire array is skipped and reported like a bad row', async () => {
+  it('a null element in a wire array is skipped and reported like a bad row', async () => {
     const session: SyncSessionDto = {
       id: 'sess-p166', startTime: 1_792_000_000_000, endTime: 1_792_003_600_000, isManual: false,
       isCorrected: false, isQuickChallenge: false, createdAt: 1_792_000_000_000, updatedAt: 1_792_000_000_000,
@@ -2026,7 +2026,7 @@ describe('decrypt-merge: review findings of 155 and 156 (Phase 166, plan 166-10)
     expect(report.unreadable.find((r) => r.entity === 'session')).not.toHaveProperty('affectedSetLogCount');
   });
 
-  it('P166 GR-MCP-03 an unreadable name override names the affected exercise id', async () => {
+  it('an unreadable name override names the affected exercise id', async () => {
     const exerciseId = '16600000-0000-4000-8000-0000000000b1';
     const broken = JSON.parse(
       encrypt166({ v: 1, exerciseId, languageCode: 'de', name: 'x', description: null, updatedAt: 1_792_000_000_001 }),
