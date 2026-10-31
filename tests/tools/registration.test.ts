@@ -777,7 +777,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     }
   });
 
-  it('every new output field of phase 166 is named in its tool description', () => {
+  it('every new output field of the evaluation tools is named in its tool description', () => {
     const tools = buildRegisteredServer();
     let checked = 0;
     for (const [name, fields] of Object.entries(NEW_FIELDS_166)) {
@@ -791,7 +791,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     expect(checked, 'NICHT GEMESSEN: the list of new fields is shorter than the phase delivered').toBeGreaterThanOrEqual(30);
   });
 
-  it('every field whose meaning changed in phase 166 names its rule in its tool description', () => {
+  it('every output field whose meaning changed names its rule in its tool description', () => {
     const tools = buildRegisteredServer();
     for (const { tool, field, rule } of CHANGED_MEANING_166) {
       const description = tools[tool]?.description ?? '';

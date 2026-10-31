@@ -424,7 +424,7 @@ describe('wire-default normalization at the decode boundary', () => {
     expect(normalized.exerciseSource).toBe('CUSTOM');
   });
 
-  it('the real UAT-Runde-10 rows hash to the PlanHash.kt value AFTER normalization (the fix)', () => {
+  it('the real recorded wire rows hash to the PlanHash.kt value AFTER normalization (the fix)', () => {
     const { blocks, templateExercises } = parseWire();
     const normalized = snapshotFrom(
       blocks.map(normalizeWireBlock),

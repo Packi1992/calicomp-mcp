@@ -102,7 +102,7 @@ describe('capability-catalog — isSkill', () => {
     expect(result[0].isSkill).toBe(true);
   });
 
-  it('an entry with no isSkill field at all reads as non-skill and does not error (pre-138.1-18 server)', () => {
+  it('an entry with no isSkill field at all reads as non-skill and does not error (server that predates isSkill)', () => {
     // Simulates a cached/older catalog entry from before the server started sending isSkill —
     // `isSkill` is intentionally absent, not merely `undefined`, to prove the optional-field
     // contract rather than a JS `undefined`-vs-"key missing" quirk.

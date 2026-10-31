@@ -234,7 +234,7 @@ describe('buildLabelledPairs', () => {
     expect(serialize(omitted)).toBe(serialize(explicit));
   });
 
-  it('on a catalog with no capability data, the default (buildCombinedVector) still matches the pre-138.1-22 buildMuscleVector-only output', () => {
+  it('on a catalog with no capability data, the default (buildCombinedVector) still matches the buildMuscleVector-only output from before capability axes', () => {
     // The shared `catalog` fixture carries `capabilities: []` on every exercise — proves the
     // D-17 adoption is additive for callers/fixtures that never touch capabilities at all.
     const muscleOnlyExplicit = buildLabelledPairs(baseSnapshot(), catalog, buildMuscleVector);

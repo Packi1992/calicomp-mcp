@@ -47,7 +47,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PIN_166: PinFile = 'characterization-166.json';
 
 if (!process.env.CHAR_166_PIN_GENERATE) {
-  describe('characterization — pins of the state before 166 with declared deltas', () => {
+  describe('characterization — pinned outputs of the earlier evaluation state with declared deltas', () => {
     const pins = loadPinFile(PIN_166);
     const actual = collectPinnedOutputs166();
 

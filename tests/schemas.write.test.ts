@@ -385,7 +385,7 @@ describe('FormatParamsSchema — CIRCUIT', () => {
   });
 });
 
-describe('FormatParamsSchema — EMOM window/target boundary (in-range window, unaffected by T-134-21-01)', () => {
+describe('FormatParamsSchema — EMOM window/target boundary (in-range window, unaffected by the pass-through)', () => {
   it('rejects a TIME station whose targetTimeSeconds equals windowSeconds', () => {
     const bad = {
       ...validEmom,
@@ -410,7 +410,7 @@ describe('FormatParamsSchema — EMOM window/target boundary (in-range window, u
 // unchanged (proven by the pass-through cases below), but the TIME-station refusal
 // rule still enforces the range the App's `SaveNormalization` will clamp to
 // (T-134-21-03 parity — see the KDoc above the EMOM member in src/schemas.ts).
-describe('FormatParamsSchema — EMOM windowSeconds pass-through (T-134-21-01: the MCP no longer clamps)', () => {
+describe('FormatParamsSchema — EMOM windowSeconds pass-through (the MCP no longer clamps)', () => {
   it('parses a below-range window (15) unchanged — not clamped to 30', () => {
     // validEmom's default station targets 45s, which would fail the TIME-station
     // refusal rule against a normalized window of 30 — a REPS station sidesteps that
@@ -606,7 +606,7 @@ describe('FormatParamsSchema — FOR_TIME', () => {
   });
 });
 
-describe('FormatParamsSchema — strict unknown-key rejection (T-134-21-03 parity)', () => {
+describe('FormatParamsSchema — strict unknown-key rejection (parity with the App)', () => {
   it('rejects an unknown top-level key on a CIRCUIT payload', () => {
     expect(FormatParamsSchema.safeParse({ ...validCircuit, extraField: 'nope' }).success).toBe(false);
   });
@@ -656,7 +656,7 @@ describe('ProposePlanUpdateSchema — formatParams integration', () => {
 // entry-list field names are exercised: CIRCUIT's `exercises` and EMOM's
 // `stations` — the tempId-declaration check must not know only one field name.
 // ---------------------------------------------------------------------------
-describe('ProposePlanUpdateSchema — formatParams New-ref tempId declaration (T-134-21-01)', () => {
+describe('ProposePlanUpdateSchema — formatParams New-ref tempId declaration', () => {
   const declaredNewExercise = { tempId: 'temp-format-1', name: 'Dragon Flag', mode: 'REPS', usesWeight: false };
   const NEW_REF = { source: 'new', tempId: 'temp-format-1' };
 

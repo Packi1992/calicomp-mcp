@@ -850,7 +850,7 @@ describe('catalog normalization of omitted fields', () => {
 // important: a snapshot with no user exercises must yield the exact catalog normalizeCatalog
 // alone would have produced, or this change touched more than it should have.
 
-describe('user-exercise merge into catalog (G-141-2-SCOPE)', () => {
+describe('user-exercise merge into catalog', () => {
   const CURATED_ID = 'cccccccc-1000-4000-c000-000000000001';
   const curatedWireEntry: CatalogExerciseWire = {
     id: CURATED_ID,

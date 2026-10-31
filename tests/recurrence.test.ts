@@ -47,23 +47,23 @@ describe('mondayOf — moves backward or is a no-op, never forward', () => {
   });
 });
 
-describe('expandDates — the FREQ-missing-but-not-blank asymmetry (RecurrenceExpander.kt:51-57)', () => {
+describe('expandDates — the FREQ-missing-but-not-blank asymmetry (as in RecurrenceExpander.expandDates)', () => {
   const rangeStart = parseIsoDate('2026-06-01');
   const rangeEnd = parseIsoDate('2026-06-30');
   const dtstart = parseIsoDate('2026-06-10');
 
-  it('a non-blank rule with no FREQ key (line 56-57) returns DTSTART when in range EVEN WHEN DTSTART is in deletedDates', () => {
+  it('a non-blank rule with no FREQ key returns DTSTART when in range EVEN WHEN DTSTART is in deletedDates', () => {
     const dates = expandDates(dtstart, 'INTERVAL=2', rangeStart, rangeEnd, new Set(['2026-06-10']));
     expect(dates).toEqual([dtstart]);
   });
 
-  it('a null rule with the SAME deletedDates (line 51-54) returns the empty list', () => {
+  it('a null rule with the SAME deletedDates returns the empty list', () => {
     const dates = expandDates(dtstart, null, rangeStart, rangeEnd, new Set(['2026-06-10']));
     expect(dates).toEqual([]);
   });
 });
 
-describe('parseRRuleConfig — parse tolerance (RecurrenceExpander.kt:150-161)', () => {
+describe('parseRRuleConfig — parse tolerance (as in RecurrenceExpander.parseRRuleConfig)', () => {
   it('an unrecognised BYDAY token is dropped while its valid neighbours survive', () => {
     const config = parseRRuleConfig('FREQ=WEEKLY;BYDAY=MO,XX,WE');
     expect(config.byDay).toEqual(['MO', 'WE']);
@@ -90,7 +90,7 @@ describe('parseRRuleConfig — parse tolerance (RecurrenceExpander.kt:150-161)',
   });
 });
 
-describe('parseDeletedOccurrences — parse tolerance (RecurrenceExpander.kt:118-131)', () => {
+describe('parseDeletedOccurrences — parse tolerance (as in RecurrenceExpander.parseDeletedOccurrences)', () => {
   it('a bracketed, quoted, unsorted column with a duplicate yields the sorted deduplicated list', () => {
     expect(parseDeletedOccurrences('["2026-06-16","2026-06-02","2026-06-02"]')).toEqual([
       '2026-06-02',
