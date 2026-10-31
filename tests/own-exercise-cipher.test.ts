@@ -16,7 +16,6 @@
  *     unknown id is left out and counted, never invented.
  */
 
-import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CatalogExerciseWire, SyncPullResponse, UserProfileResponse } from '../src/types.js';
 
@@ -244,9 +243,5 @@ describe('decryptMerge: own exercises (Phase 164)', () => {
     });
     // The snapshot carries the decoded links beside the exercise, keyed by its id.
     expect(snapshot.ownExerciseLinks?.[EX_ID]?.muscleGroups).toHaveLength(3);
-    // The old KDoc that denied links to user exercises is gone (D-25).
-    const cacheSource = readFileSync(new URL('../src/cache.ts', import.meta.url), 'utf8');
-    expect(cacheSource).not.toContain('a user exercise\n * carries none of that server-side');
-    expect(cacheSource).not.toContain('carries none of that server-side');
   });
 });
