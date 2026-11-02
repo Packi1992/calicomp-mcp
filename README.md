@@ -40,7 +40,7 @@ CalisthenicsCompanion-MCP/
 | `CALICOMP_PAT` | Personal Access Token (prefixed `calicomp_pat_`). Created in the CalisthenicsCompanion app. |
 | `CALICOMP_KEY` | AES-256 encryption key in raw base64 (no prefix). Exported from the app alongside the PAT. |
 | `CALICOMP_SERVER_URL` | *(Optional)* Override the API base URL. Defaults to `https://api.calicompanion.de`. |
-| `CALICOMP_EXPORT_DIR` | *(Optional)* The directory that `outputFile: true` writes into. Absolute, or starting with `~/`. Defaults to a directory under the system temp dir. See [Export directory for outputFile](#export-directory-for-outputfile-unreleased-after-130). |
+| `CALICOMP_EXPORT_DIR` | *(Optional)* The directory that `outputFile: true` writes into. Absolute, or starting with `~/`. Defaults to a directory under the system temp dir. See [Export directory for outputFile](#export-directory-for-outputfile-since-140). |
 
 ## Credential Storage
 
@@ -249,7 +249,7 @@ The contract — the payload form, the conflict rule between devices, the decodi
 language rule and the field names — is § 1.7 "Own names of catalog exercises" of
 `docs/COACH-PLANNING-PROTOCOL.md` (version 1.29) in the CaliCompanion super-repo.
 
-## Export directory for outputFile (unreleased, after 1.3.0)
+## Export directory for outputFile (since 1.4.0)
 
 `get_history`, `get_progress` and `get_adherence` accept `outputFile: true`: the MCP then writes
 the full result to a local JSON file and returns only its path, byte size and item count, so the
@@ -278,11 +278,11 @@ The file holds decrypted training data in plaintext. With `CALICOMP_EXPORT_DIR` 
 your directory after the conversation; it is written only when a tool call says `outputFile: true`.
 Keep that directory out of any repository you publish.
 
-## New in phase 166 (unreleased, after 1.3.0)
+## New in phase 166 (since 1.4.0)
 
 Phase 166 makes the app and the MCP count the same sets by the same rules (§ 1.11 "Counting rules
 shared by the app and the MCP" of `docs/COACH-PLANNING-PROTOCOL.md`, version 1.48, and § 1.6 in
-version 1.49). This version is not on npm yet.
+version 1.49). Released in 1.4.0.
 
 ### Existing fields that change meaning
 
@@ -383,13 +383,12 @@ Without `lang` and without an app language every name is English as before. With
 wins. No athlete free text stands unwrapped in a text field: when `narrative` names an own
 exercise, the sentence carries its `exerciseKey` (`user_exercise:<id>`), and `narrativeNames`
 right after it carries its name in the free-text envelope. Every name tool says this in one shared
-sentence of its description. The published package keeps the earlier behaviour until the next
-release (phase 169).
+sentence of its description. Releases before 1.4.0 keep the earlier behaviour.
 
 ### Export directory
 
 `outputFile: true` writes into the directory set in `CALICOMP_EXPORT_DIR`; see
-[Export directory for outputFile](#export-directory-for-outputfile-unreleased-after-130).
+[Export directory for outputFile](#export-directory-for-outputfile-since-140).
 
 ### Tool texts against behaviour
 
@@ -397,6 +396,20 @@ No tool claims any longer to read no encrypted data: every tool that loads the s
 decrypted, and `get_template`, `get_suggestion` and `get_exercise_catalog` say which of their
 fields come from encrypted data and when an own name or an own exercise can be missing. A test
 over the import chain of every tool module keeps that claim out.
+
+## Changelog
+
+### 1.4.0
+
+- **Export directory:** `outputFile: true` can write into a directory you choose with
+  `CALICOMP_EXPORT_DIR`; see
+  [Export directory for outputFile](#export-directory-for-outputfile-since-140).
+- **Counting rules shared with the app:** some existing fields keep their name, form and place but
+  count different sets, and names follow the effective language; see
+  [New in phase 166](#new-in-phase-166-since-140).
+- **Dependencies:** `@modelcontextprotocol/sdk` 1.32.2 and `zod` 4.6.7. Development tools: Vitest 5
+  with v8 coverage 5, tsup 9, ESLint 10.14, typescript-eslint 8.72, Stryker 10.1.
+- **Node:** still `>=22`.
 
 ## Building
 
