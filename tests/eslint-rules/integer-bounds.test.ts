@@ -54,6 +54,24 @@ ruleTester.run('integer-bounds', integerBounds, {
       filename: DECODER,
       options: register('Number.isInteger(ratio)'),
     },
+    {
+      name: 'optional access on Number is a call like any other and counts its bounds (166.1-review WR-17)',
+      code: 'const ok = Number?.isInteger(v) && v >= 1 && v <= 5;',
+    },
+    {
+      name: 'an optional call counts its bounds (166.1-review WR-17)',
+      code: 'const ok = Number.isInteger?.(v) && v >= 1 && v <= 5;',
+    },
+    {
+      name: 'Number.MAX_SAFE_INTEGER and a literal within it are upper bounds (166.1-review WR-17)',
+      code: 'const ok = Number.isInteger(v) && v >= -9007199254740991 && v <= Number.MAX_SAFE_INTEGER;',
+    },
+    {
+      name: 'a registered method reference is allowed (166.1-review WR-17)',
+      code: 'const all = xs.every(Number.isInteger);',
+      filename: DECODER,
+      options: register('xs.every(Number.isInteger)'),
+    },
   ],
   invalid: [
     {
@@ -95,6 +113,50 @@ ruleTester.run('integer-bounds', integerBounds, {
       filename: DECODER,
       options: register('Number.isInteger(ratio)'),
       errors: [{ messageId: 'registerWithoutHit', data: { contains: 'Number.isInteger(ratio)' } }],
+    },
+    {
+      name: 'a method reference passes every value unbounded (166.1-review WR-17)',
+      code: 'const all = xs.every(Number.isInteger);',
+      errors: [{ messageId: 'reference' }],
+    },
+    {
+      name: 'an alias through assignment hides the call and is an error (166.1-review WR-17)',
+      code: 'const isInt = Number.isInteger;\nconst ok = isInt(v) && v >= 1 && v <= 5;',
+      errors: [{ messageId: 'reference', line: 1 }],
+    },
+    {
+      name: 'Number.isInteger.call hides the call and is an error (166.1-review WR-17)',
+      code: 'const ok = Number.isInteger.call(null, v) && v >= 1 && v <= 5;',
+      errors: [{ messageId: 'reference' }],
+    },
+    {
+      name: 'optional access on Number without a bound is an error (166.1-review WR-17)',
+      code: 'const ok = Number?.isInteger(v) && v >= 0;',
+      errors: [{ messageId: 'unbounded', data: { subject: 'v' } }],
+    },
+    {
+      name: 'a template-literal member name is the same call (166.1-review WR-17)',
+      code: 'const ok = Number[`isInteger`](v) && v >= 0;',
+      errors: [{ messageId: 'unbounded' }],
+    },
+    {
+      name: 'an upper bound beyond Number.MAX_SAFE_INTEGER is no bound (166.1-review WR-17)',
+      code: 'const ok = Number.isInteger(v) && v >= 0 && v <= 1e300;',
+      errors: [{ messageId: 'unbounded' }],
+    },
+    {
+      name: 'a lower bound below -Number.MAX_SAFE_INTEGER is no bound (166.1-review WR-17)',
+      code: "if (!Number.isInteger(v) || v < -1e300 || v > 5) throw new Error('x');",
+      errors: [{ messageId: 'unbounded' }],
+    },
+    {
+      name: 'Infinity and Number.MAX_VALUE are no bounds (166.1-review WR-17)',
+      code: 'const a = Number.isInteger(v) && v >= 0 && v <= Infinity;\nconst b = Number.isInteger(w) && w >= 0 && w < Number.MAX_VALUE;\nconst c = Number.isInteger(u) && Number.NEGATIVE_INFINITY < u && u <= 5;',
+      errors: [
+        { messageId: 'unbounded', line: 1 },
+        { messageId: 'unbounded', line: 2 },
+        { messageId: 'unbounded', line: 3 },
+      ],
     },
   ],
 });
