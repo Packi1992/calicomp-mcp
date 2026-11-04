@@ -1024,6 +1024,34 @@ export type HistoryCorrectionCipherVector = z.infer<typeof HistoryCorrectionCiph
 export type HistoryCorrectionParseVector = z.infer<typeof HistoryCorrectionParseVectorSchema>;
 export type HistoryCorrectionSection = z.infer<typeof HistoryCorrectionSectionSchema>;
 
+/**
+ * Phase 168 (plan 168-05, PERM-01, PERM-02, D-01, D-23): the `permissionClassification` corpus section, the
+ * classification of docs/COACH-PERMISSIONS.md. The MCP reads `writeTools` (each `propose_*` tool with its proposal
+ * type and the rows of the app's settings page it falls under) and `notAWriteKind` (registered tools that write but
+ * are no proposal kind); the other keys are read by the app's classification test (plan 168-08) and only shape-checked
+ * here. `.strict()` on the parts the MCP reads, so a renamed key fails the parse instead of being ignored.
+ */
+const PermissionWriteToolSchema = z
+  .object({
+    type: z.string().min(1),
+    rows: z.array(z.string().min(1)).min(1),
+  })
+  .strict();
+
+const PermissionClassificationSectionSchema = z.object({
+  rows: z
+    .array(z.object({ id: z.string().min(1), cells: z.array(z.string().min(1)).min(1), deletion: z.boolean() }).strict())
+    .min(1),
+  writeTools: z.record(z.string().regex(/^propose_[a-z_]+$/), PermissionWriteToolSchema),
+  notAWriteKind: z.array(z.string().min(1)),
+  sizeLimits: z.record(z.string(), z.number().int().positive()),
+  pots: z.record(z.string(), z.array(z.string().min(1))),
+  reasons: z.record(z.string(), z.array(z.string().min(1))),
+  vectors: z.array(z.record(z.string(), z.unknown())).min(1),
+});
+
+export type PermissionClassificationSection = z.infer<typeof PermissionClassificationSectionSchema>;
+
 export const CoachPlanningVectorsSchema = z.object({
   _provenance: ProvenanceSchema,
   expansion: z.array(ExpansionVectorSchema).min(1),
@@ -1072,6 +1100,7 @@ export const CoachPlanningVectorsSchema = z.object({
   exerciseNameLanguage: z.array(ExerciseNameLanguageVectorSchema).min(3),
   // Phase 168 (plan 168-05): listed for the same reason as every section above.
   historyCorrection: HistoryCorrectionSectionSchema,
+  permissionClassification: PermissionClassificationSectionSchema,
 });
 
 export type CoachPlanningVectors = z.infer<typeof CoachPlanningVectorsSchema>;
@@ -1116,6 +1145,14 @@ export function loadCoachPlanningVectors(fromDir?: string): CoachPlanningVectors
  */
 export function historyCorrectionSection(fromDir?: string): HistoryCorrectionSection {
   return loadCoachPlanningVectors(fromDir).historyCorrection;
+}
+
+/**
+ * The `permissionClassification` section of the corpus (Phase 168, plan 168-05). Loads the whole corpus through
+ * `loadCoachPlanningVectors`, so a missing or malformed section fails loudly here (D-02), never as an empty record.
+ */
+export function permissionClassificationSection(fromDir?: string): PermissionClassificationSection {
+  return loadCoachPlanningVectors(fromDir).permissionClassification;
 }
 
 // ---------------------------------------------------------------------------

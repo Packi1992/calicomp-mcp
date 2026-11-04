@@ -51,6 +51,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { permissionClassificationSection } from '../shared-vectors.js';
 
 import { registerToolGetHistory }         from '../../src/tools/get_history.js';
 import { registerToolGetStats }           from '../../src/tools/get_stats.js';
@@ -419,6 +420,37 @@ const CHANGED_MEANING_166: ReadonlyArray<{ tool: string; field: string; rule: st
 ];
 
 // ---------------------------------------------------------------------------
+// Phase 168 (plan 168-05, PERM-02, D-01, D-23): the write tools are bound to the corpus rows of the app's settings
+// page "Coach" (docs/COACH-PERMISSIONS.md, corpus section `permissionClassification`). A write tool is every
+// registered tool whose readOnlyHint is not true, minus the corpus list `notAWriteKind`.
+// ---------------------------------------------------------------------------
+
+interface WriteToolBinding {
+  /** Registered write tools without a row in `writeTools`. */
+  withoutRow: string[];
+  /** Tools of `writeTools` that are not registered or not a write tool. */
+  notRegistered: string[];
+  /** Number of write tools the comparison saw. */
+  measured: number;
+}
+
+function writeToolBinding(
+  tools: RegisteredToolMap,
+  corpus: { writeTools: Record<string, unknown>; notAWriteKind: readonly string[] },
+): WriteToolBinding {
+  const exceptions = new Set(corpus.notAWriteKind);
+  const writeTools = Object.entries(tools)
+    .filter(([name, tool]) => tool.annotations?.readOnlyHint !== true && !exceptions.has(name))
+    .map(([name]) => name);
+  const rows = new Set(Object.keys(corpus.writeTools));
+  return {
+    withoutRow: writeTools.filter((name) => !rows.has(name)),
+    notRegistered: [...rows].filter((name) => !writeTools.includes(name)),
+    measured: writeTools.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Registration tests
 // ---------------------------------------------------------------------------
 
@@ -665,8 +697,10 @@ describe('tool registration — all 21 tools (13 READ + 8 WRITE)', () => {
     expect(tool.annotations?.readOnlyHint).toBe(false);
     expect(tool.annotations?.destructiveHint).toBe(false);
     for (const part of [
-      'Never changes it directly',
-      'only the athlete applies it by accepting in the app',
+      // GEAENDERT in 168-05 (D-10): 'Never changes it directly' -> 'The tool itself changes nothing',
+      // 'only the athlete applies it by accepting in the app' -> 'when the athlete accepts it there, every field stays editable'.
+      'The tool itself changes nothing',
+      'when the athlete accepts it there, every field stays editable',
       'translations, muscleGroups and capabilities',
       'replaces that list completely',
       'personal name and description per language',
@@ -684,6 +718,42 @@ describe('tool registration — all 21 tools (13 READ + 8 WRITE)', () => {
     expect(Object.keys(jsonSchema.properties).sort()).toStrictEqual(
       ['capabilities', 'exerciseId', 'muscleGroups', 'rationale', 'translations'],
     );
+  });
+
+  it('every registered write tool has a corpus row and every corpus write tool is registered', () => {
+    const corpus = permissionClassificationSection();
+    const binding = writeToolBinding(buildRegisteredServer(), corpus);
+    expect(binding.measured, 'NICHT GEMESSEN: fewer than six write tools seen').toBeGreaterThanOrEqual(6);
+    expect(binding.withoutRow, 'registered write tools without a corpus row').toStrictEqual([]);
+    expect(binding.notRegistered, 'corpus write tools that are not registered').toStrictEqual([]);
+    for (const [name, row] of Object.entries(corpus.writeTools)) {
+      expect(row.rows.length, `${name} names at least one row`).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('the exceptions of the corpus are registered and have no row', () => {
+    const corpus = permissionClassificationSection();
+    const tools = buildRegisteredServer();
+    expect(corpus.notAWriteKind.length, 'NICHT GEMESSEN: the corpus names no exception').toBeGreaterThanOrEqual(1);
+    for (const name of corpus.notAWriteKind) {
+      expect(tools[name], `${name} should be registered`).toBeDefined();
+      expect(tools[name].annotations?.readOnlyHint, `${name} writes, so it is no read tool`).not.toBe(true);
+      expect(Object.keys(corpus.writeTools), `${name} has no corpus row`).not.toContain(name);
+    }
+  });
+
+  it('a planted write tool without a corpus row is reported', () => {
+    const corpus = permissionClassificationSection();
+    const planted: RegisteredToolMap = {
+      ...buildRegisteredServer(),
+      propose_planted_kind: { description: 'planted', annotations: { readOnlyHint: false } },
+    };
+    const withoutCorpusTool = { ...corpus, writeTools: { ...corpus.writeTools } };
+    delete withoutCorpusTool.writeTools.propose_history_correction;
+    expect(writeToolBinding(planted, corpus).withoutRow).toStrictEqual(['propose_planted_kind']);
+    expect(writeToolBinding(buildRegisteredServer(), withoutCorpusTool).withoutRow).toStrictEqual(['propose_history_correction']);
+    const { propose_history_correction: _gone, ...unregistered } = buildRegisteredServer();
+    expect(writeToolBinding(unregistered, corpus).notRegistered).toStrictEqual(['propose_history_correction']);
   });
 
   // ---------------------------------------------------------------------------
