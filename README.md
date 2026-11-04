@@ -397,7 +397,52 @@ decrypted, and `get_template`, `get_suggestion` and `get_exercise_catalog` say w
 fields come from encrypted data and when an own name or an own exercise can be missing. A test
 over the import chain of every tool module keeps that claim out.
 
+## New in phase 168 (since 1.5.0)
+
+Phase 168 lets the athlete decide which kinds of proposals the app applies directly (protocol 1.56 of
+`docs/COACH-PLANNING-PROTOCOL.md`, §2.8 and §5; the rules themselves are the app contract
+`docs/COACH-PERMISSIONS.md` in the super-repo). Prepared in 1.5.0; published by the athlete.
+
+### Correcting a finished workout
+
+The new tool `propose_history_correction` (proposal type `history_correction`) proposes a correction
+of a finished, not deleted workout: change `reps`, `timeSec` or `weight` of a set, add a forgotten
+set after an existing one (`afterSetId`), or remove a wrong set, 1 to 50 changes per proposal. It never
+changes the exercise of a set, the notes or the rating. Before it sends, the tool checks against the
+history it read that the session exists, has ended and is not deleted, that every named set is a live
+set of that session and that no set id stands twice; otherwise it answers with an error and sends
+nothing.
+
+Set values are never plaintext on the server, so this is the one proposal type whose content is
+encrypted with the account key: the server stores only `{"v":1,"sessionId":…,"encryptedPayload":…}`,
+and the encrypted inner payload names every live set of the session with its `updatedAt` so the app can
+tell whether the proposal still fits. The app accepts it with status `accepted` only, never
+`accepted_modified`. The type is live once the server has been deployed with it.
+
+### Proposals may be applied directly
+
+Every `propose_*` tool description now ends with the same sentence: depending on the athlete's choice
+in the app, the app may apply a proposal directly. The MCP never learns how the athlete chose, and the
+tools no longer say that only the athlete applies a proposal. The tools themselves still change
+nothing: they send the proposal to the app.
+
+### Reading back what happened
+
+`get_suggestions` and `get_suggestion` carry two new fields: `decidedBy` (`"auto"` when the app applied
+the proposal directly, `"user"` when the athlete decided, absent when unknown) and `undoneAt` (epoch ms
+when the athlete undid a direct apply, absent otherwise). Both tools show only the fields of their own
+row type; a field that belongs to the app's own list never reaches the coach.
+
 ## Changelog
+
+### 1.5.0
+
+- **Correcting a finished workout:** the new tool `propose_history_correction` with an encrypted
+  payload; see [New in phase 168](#new-in-phase-168-since-150).
+- **Direct application:** every proposal tool says that the app may apply a proposal directly,
+  depending on the athlete's choice; `get_suggestions` and `get_suggestion` show `decidedBy` and
+  `undoneAt`.
+- **Node:** still `>=22`. No new dependency.
 
 ### 1.4.0
 
