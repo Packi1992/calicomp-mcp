@@ -34,8 +34,8 @@
  * (unaffected by this plan — `hash.ts` deliberately excludes `workoutType`/
  * `formatParams` from the canonical structure, Protocol §2.5's "known stale-guard
  * gap"); `changeHash` covers the whole payload, `ops` or `formatParams` alike.
- * Never mutates directly — the proposal is transported to the coach inbox for
- * accept/reject.
+ * The tool itself changes nothing; the app presents the proposal or, when the athlete allowed this
+ * kind beforehand, applies it directly (Phase 168, D-10).
  *
  * Exports:
  *   buildPlanUpdatePayload(args, catalog)        — pure helper; inline-dedupe + rewrite
@@ -65,6 +65,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ProposePlanUpdateSchema } from '../schemas.js';
+import { AUTO_APPLY_NOTICE } from '../auto-apply-notice.js';
 import { getSnapshot } from '../cache.js';
 import { getTemplate } from './get_template.js';
 import { findCatalogMatch } from '../dedupe.js';
@@ -278,14 +279,14 @@ export function registerToolProposePlanUpdate(
     {
       title:       'Propose Plan Update',
       description:
-        'Propose a structural change to an existing workout template for human review. Against a ' +
+        'Propose to the athlete a structural change to an existing workout template. Against a ' +
         'CLASSIC template, pass an `ops[]` diff (add/remove/update-sets-reps/reorder). Against a ' +
         'format template (CIRCUIT/EMOM/AMRAP/TABATA/LADDER/FOR_TIME/CHIPPER/DEATH_BY — check ' +
         '`get_template`\'s `workoutType`), pass `formatParams` instead: the complete new authoring ' +
         'parameters for that format, never an ops[] diff — the compiled rows are recomputed from ' +
         'formatParams on every save and an ops[] diff against them would be silently discarded. ' +
-        'Exactly one of `ops`/`formatParams` may be set. Never mutates directly — the proposal is ' +
-        'transported to the coach inbox for accept/reject. Fast-fails with an error (no network ' +
+        'Exactly one of `ops`/`formatParams` may be set. The tool itself changes nothing; it sends ' +
+        'the proposal to the app. Fast-fails with an error (no network ' +
         'call) if the templateId is not found in the local snapshot, or if the proposal shape does ' +
         'not match the target template\'s own format. Inline `newExercises[]` entries that match an ' +
         'existing catalog exercise are automatically resolved to that catalog UUID instead of being ' +
@@ -323,7 +324,8 @@ export function registerToolProposePlanUpdate(
         'with MAX, never with TIME; use TIME only where the time is a target not to exceed, such as a ' +
         'stretch held for a set time.' +
         ' formatParams entries know only REPS and TIME, so a hold to measure belongs in a CLASSIC ' +
-        'template.',
+        'template. ' +
+        AUTO_APPLY_NOTICE,
       inputSchema: ProposePlanUpdateSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },

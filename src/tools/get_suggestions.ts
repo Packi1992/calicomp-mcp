@@ -77,7 +77,25 @@ export async function getSuggestions(
   args: GetSuggestionsArgs,
   cfg: { pat: string; keyB64: string; serverUrl: string },
 ): Promise<SuggestionSummaryDtoResponse[]> {
-  return fetchSuggestions(cfg, args.status, clampSuggestionsLimit(args.limit));
+  const rows = await fetchSuggestions(cfg, args.status, clampSuggestionsLimit(args.limit));
+  return rows.map(pickSummaryFields);
+}
+
+/**
+ * The fields of a summary row the coach sees (Phase 168, plan 168-05, D-10): the members of
+ * `SuggestionSummaryDtoResponse` and nothing else. A field only the app list carries (protocol §5) is dropped even
+ * if a server sent it on this route, so the coach never learns more than `decidedBy` and `undoneAt` tell.
+ */
+const SUMMARY_FIELDS = [
+  'id', 'type', 'status', 'createdAt', 'targetLabel', 'rationale', 'decidedBy', 'undoneAt',
+] as const satisfies readonly (keyof SuggestionSummaryDtoResponse)[];
+
+export function pickSummaryFields(row: SuggestionSummaryDtoResponse): SuggestionSummaryDtoResponse {
+  const picked: Record<string, unknown> = {};
+  for (const field of SUMMARY_FIELDS) {
+    if (row[field] !== undefined) picked[field] = row[field];
+  }
+  return picked as unknown as SuggestionSummaryDtoResponse;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +119,9 @@ export function registerToolGetSuggestions(
       description:
         'List the coach\'s own proposals as cheap summary rows, newest first: id, type, status, ' +
         'created date, a human-readable target label, and a short rationale. No payload included. ' +
+        'Since phase 168 each row also says whether the app applied it automatically (`decidedBy`: ' +
+        '"auto", or "user" when the athlete decided, absent when unknown) and whether it was undone ' +
+        '(`undoneAt`, epoch ms, absent when never undone). ' +
         'Call this first; call `get_suggestion` with one id only when you need the full proposal, ' +
         'including its outcome (`appliedPayload` for a modified accept). Optional `status` filter ' +
         '(pending, accepted, accepted_modified, rejected, expired, withdrawn, obsolete); optional ' +

@@ -7,8 +7,8 @@
  * through the same catalog-dedupe as `propose_new_exercise` (A2): a match drops
  * the entry from `newExercises[]` and rewrites every `{source:'new', tempId}`
  * reference to that tempId across all blocks AND `standalone[]` into
- * `{source:'catalog', exerciseId}`. Never mutates directly — the proposal is
- * transported to the coach inbox for accept/reject.
+ * `{source:'catalog', exerciseId}`. The tool itself changes nothing; the app presents the proposal
+ * or, when the athlete allowed this kind beforehand, applies it directly (Phase 168, D-10).
  *
  * Phase 150 (D-22/D-24/D-30, Protocol §2.6): `blocks` is now optional and an
  * optional `standalone[]` — blockless exercise entries sharing the top-level
@@ -38,6 +38,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ProposeNewPlanSchema } from '../schemas.js';
+import { AUTO_APPLY_NOTICE } from '../auto-apply-notice.js';
 import { getSnapshot } from '../cache.js';
 import { findCatalogMatch } from '../dedupe.js';
 import { computeChangeHash } from '../hash.js';
@@ -185,9 +186,8 @@ export function registerToolProposeNewPlan(
     {
       title:       'Propose New Plan',
       description:
-        'Propose a brand-new workout plan (blocks and/or standalone exercises) for human review. ' +
-        'Never creates it directly — the proposal is transported to the coach inbox for ' +
-        'accept/reject. Inline `newExercises[]` entries that match an existing catalog exercise ' +
+        'Propose a brand-new workout plan (blocks and/or standalone exercises) to the athlete. ' +
+        'The tool itself creates nothing; it sends the proposal to the app. Inline `newExercises[]` entries that match an existing catalog exercise ' +
         'are automatically resolved to that catalog UUID instead of being proposed as duplicates. ' +
         'newExercises[] entries take the same optional fields as propose_new_exercise ' +
         '(translations, muscleGroups, capabilities, equipment); none is required, and an unknown ' +
@@ -209,7 +209,8 @@ export function registerToolProposeNewPlan(
         'stores that target; MAX counts up until the athlete stops, so MAX is a measurement. Propose ' +
         'a maximal hold, for example a benchmark hold or any hold whose capacity you want to measure, ' +
         'with MAX, never with TIME; use TIME only where the time is a target not to exceed, such as a ' +
-        'stretch held for a set time.',
+        'stretch held for a set time. ' +
+        AUTO_APPLY_NOTICE,
       inputSchema: ProposeNewPlanSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },

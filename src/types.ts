@@ -922,6 +922,11 @@ export interface SuggestionDtoResponse {
   // single-fetch read-back may.
   appliedPayload?: string | null;
   seriesHash?: string | null;
+  // Phase 168 (protocol 1.56 §5 "Decided by", "Undone", D-10): who moved the proposal out of pending, `user` or
+  // `auto` (the app applied it directly because the athlete allowed this kind), absent when unknown; and when the
+  // athlete undid a direct apply, epoch ms. The coach learns this afterwards, never beforehand which kinds apply.
+  decidedBy?: string | null;
+  undoneAt?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -940,6 +945,11 @@ export interface SuggestionSummaryDtoResponse {
   createdAt: number;
   targetLabel: string;
   rationale: string;
+  // Phase 168 (protocol 1.56 §5 "Decided by", "Undone", D-10): who moved the proposal out of pending, `user` or
+  // `auto` (the app applied it directly because the athlete allowed this kind), absent when unknown; and when the
+  // athlete undid a direct apply, epoch ms. The coach learns this afterwards, never beforehand which kinds apply.
+  decidedBy?: string | null;
+  undoneAt?: number | null;
 }
 
 // ---------------------------------------------------------------------------

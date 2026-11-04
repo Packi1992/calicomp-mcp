@@ -3,7 +3,7 @@
  * MCP-06, D-11 in the scope of D-15, protocol §2.7 "exercise_update: changing an existing
  * exercise").
  *
- * Never changes the exercise. The tool loads the catalog the coach reads (curated entries plus the
+ * The tool itself never changes the exercise. It loads the catalog the coach reads (curated entries plus the
  * athlete's own exercises, `getSnapshot().catalog`), looks the `exerciseId` up there and decides by
  * `origin` whether it is an own exercise (`'CUSTOM'`) or a catalog exercise (`'CATALOG'`):
  *   - not found: `EXERCISE_NOT_FOUND`, no proposal;
@@ -15,8 +15,9 @@
  * Otherwise it POSTs a proposal of type `exercise_update` with the allowlisted payload
  * `{ exerciseId, translations?, muscleGroups?, capabilities? }` (each field only when set) and
  * `changeHash = computeChangeHash('exercise_update', payload)`. No stale guard (assumption A4): the
- * app shows the current state beside the proposed one. Only the athlete applies it, by accepting in
- * the app (JWT); the PAT can propose and read back, never apply (T-166-27, Propose-Only Boundary).
+ * app shows the current state beside the proposed one. The app presents the proposal or, when the athlete
+ * allowed this kind beforehand, applies it directly (Phase 168, D-10); the PAT can propose and read back, never
+ * apply (T-166-27, Propose-Only Boundary).
  * The server accepts the type once plan 166-03 is deployed (166-16).
  *
  * Exports:
@@ -31,6 +32,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ProposeExerciseUpdateSchema } from '../schemas.js';
+import { AUTO_APPLY_NOTICE } from '../auto-apply-notice.js';
 import { getSnapshot } from '../cache.js';
 import { computeChangeHash } from '../hash.js';
 import { getSourceLlm } from '../source_llm.js';
@@ -107,10 +109,9 @@ export function registerToolProposeExerciseUpdate(
     {
       title: 'Propose Exercise Update',
       description:
-        'Propose a change to an existing exercise for human review: an own exercise (origin CUSTOM ' +
-        'in get_exercise_catalog) or a catalog exercise. Never changes it directly; the proposal goes ' +
-        'to the coach inbox, and only the athlete applies it by accepting in the app, where every ' +
-        'field stays editable. Pass exerciseId and at least one of translations, muscleGroups and ' +
+        'Propose to the athlete a change to an existing exercise: an own exercise (origin CUSTOM ' +
+        'in get_exercise_catalog) or a catalog exercise. The tool itself changes nothing; it sends the ' +
+        'proposal to the app, and when the athlete accepts it there, every field stays editable. Pass exerciseId and at least one of translations, muscleGroups and ' +
         'capabilities. For an own exercise every field applies: a translations entry replaces name ' +
         'and description in its language (en changes the base name and description), a language you ' +
         'do not name stays as it is, and a present muscleGroups or capabilities list replaces that ' +
@@ -122,7 +123,8 @@ export function registerToolProposeExerciseUpdate(
         'key is refused with an error that names it, and an exerciseId that is neither a catalog nor ' +
         'an own exercise with EXERCISE_NOT_FOUND. Never send an empty list. Equipment is not part of ' +
         'this proposal. This proposal type is live only once the server has been deployed with it; ' +
-        'before that the server answers with an HTTP error.',
+        'before that the server answers with an HTTP error. ' +
+        AUTO_APPLY_NOTICE,
       inputSchema: ProposeExerciseUpdateSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },

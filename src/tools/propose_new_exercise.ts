@@ -1,7 +1,8 @@
 /**
  * propose_new_exercise — catalog-dedupe then propose a brand-new exercise (D-04).
  *
- * Never mutates the catalog directly. First checks the cached catalog for a
+ * The tool itself never changes the catalog; the app presents the proposal or, when the athlete allowed this
+ * kind beforehand, applies it directly (Phase 168, D-10). First checks the cached catalog for a
  * name-normalized match (Pattern 6 `findCatalogMatch`, operating on the same
  * `getSnapshot().catalog` source `get_exercise_catalog` reads — functionally
  * equivalent to calling that handler, no redundant round-trip). On a match,
@@ -33,6 +34,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ProposeNewExerciseSchema } from '../schemas.js';
+import { AUTO_APPLY_NOTICE } from '../auto-apply-notice.js';
 import { getSnapshot } from '../cache.js';
 import { findCatalogMatch } from '../dedupe.js';
 import { computeChangeHash } from '../hash.js';
@@ -143,8 +145,8 @@ export function registerToolProposeNewExercise(
     {
       title:       'Propose New Exercise',
       description:
-        'Propose a brand-new custom exercise for human review. Never creates it directly — ' +
-        'the proposal is transported to the coach inbox for accept/reject. If the name matches ' +
+        'Propose a brand-new custom exercise to the athlete. The tool itself creates nothing; it ' +
+        'sends the proposal to the app. If the name matches ' +
         'an existing catalog exercise, returns the existing UUID instead of proposing a duplicate. ' +
         'Optional fields, none of them required: translations (name and description in languages ' +
         'other than en; name and description themselves are the base language en), muscleGroups ' +
@@ -160,7 +162,8 @@ export function registerToolProposeNewExercise(
         'stores that target; MAX counts up until the athlete stops, so MAX is a measurement. Propose ' +
         'a maximal hold, for example a benchmark hold or any hold whose capacity you want to measure, ' +
         'with MAX, never with TIME; use TIME only where the time is a target not to exceed, such as a ' +
-        'stretch held for a set time.',
+        'stretch held for a set time. ' +
+        AUTO_APPLY_NOTICE,
       inputSchema: ProposeNewExerciseSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },

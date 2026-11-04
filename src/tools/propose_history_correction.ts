@@ -27,6 +27,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ProposeHistoryCorrectionSchema } from '../schemas.js';
+import { AUTO_APPLY_NOTICE } from '../auto-apply-notice.js';
 import { getSnapshot } from '../cache.js';
 import { encrypt } from '../crypto.js';
 import { computeChangeHash } from '../hash.js';
@@ -187,7 +188,8 @@ export function registerToolProposeHistoryCorrection(
         'follows, and a removed set is kept as a deletion mark. A correction never changes the exercise of a set, ' +
         'the notes or the rating. A second forgotten set after the same set is a second proposal. This proposal ' +
         'type is live only once the server has been deployed with it; before that the server answers with an HTTP ' +
-        'error.',
+        'error. ' +
+        AUTO_APPLY_NOTICE,
       inputSchema: ProposeHistoryCorrectionSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },

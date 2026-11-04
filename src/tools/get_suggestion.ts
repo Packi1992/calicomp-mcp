@@ -164,6 +164,23 @@ function resolvePayloadString(payload: string, resolver: ExerciseNameResolver, t
 // ---------------------------------------------------------------------------
 
 /**
+ * The fields of a full row the coach sees (Phase 168, plan 168-05, D-10): the members of `SuggestionDtoResponse` and
+ * nothing else. A field only the app list carries (protocol §5) is dropped even if a server sent it on this route.
+ */
+const SUGGESTION_FIELDS = [
+  'id', 'type', 'payload', 'rationale', 'sourceLlm', 'status', 'createdAt', 'expiresAt', 'planHash',
+  'appliedPayload', 'seriesHash', 'decidedBy', 'undoneAt',
+] as const satisfies readonly (keyof SuggestionDtoResponse)[];
+
+export function pickSuggestionFields(row: SuggestionDtoResponse): Record<string, unknown> {
+  const picked: Record<string, unknown> = {};
+  for (const field of SUGGESTION_FIELDS) {
+    if (row[field] !== undefined) picked[field] = row[field];
+  }
+  return picked;
+}
+
+/**
  * Register the `get_suggestion` tool with the MCP server.
  *
  * @param server  McpServer instance.
@@ -186,6 +203,9 @@ export function registerToolGetSuggestion(
         'carries exerciseName and exerciseKey next to its exerciseId (optional lang). For an ' +
         'exercise_update proposal (since phase 166) the top-level exerciseId of ' +
         'the resolved copy is named the same way. ' +
+        'Since phase 168 the row also says whether the app applied it automatically (`decidedBy`: ' +
+        '"auto", or "user" when the athlete decided, absent when unknown) and whether it was undone ' +
+        '(`undoneAt`, epoch ms, absent when never undone). ' +
         APP_LANGUAGE_NAMES_SENTENCE + ' ' +
         'For a catalog exercise the athlete has renamed, exerciseOwnName and ' +
         'exerciseOwnNameLanguage stand next to exerciseName: exerciseOwnName is athlete free ' +
@@ -222,7 +242,7 @@ export function registerToolGetSuggestion(
           };
         }
 
-        const output: Record<string, unknown> = { ...result };
+        const output: Record<string, unknown> = pickSuggestionFields(result);
         let resolver: ExerciseNameResolver | undefined;
         try {
           const data = await getSnapshot(cfg.pat, cfg.keyB64, cfg.serverUrl);

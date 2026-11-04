@@ -100,6 +100,7 @@
 import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ProposePlannedUpdateSchema } from '../schemas.js';
+import { AUTO_APPLY_NOTICE } from '../auto-apply-notice.js';
 import { getSnapshot, type SnapshotCache } from '../cache.js';
 import { validateRRule, type RRuleRejectionCode } from '../rrule-allowlist.js';
 import { computeSeriesHash, type SeriesHashRoot } from '../series-hash.js';
@@ -922,7 +923,7 @@ export function registerToolProposePlannedUpdate(
     {
       title: 'Propose Planned Update',
       description:
-        'Propose a change to the calendar for human review — name an intent, never a raw ' +
+        'Propose a calendar change to the athlete; name an intent, never a raw ' +
         'envelope. Four intents: move_occurrence (reschedule one occurrence, identified by ' +
         'rootId + occurrenceDate, to newDate), cancel_occurrence (cancel one occurrence, ' +
         'identified by rootId + occurrenceDate), schedule_workout (create a standalone or ' +
@@ -933,8 +934,9 @@ export function registerToolProposePlannedUpdate(
         'cause — no network call — for an unknown root or template, an occurrenceDate that is ' +
         'not actually an occurrence of that root, a recurrence rule that fails allowlist ' +
         'validation, a root with no recurrence rule to change, or a recurrenceGroupId group ' +
-        'that is not fully intact. Never mutates directly — the proposal is transported to the ' +
-        'coach inbox for accept/reject.',
+        'that is not fully intact. The tool itself changes nothing; it sends the proposal to the ' +
+        'app. ' +
+        AUTO_APPLY_NOTICE,
       inputSchema: ProposePlannedUpdateSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
