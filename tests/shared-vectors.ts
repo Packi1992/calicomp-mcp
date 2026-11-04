@@ -971,6 +971,59 @@ const ExerciseNameLanguageVectorSchema = z
 
 export type ExerciseNameLanguageVector = z.infer<typeof ExerciseNameLanguageVectorSchema>;
 
+/**
+ * Phase 168 (plan 168-05, PERM-05, D-02, D-27, protocol 1.56 §2.8 "History Correction Proposals"): the
+ * `historyCorrection` corpus section. `cipher` holds the outer payload the MCP sends and the inner plaintext
+ * inside its `encryptedPayload`, the ciphertext produced with `node:crypto` and a fixed IV independently of app
+ * and MCP code (plan 168-01); `parse` holds inner payloads with the app's verdict `ok` or `malformed` and the
+ * reason key of the rule they break. `.strict()` so a field the protocol does not name fails the parse.
+ */
+const HistoryCorrectionCipherVectorSchema = z
+  .object({
+    name: z.string().min(1),
+    keyB64: z.string().min(1),
+    outerPayload: z.string().min(1),
+    innerPlaintext: z.string().min(1),
+  })
+  .strict();
+
+const HISTORY_CORRECTION_REASONS = [
+  'bad_version',
+  'unknown_field',
+  'unknown_op',
+  'empty_changes',
+  'too_many_changes',
+  'no_value',
+  'value_out_of_range',
+  'session_mismatch',
+  'duplicate_set',
+  'unknown_set',
+] as const;
+
+const HistoryCorrectionParseVectorSchema = z
+  .object({
+    name: z.string().min(1),
+    outerSessionId: z.string().min(1),
+    inner: z.record(z.string(), z.unknown()),
+    expect: z.enum(['ok', 'malformed']),
+    reason: z.enum(HISTORY_CORRECTION_REASONS).optional(),
+  })
+  .strict()
+  .refine((v) => (v.expect === 'malformed') === (v.reason !== undefined), {
+    message: 'a malformed historyCorrection vector names its reason, an ok vector names none',
+  });
+
+const HistoryCorrectionSectionSchema = z
+  .object({
+    cipher: z.array(HistoryCorrectionCipherVectorSchema).min(1),
+    parse: z.array(HistoryCorrectionParseVectorSchema).min(6),
+  })
+  .strict();
+
+export type HistoryCorrectionCipherVector = z.infer<typeof HistoryCorrectionCipherVectorSchema>;
+export type HistoryCorrectionParseVector = z.infer<typeof HistoryCorrectionParseVectorSchema>;
+export type HistoryCorrectionSection = z.infer<typeof HistoryCorrectionSectionSchema>;
+
 export const CoachPlanningVectorsSchema = z.object({
   _provenance: ProvenanceSchema,
   expansion: z.array(ExpansionVectorSchema).min(1),
@@ -1017,6 +1070,8 @@ export const CoachPlanningVectorsSchema = z.object({
   // Phase 166 (gap plan 166-20, E-16): listed for the same reason as every section above.
   appLanguageSync: z.array(AppLanguageSyncVectorSchema).min(9),
   exerciseNameLanguage: z.array(ExerciseNameLanguageVectorSchema).min(3),
+  // Phase 168 (plan 168-05): listed for the same reason as every section above.
+  historyCorrection: HistoryCorrectionSectionSchema,
 });
 
 export type CoachPlanningVectors = z.infer<typeof CoachPlanningVectorsSchema>;
@@ -1053,6 +1108,14 @@ export function loadCoachPlanningVectors(fromDir?: string): CoachPlanningVectors
   // Zod parse failures propagate — a malformed corpus edit must fail loudly here, not
   // produce silently wrong test results downstream.
   return CoachPlanningVectorsSchema.parse(parsed);
+}
+
+/**
+ * The `historyCorrection` section of the corpus (Phase 168, plan 168-05). Loads the whole corpus through
+ * `loadCoachPlanningVectors`, so a missing or malformed section fails loudly here (D-02), never as an empty list.
+ */
+export function historyCorrectionSection(fromDir?: string): HistoryCorrectionSection {
+  return loadCoachPlanningVectors(fromDir).historyCorrection;
 }
 
 // ---------------------------------------------------------------------------

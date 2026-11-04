@@ -1,5 +1,8 @@
 /**
- * Runtime registration test for all 20 CalisthenicsCompanion-MCP tools (13 READ + 7 WRITE).
+ * Runtime registration test for all 21 CalisthenicsCompanion-MCP tools (13 READ + 8 WRITE).
+ *
+ * Phase 168 (plan 168-05, PERM-05, D-02) adds the twenty-first tool, `propose_history_correction`, a propose-only
+ * WRITE tool with the same annotation shape as the other propose tools (20 -> 21).
  *
  * Phase 166 (plan 166-08, D-15) adds the twentieth tool, `propose_exercise_update`, a propose-only
  * WRITE tool with the same annotation shape as the other propose tools (19 -> 20).
@@ -61,6 +64,7 @@ import { registerToolProposePlanUpdate }  from '../../src/tools/propose_plan_upd
 import { registerToolProposeNewPlan }     from '../../src/tools/propose_new_plan.js';
 import { registerToolProposeNewExercise } from '../../src/tools/propose_new_exercise.js';
 import { registerToolProposeExerciseUpdate } from '../../src/tools/propose_exercise_update.js';
+import { registerToolProposeHistoryCorrection } from '../../src/tools/propose_history_correction.js';
 import { registerToolProposePlannedUpdate } from '../../src/tools/propose_planned_update.js';
 import { registerToolGetSuggestions }     from '../../src/tools/get_suggestions.js';
 import { registerToolGetSuggestion }      from '../../src/tools/get_suggestion.js';
@@ -102,6 +106,7 @@ const WRITE_TOOL_NAMES = [
   'propose_new_exercise',
   'propose_exercise_update',
   'propose_planned_update',
+  'propose_history_correction',
   'withdraw_suggestion',
 ] as const;
 
@@ -417,9 +422,9 @@ const CHANGED_MEANING_166: ReadonlyArray<{ tool: string; field: string; rule: st
 // Registration tests
 // ---------------------------------------------------------------------------
 
-describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
+describe('tool registration — all 21 tools (13 READ + 8 WRITE)', () => {
   /**
-   * Build a fresh server, register all 20 tools, return the internal tool map.
+   * Build a fresh server, register all 21 tools, return the internal tool map.
    * Each test creates its own server to guarantee isolation.
    */
   function buildRegisteredServer() {
@@ -437,6 +442,7 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     registerToolProposeNewExercise(server, DUMMY_CFG);
     registerToolProposeExerciseUpdate(server, DUMMY_CFG);
     registerToolProposePlannedUpdate(server, DUMMY_CFG);
+    registerToolProposeHistoryCorrection(server, DUMMY_CFG);
     registerToolGetSuggestions(server, DUMMY_CFG);
     registerToolGetSuggestion(server, DUMMY_CFG);
     registerToolWithdrawSuggestion(server, DUMMY_CFG);
@@ -448,9 +454,9 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     return (server as any)._registeredTools as RegisteredToolMap;
   }
 
-  it('registers exactly 20 tools', () => {
+  it('registers exactly 21 tools', () => {
     const tools = buildRegisteredServer();
-    expect(Object.keys(tools)).toHaveLength(20);
+    expect(Object.keys(tools)).toHaveLength(21);
   });
 
   it('registers all expected tool names', () => {
@@ -489,12 +495,12 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     }
   });
 
-  it('no tool is registered twice (exactly 20 unique keys)', () => {
+  it('no tool is registered twice (exactly 21 unique keys)', () => {
     const tools = buildRegisteredServer();
     const names = Object.keys(tools);
     const uniqueNames = new Set(names);
-    expect(names).toHaveLength(20);
-    expect(uniqueNames.size).toBe(20);
+    expect(names).toHaveLength(21);
+    expect(uniqueNames.size).toBe(21);
   });
 
   it('the six snapshot-reading tools describe their unreadable list', () => {
@@ -691,11 +697,12 @@ describe('tool registration — all 20 tools (13 READ + 7 WRITE)', () => {
     }
     const result = claimGate(tools, FS_READER);
     // NICHT GEMESSEN: the gate measured nothing, or could not tell decrypting from plain tools.
-    expect(result.measured, 'NICHT GEMESSEN: not every registered tool was measured').toBe(20);
+    // GEAENDERT in 168-05: 20 -> 21 measured tools (propose_history_correction).
+    expect(result.measured, 'NICHT GEMESSEN: not every registered tool was measured').toBe(21);
     expect(result.decrypting.length, 'NICHT GEMESSEN: no tool reaches decryption').toBeGreaterThanOrEqual(10);
     expect(result.notDecrypting.length, 'NICHT GEMESSEN: every tool reaches decryption').toBeGreaterThanOrEqual(1);
     // The resolvers of the snapshot tools reach src/crypto.ts through src/cache.ts.
-    for (const name of ['get_template', 'get_suggestion', 'get_exercise_catalog', 'get_history', 'get_profile']) {
+    for (const name of ['get_template', 'get_suggestion', 'get_exercise_catalog', 'get_history', 'get_profile', 'propose_history_correction']) {
       expect(result.decrypting, `${name} reaches decryption`).toContain(name);
     }
     expect(result.violations, 'tools that claim to read no encrypted data while they decrypt').toStrictEqual([]);
