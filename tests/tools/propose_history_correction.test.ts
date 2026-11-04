@@ -267,6 +267,61 @@ describe('propose_history_correction', () => {
     expect(vi.mocked(httpModule.postSuggest)).not.toHaveBeenCalled();
   });
 
+  it('an update sends only the values it names', async () => {
+    await propose({ changes: [{ op: 'update', setId: SET_B, weight: 12.5 }, { op: 'add', afterSetId: SET_C, timeSec: 45 }] });
+
+    expect(innerOf(sentRequest().outer).changes).toStrictEqual([
+      { op: 'update', setId: SET_B, weight: 12.5 },
+      { op: 'add', afterSetId: SET_C, timeSec: 45 },
+    ]);
+  });
+
+  it('sets with the same createdAt stand in seenSets ordered by id', () => {
+    const SAME = 1_780_000_000_000;
+    const snapshot: DecryptedSnapshot = {
+      ...mockSnapshot,
+      sessions: [session(SESSION_ID, true)],
+      setLogs: [
+        { ...setLog(SET_C, SESSION_ID, SAME), createdAt: SAME },
+        { ...setLog(SET_A, SESSION_ID, SAME), createdAt: SAME },
+        { ...setLog(SET_B, SESSION_ID, SAME), createdAt: SAME },
+      ],
+    };
+    const args: ProposeHistoryCorrectionArgs = { sessionId: SESSION_ID, changes: [{ op: 'remove', setId: SET_A }], rationale: 'x' };
+    const outer = buildHistoryCorrectionPayload(args, snapshot, KEY_B64);
+    expect((innerOf(outer as unknown as Record<string, unknown>).seenSets as { id: string }[]).map((x) => x.id)).toStrictEqual([
+      SET_A,
+      SET_B,
+      SET_C,
+    ]);
+  });
+
+  it('a session with more than 500 live sets is rejected without a request', async () => {
+    const many = Array.from({ length: 501 }, (_, i) =>
+      setLog(`16801000-0000-4000-8000-${String(100000 + i).padStart(12, '0')}`, SESSION_ID, 1_780_000_000_000 + i),
+    );
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...MOCK_CACHE,
+      snapshot: { ...SNAPSHOT, setLogs: many },
+    });
+
+    const result = await propose({ changes: [{ op: 'remove', setId: many[0].id }] });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('SESSION_TOO_LARGE');
+    expect(vi.mocked(httpModule.postSuggest)).not.toHaveBeenCalled();
+  });
+
+  it('a failing history read answers with an error and sends nothing', async () => {
+    vi.mocked(cacheModule.getSnapshot).mockRejectedValue(new Error('pull failed'));
+
+    const result = await propose({ changes: [{ op: 'update', setId: SET_A, reps: 12 }] });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toBe('Propose history correction error: pull failed');
+    expect(vi.mocked(httpModule.postSuggest)).not.toHaveBeenCalled();
+  });
+
   it('an empty change list is rejected by the schema', () => {
     const parsed = ProposeHistoryCorrectionSchema.safeParse({ sessionId: SESSION_ID, rationale: 'x', changes: [] });
     expect(parsed.success).toBe(false);
