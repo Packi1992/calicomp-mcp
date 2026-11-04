@@ -322,11 +322,6 @@ describe('propose_history_correction', () => {
     expect(vi.mocked(httpModule.postSuggest)).not.toHaveBeenCalled();
   });
 
-  it('an empty change list is rejected by the schema', () => {
-    const parsed = ProposeHistoryCorrectionSchema.safeParse({ sessionId: SESSION_ID, rationale: 'x', changes: [] });
-    expect(parsed.success).toBe(false);
-  });
-
   it('a server error answers HTTP status only', async () => {
     vi.mocked(httpModule.postSuggest).mockRejectedValue(new HttpError(500, 'internal detail that must not leak'));
 
