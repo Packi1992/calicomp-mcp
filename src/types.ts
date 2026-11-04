@@ -888,7 +888,9 @@ export interface UserProfileResponse {
 export interface SuggestRequestBody {
   // Phase 166 (plan 166-08, D-15): `exercise_update`, protocol §2.7; the server allows it from
   // plan 166-03 on (ALLOWED_SUGGEST_TYPES), live after the deploy of 166-16.
-  type: 'plan_update' | 'new_plan' | 'new_exercise' | 'planned_update' | 'exercise_update';
+  // Phase 168 (plan 168-05, PERM-05): `history_correction`, protocol 1.56 §2.8; the server allows it from plan
+  // 168-03 on (ALLOWED_SUGGEST_TYPES), live after the deploy of 168-04.
+  type: 'plan_update' | 'new_plan' | 'new_exercise' | 'planned_update' | 'exercise_update' | 'history_correction';
   payload: string;          // JSON.stringify(canonical payload) — UUID-referencing only
   rationale: string;
   sourceLlm: string;

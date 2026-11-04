@@ -1113,6 +1113,86 @@ export const ProposeExerciseUpdateSchema = z
     message: 'An exercise_update needs at least one of translations, muscleGroups and capabilities',
   });
 
+/** Bounds of a corrected set value (protocol 1.56 §2.8 "Bounds and rules", the units of the set log). */
+export const HISTORY_CORRECTION_REPS_MAX = 10000;
+export const HISTORY_CORRECTION_TIME_SEC_MAX = 86400;
+export const HISTORY_CORRECTION_WEIGHT_MAX = 2000;
+export const HISTORY_CORRECTION_CHANGES_MAX = 50;
+
+/** The three set values a correction may set; at least one is required (refined per change below). */
+const HISTORY_CORRECTION_VALUES = {
+  reps: z
+    .number()
+    .int()
+    .min(0)
+    .max(HISTORY_CORRECTION_REPS_MAX)
+    .optional()
+    .describe('Repetitions, an integer 0 to 10000.'),
+  timeSec: z
+    .number()
+    .int()
+    .min(0)
+    .max(HISTORY_CORRECTION_TIME_SEC_MAX)
+    .optional()
+    .describe('Time in seconds, an integer 0 to 86400.'),
+  weight: z
+    .number()
+    .min(0)
+    .max(HISTORY_CORRECTION_WEIGHT_MAX)
+    .optional()
+    .describe('Weight in kilograms, a finite number 0 to 2000.'),
+};
+
+const hasHistoryCorrectionValue = (d: { reps?: number; timeSec?: number; weight?: number }): boolean =>
+  d.reps !== undefined || d.timeSec !== undefined || d.weight !== undefined;
+
+const HISTORY_CORRECTION_NO_VALUE = { message: 'A change needs at least one of reps, timeSec and weight' };
+
+/**
+ * propose_history_correction (Phase 168, plan 168-05, PERM-05, D-02, D-27, protocol 1.56 §2.8 "History Correction
+ * Proposals"): `sessionId` of a finished workout and 1 to 50 `changes`, each `update` (values of a live set),
+ * `add` (a new set after the live set `afterSetId`) or `remove` (a live set becomes a tombstone). `.strict()` on
+ * every level because the app parses the inner payload strictly: an unknown key would read to the coach as
+ * accepted and to the app as malformed. Whether the session has ended and every named set is a live set of it is the
+ * tool's check against the history it read (`validateHistoryCorrection`).
+ */
+export const HistoryCorrectionChangeSchema = z.discriminatedUnion('op', [
+  z
+    .object({
+      op: z.literal('update'),
+      setId: UUID_STRING.describe('Id of a live set of the session (get_history).'),
+      ...HISTORY_CORRECTION_VALUES,
+    })
+    .strict()
+    .refine(hasHistoryCorrectionValue, HISTORY_CORRECTION_NO_VALUE),
+  z
+    .object({
+      op: z.literal('add'),
+      afterSetId: UUID_STRING.describe('Id of the live set of the session after which the new set goes.'),
+      ...HISTORY_CORRECTION_VALUES,
+    })
+    .strict()
+    .refine(hasHistoryCorrectionValue, HISTORY_CORRECTION_NO_VALUE),
+  z
+    .object({
+      op: z.literal('remove'),
+      setId: UUID_STRING.describe('Id of a live set of the session to remove.'),
+    })
+    .strict(),
+]);
+
+export const ProposeHistoryCorrectionSchema = z
+  .object({
+    sessionId: UUID_STRING.describe('Id of a finished, not deleted workout session (get_history).'),
+    changes: z
+      .array(HistoryCorrectionChangeSchema)
+      .min(1)
+      .max(HISTORY_CORRECTION_CHANGES_MAX)
+      .describe('1 to 50 changes; every set id at most once over setId and afterSetId together.'),
+    rationale: z.string().min(1).max(2000),
+  })
+  .strict();
+
 // ---------------------------------------------------------------------------
 // propose_planned_update (Phase 136, D-01, Protocol v1.11 §2). The coach names an
 // INTENT — `z.discriminatedUnion('intent', [...])` — and the MCP code (never the
