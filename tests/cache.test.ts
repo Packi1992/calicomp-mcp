@@ -43,6 +43,7 @@ vi.mock('../src/crypto.js', async () => {
 import {
   getSnapshot,
   __resetCache,
+  normalizeCatalog,
   projectUserExerciseToCatalog,
   decryptSession,
   isBlankOverrideText,
@@ -52,7 +53,7 @@ import { createExerciseNameResolver } from '../src/exercise-names.js';
 import { getTemplate } from '../src/tools/get_template.js';
 import { listTemplates } from '../src/tools/list_templates.js';
 import { getExerciseCatalog } from '../src/tools/get_exercise_catalog.js';
-import { OWN_TEST_KEY_B64, ownExercisePair, ownTranslationPair } from './own-exercise-fixture.js';
+import { OWN_TEST_KEY_B64, encryptForTest, ownExercisePair, ownTranslationPair } from './own-exercise-fixture.js';
 import * as httpModule from '../src/http.js';
 import * as cryptoModule from '../src/crypto.js';
 
@@ -2053,5 +2054,187 @@ describe('decrypt-merge: invalid times, null elements and unreadable overrides',
       { entity: 'exerciseNameOverride', id: 'row-eno-b1-en', reason: 'unknown_version', key: `${exerciseId}:en`, ...routing },
     ]);
     for (const entry of cache.decodeReport!.unreadable) expect(entry.key?.startsWith(`${exerciseId}:`)).toBe(true);
+  });
+});
+
+// Phase 168.1 (plan 168.1-03, D-01, D-02; protocol 1.57 §1.12): the one seam `doFetch` lays a personal list over the
+// curated catalog, so every reader of `data.catalog` counts with it. Real decrypt, real overlay; only HTTP is mocked.
+describe('personal lists of catalog exercises', () => {
+  const EX_A = '16811000-0000-4000-8000-0000000000a1';
+  const EX_B = '16811000-0000-4000-8000-0000000000a2';
+  const EX_OWN = '16811000-0000-4000-8000-0000000000a3';
+  const EX_UNKNOWN = '16811000-0000-4000-8000-0000000000a4';
+  const MG_CHEST = '16811000-0000-4000-8000-000000000101';
+  const MG_LATS = '16811000-0000-4000-8000-000000000102';
+  const MG_BACK = '16811000-0000-4000-8000-000000000103';
+  const MG_UNKNOWN = '16811000-0000-4000-8000-000000000199';
+  const CAP_POWER = '16811000-0000-4000-8000-000000000301';
+  const CAP_MOBILITY = '16811000-0000-4000-8000-000000000302';
+  const CAP_UNKNOWN = '16811000-0000-4000-8000-000000000399';
+  const ROUTING = { createdAt: 1_793_000_000_000, updatedAt: 1_793_000_000_000 };
+
+  const chest = { id: MG_CHEST, key: 'chest', translations: [{ languageCode: 'de', name: 'Brust' }] };
+  const lats = { id: MG_LATS, key: 'lats', translations: [{ languageCode: 'de', name: 'Latissimus' }] };
+  const back = { id: MG_BACK, key: 'back', translations: [{ languageCode: 'de', name: 'Rücken' }] };
+  const power = { id: CAP_POWER, key: 'power', translations: [{ languageCode: 'de', name: 'Explosivkraft' }] };
+  const mobility = { id: CAP_MOBILITY, key: 'mobility', translations: [{ languageCode: 'de', name: 'Beweglichkeit' }] };
+
+  function catalogWire(): CatalogExerciseWire[] {
+    return [
+      {
+        id: EX_A, key: 'exercise_a', nameEn: 'Exercise A', mode: 'REPS', usesWeight: false, lastModifiedAt: 1, translations: [],
+        muscleGroups: [{ ...chest, involvementLevel: 'PRIMARY' }],
+        capabilities: [{ ...power, capabilityLevel: 'HAUPTREIZ' }],
+      },
+      {
+        id: EX_B, key: 'exercise_b', nameEn: 'Exercise B', mode: 'REPS', usesWeight: false, lastModifiedAt: 1, translations: [],
+        muscleGroups: [{ ...lats, involvementLevel: 'PRIMARY' }, { ...back, involvementLevel: 'SECONDARY' }],
+        capabilities: [{ ...mobility, capabilityLevel: 'GERING' }],
+      },
+    ];
+  }
+
+  function linkRow(rowId: string, exerciseId: string, plaintext: Record<string, unknown>) {
+    return {
+      id: rowId,
+      kind: 'exercise_link_override',
+      clientLocalId: exerciseId,
+      encryptedPayload: encryptForTest(JSON.stringify(plaintext)),
+      ...ROUTING,
+    };
+  }
+
+  function plaintext(exerciseId: string, muscleGroups: unknown, capabilities: unknown): Record<string, unknown> {
+    return { v: 1, exerciseId, muscleGroups, capabilities, updatedAt: 1_793_000_000_100 };
+  }
+
+  async function fetchWith(pull: Partial<SyncPullResponse>) {
+    mockFetchSnapshot.mockResolvedValueOnce(makePull(pull));
+    mockFetchCatalog.mockResolvedValueOnce(catalogWire());
+    return getSnapshot(PAT, OWN_TEST_KEY_B64, URL);
+  }
+
+  function entry(cache: { catalog: { id: string }[] }, id: string) {
+    const found = cache.catalog.find((ex) => ex.id === id);
+    if (found === undefined) throw new Error(`no catalog entry ${id}`);
+    return found as (typeof cache.catalog)[number] & { muscleGroups: unknown[]; capabilities: unknown[] };
+  }
+
+  it('a personal muscle list replaces the catalog list', async () => {
+    const cache = await fetchWith({
+      exerciseLinkOverrides: [
+        linkRow('row-1', EX_A, plaintext(EX_A, [{ id: MG_LATS, level: 'SECONDARY' }, { id: MG_BACK, level: null }], null)),
+      ],
+    });
+
+    expect(entry(cache, EX_A).muscleGroups).toEqual([
+      { ...lats, involvementLevel: 'SECONDARY' },
+      { ...back, involvementLevel: 'PRIMARY' },
+    ]);
+    expect(cache.snapshot.exerciseLinkOverrides?.map((o) => o.exerciseId)).toEqual([EX_A]);
+  });
+
+  it('a list of one kind leaves the other kind on the catalog', async () => {
+    const cache = await fetchWith({
+      exerciseLinkOverrides: [linkRow('row-1', EX_A, plaintext(EX_A, null, [{ id: CAP_MOBILITY, level: 'MITTRAINIERT' }]))],
+    });
+
+    expect(entry(cache, EX_A).capabilities).toEqual([{ ...mobility, capabilityLevel: 'MITTRAINIERT' }]);
+    expect(entry(cache, EX_A).muscleGroups).toEqual([{ ...chest, involvementLevel: 'PRIMARY' }]);
+    expect(entry(cache, EX_B)).toEqual(normalizeCatalog(catalogWire())[1]);
+  });
+
+  it('an unreadable override row is reported and the exercise stays on the catalog', async () => {
+    const readable = linkRow('row-1', EX_A, plaintext(EX_A, [{ id: MG_LATS, level: 'PRIMARY' }], null));
+    const broken = JSON.parse(linkRow('row-2', EX_B, plaintext(EX_B, [{ id: MG_CHEST, level: 'PRIMARY' }], null)).encryptedPayload) as { iv: string; ct: string };
+    const ct = Buffer.from(broken.ct, 'base64');
+    ct[0] ^= 0xff;
+    const tampered = { ...linkRow('row-2', EX_B, plaintext(EX_B, null, null)), encryptedPayload: JSON.stringify({ iv: broken.iv, ct: ct.toString('base64') }) };
+
+    const cache = await fetchWith({ exerciseLinkOverrides: [readable, tampered] });
+
+    expect(cache.decodeReport!.unreadable).toEqual([
+      { entity: 'exerciseLinkOverride', id: 'row-2', reason: 'decrypt_failed', key: EX_B, ...ROUTING },
+    ]);
+    expect(cache.decodeReport!.encryptedCount.exerciseLinkOverride).toBe(2);
+    expect(cache.decodeReport!.failedCount.exerciseLinkOverride).toBe(1);
+    expect(entry(cache, EX_B)).toEqual(normalizeCatalog(catalogWire())[1]);
+    expect(entry(cache, EX_A).muscleGroups).toEqual([{ ...lats, involvementLevel: 'PRIMARY' }]);
+  });
+
+  it('a server without the field leaves the snapshot key out', async () => {
+    const cache = await fetchWith({});
+
+    expect('exerciseLinkOverrides' in cache.snapshot).toBe(false);
+    expect(cache.decodeReport!.exerciseLinkOverridesLeftOut).toBeUndefined();
+    expect(cache.catalog).toEqual(normalizeCatalog(catalogWire()));
+  });
+
+  it('a tombstone never arrives and an empty pull changes nothing', async () => {
+    const cache = await fetchWith({ exerciseLinkOverrides: [] });
+
+    expect(cache.snapshot.exerciseLinkOverrides).toEqual([]);
+    expect(cache.decodeReport!.unreadable).toEqual([]);
+    expect(cache.catalog).toEqual(normalizeCatalog(catalogWire()));
+  });
+
+  it('an override on an own exercise is ignored', async () => {
+    const own: SyncExerciseDto = { id: EX_OWN, name: 'Own', mode: 'REPS', usesWeight: false, createdAt: 1, updatedAt: 1 };
+    const cache = await fetchWith({
+      exercises: [own],
+      exerciseLinkOverrides: [linkRow('row-1', EX_OWN, plaintext(EX_OWN, [{ id: MG_LATS, level: 'PRIMARY' }], null))],
+    });
+
+    expect(entry(cache, EX_OWN).muscleGroups).toEqual([]);
+    expect(cache.decodeReport!.exerciseLinkOverridesLeftOut).toEqual({ unknownExercise: 1, unknownMuscleGroup: 0, unknownCapability: 0 });
+  });
+
+  it('an override on an id outside the catalog is left out and counted', async () => {
+    const cache = await fetchWith({
+      exerciseLinkOverrides: [linkRow('row-1', EX_UNKNOWN, plaintext(EX_UNKNOWN, [{ id: MG_LATS, level: 'PRIMARY' }], null))],
+    });
+
+    expect(cache.catalog).toEqual(normalizeCatalog(catalogWire()));
+    expect(cache.decodeReport!.exerciseLinkOverridesLeftOut?.unknownExercise).toBe(1);
+  });
+
+  it('a link id the catalog does not know is left out and counted, never invented', async () => {
+    const cache = await fetchWith({
+      exerciseLinkOverrides: [
+        linkRow(
+          'row-1',
+          EX_A,
+          plaintext(
+            EX_A,
+            [{ id: MG_UNKNOWN, level: 'PRIMARY' }, { id: MG_LATS, level: 'PRIMARY' }],
+            [{ id: CAP_UNKNOWN, level: 'GERING' }, { id: CAP_MOBILITY, level: 'GERING' }],
+          ),
+        ),
+      ],
+    });
+
+    expect(entry(cache, EX_A).muscleGroups).toEqual([{ ...lats, involvementLevel: 'PRIMARY' }]);
+    expect(entry(cache, EX_A).capabilities).toEqual([{ ...mobility, capabilityLevel: 'GERING' }]);
+    expect(cache.decodeReport!.exerciseLinkOverridesLeftOut).toEqual({ unknownExercise: 0, unknownMuscleGroup: 1, unknownCapability: 1 });
+  });
+
+  it('a kind whose every id is unknown follows the catalog', async () => {
+    const cache = await fetchWith({
+      exerciseLinkOverrides: [
+        linkRow('row-1', EX_A, plaintext(EX_A, [{ id: MG_UNKNOWN, level: 'PRIMARY' }], [{ id: CAP_UNKNOWN, level: 'GERING' }])),
+      ],
+    });
+
+    expect(entry(cache, EX_A)).toEqual(normalizeCatalog(catalogWire())[0]);
+    expect(cache.decodeReport!.exerciseLinkOverridesLeftOut).toEqual({ unknownExercise: 0, unknownMuscleGroup: 1, unknownCapability: 1 });
+  });
+
+  it('the link vocabulary catalog keeps the state before the overlay', async () => {
+    const cache = await fetchWith({
+      exerciseLinkOverrides: [linkRow('row-1', EX_A, plaintext(EX_A, null, [{ id: CAP_MOBILITY, level: 'GERING' }]))],
+    });
+
+    expect(cache.linkVocabularyCatalog).toEqual(normalizeCatalog(catalogWire()));
+    expect(cache.catalog.some((ex) => ex.capabilities.some((c) => c.key === 'power'))).toBe(false);
   });
 });

@@ -1052,6 +1052,70 @@ const PermissionClassificationSectionSchema = z.object({
 
 export type PermissionClassificationSection = z.infer<typeof PermissionClassificationSectionSchema>;
 
+/**
+ * Phase 168.1 (plan 168.1-03, D-01, D-02): `exerciseLinkOverrideCipher`, the crypto-parity boundary of a personal list
+ * of catalog exercise links (kind `exercise_link_override`, protocol §1.12). Same form and same fixed test key as
+ * `exerciseNameOverrideCipher`; `expectedDecoded` is the §1.12 normal form `decryptExerciseLinkOverride` must return.
+ */
+const ExerciseLinkOverrideCipherVectorSchema = ExerciseNameOverrideCipherVectorSchema;
+
+const ExerciseLinkOverrideNormalFormSchema = z.object({
+  exerciseId: z.string(),
+  muscleGroups: z.array(z.object({ id: z.string(), level: z.string().nullable() })).nullable(),
+  capabilities: z.array(z.object({ id: z.string(), level: z.string() })).nullable(),
+  updatedAt: z.number().int(),
+});
+
+/**
+ * Phase 168.1 (plan 168.1-03): `exerciseLinkOverrideDecode`, the rules of §1.12 "Decoding a personal list" at the
+ * plaintext level. `expect` is `ok` with the normal form in `decoded`, or the kind of refusal.
+ */
+const ExerciseLinkOverrideDecodeVectorSchema = z.object({
+  name: z.string().min(1),
+  clientLocalId: z.string(),
+  plaintext: z.string(),
+  expect: z.enum(['ok', 'malformed', 'unknown_version']),
+  decoded: ExerciseLinkOverrideNormalFormSchema.optional(),
+});
+
+export type ExerciseLinkOverrideDecodeVector = z.infer<typeof ExerciseLinkOverrideDecodeVectorSchema>;
+
+/**
+ * Phase 168.1 (plan 168.1-03, D-04): `catalogExerciseLinks.parse`, what the schema of the proposal
+ * `catalog_exercise_links` (protocol §2.9) takes. `payload` stays a loose record because the refused vectors break it.
+ */
+const CatalogExerciseLinksParseVectorSchema = z.object({
+  name: z.string().min(1),
+  payload: z.record(z.string(), z.unknown()),
+  expect: z.enum(['ok', 'malformed']),
+  reason: z.string().min(1).optional(),
+});
+
+export type CatalogExerciseLinksParseVector = z.infer<typeof CatalogExerciseLinksParseVectorSchema>;
+
+/** Phase 168.1 (D-06): `pureStrength`, the progress rule of protocol §1.11 "Pure strength" (read from plan 168.1-04). */
+const PureStrengthVectorSchema = z.object({
+  name: z.string().min(1),
+  mode: z.enum(['REPS', 'TIME', 'MAX']),
+  sessions: z
+    .array(
+      z.object({
+        startTime: z.number().int(),
+        sets: z.array(
+          z.object({ reps: z.number().nullable(), timeSec: z.number().nullable(), weight: z.number().nullable() }),
+        ),
+      }),
+    )
+    .min(1),
+  expect: z.object({
+    metric: z.enum(['reps', 'e1rm', 'timeSeconds']),
+    label: z.enum(['up', 'down', 'flat', 'insufficient-data']),
+    values: z.array(z.number().nullable()),
+  }),
+});
+
+export type PureStrengthVector = z.infer<typeof PureStrengthVectorSchema>;
+
 export const CoachPlanningVectorsSchema = z.object({
   _provenance: ProvenanceSchema,
   expansion: z.array(ExpansionVectorSchema).min(1),
@@ -1101,6 +1165,12 @@ export const CoachPlanningVectorsSchema = z.object({
   // Phase 168 (plan 168-05): listed for the same reason as every section above.
   historyCorrection: HistoryCorrectionSectionSchema,
   permissionClassification: PermissionClassificationSectionSchema,
+  // Phase 168.1 (plan 168.1-03): listed for the same reason as every section above; each minimum is the count in the
+  // corpus file, so a lost vector fails the load loudly.
+  exerciseLinkOverrideCipher: z.array(ExerciseLinkOverrideCipherVectorSchema).min(3),
+  exerciseLinkOverrideDecode: z.array(ExerciseLinkOverrideDecodeVectorSchema).min(12),
+  catalogExerciseLinks: z.object({ parse: z.array(CatalogExerciseLinksParseVectorSchema).min(8) }),
+  pureStrength: z.array(PureStrengthVectorSchema).min(11),
 });
 
 export type CoachPlanningVectors = z.infer<typeof CoachPlanningVectorsSchema>;

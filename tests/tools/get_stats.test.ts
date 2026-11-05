@@ -48,8 +48,16 @@ vi.mock('../../src/cache.js', async () => {
   return { ...actual, getSnapshot: vi.fn() };
 });
 
+// Only the three fetches of the real seam below; nothing else in this file reaches the network.
+vi.mock('../../src/http.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/http.js')>('../../src/http.js');
+  return { ...actual, fetchSnapshot: vi.fn(), fetchProfile: vi.fn(), fetchCatalog: vi.fn() };
+});
+
 import * as cacheModule from '../../src/cache.js';
+import * as httpModule from '../../src/http.js';
 import { normalizeCatalog } from '../../src/cache.js';
+import { OWN_TEST_KEY_B64, encryptForTest } from '../own-exercise-fixture.js';
 import {
   mockSnapshot,
   mockCatalog,
@@ -1250,5 +1258,58 @@ describe('get_stats — Rule P', () => {
     expect(keysOf(ex.trend)).toEqual(keysOf(pins.getStatsExercise.trend));
     expect(keysOf(ex.trend!.points[0])).toEqual(keysOf((pins.getStatsExercise.trend as { points: unknown[] }).points[0]));
     expect(keysOf(ca.axes[0])).toEqual(keysOf((pins.getStatsCapabilities.axes as unknown[])[0]));
+  });
+});
+
+// Phase 168.1 (plan 168.1-03, D-02; protocol 1.57 §1.12): the real `doFetch` overlays the catalog, and `get_stats` follows
+// it without knowing about personal lists, also for a set older than the list.
+describe('get_stats — personal list of a catalog exercise', () => {
+  it('muscle stats count an old set under the personal list', async () => {
+    const MG_CHEST = '16811000-0000-4000-8000-000000000101';
+    const MG_LATS = '16811000-0000-4000-8000-000000000102';
+    const MG_QUADS = '16811000-0000-4000-8000-000000000103';
+    const muscle = (id: string, key: string) => ({ id, key, translations: [], involvementLevel: 'PRIMARY' as const });
+    const wire: CatalogExerciseWire[] = [
+      { ...mockCatalog[0], muscleGroups: [muscle(MG_CHEST, 'chest')] },
+      { ...mockCatalog[1], muscleGroups: [muscle(MG_LATS, 'lats')] },
+      { ...mockCatalog[2], muscleGroups: [muscle(MG_QUADS, 'quads')] },
+    ];
+    const actual = await vi.importActual<typeof cacheModule>('../../src/cache.js');
+    actual.__resetCache();
+    vi.mocked(httpModule.fetchProfile).mockResolvedValueOnce({
+      userId: 'user-test-1', email: 'athlete', displayName: 'Athlete', avatarUrl: '', isPremium: false, createdAt: 1,
+    });
+    vi.mocked(httpModule.fetchCatalog).mockResolvedValueOnce(wire);
+    vi.mocked(httpModule.fetchSnapshot).mockResolvedValueOnce({
+      syncedAt: 1_793_000_000_000,
+      exercises: [], exerciseTranslations: [], templates: [], blocks: [], templateExercises: [],
+      sessions: [], setLogs: [], hrSamples: [], trainingState: null,
+      exerciseLinkOverrides: [
+        {
+          id: 'row-1',
+          kind: 'exercise_link_override',
+          clientLocalId: CATALOG_EXERCISE_ID_PUSHUP,
+          encryptedPayload: encryptForTest(
+            JSON.stringify({
+              v: 1,
+              exerciseId: CATALOG_EXERCISE_ID_PUSHUP,
+              muscleGroups: [{ id: MG_LATS, level: 'PRIMARY' }],
+              capabilities: null,
+              updatedAt: 1_793_000_000_000,
+            }),
+          ),
+          createdAt: 1_793_000_000_000,
+          updatedAt: 1_793_000_000_000,
+        },
+      ],
+    });
+
+    const { catalog } = await actual.getSnapshot('calicomp_pat_test', OWN_TEST_KEY_B64, 'https://example.test');
+    actual.__resetCache();
+    // The push-up set of the fixture session (2024) stood under chest; the list is years younger.
+    const personal = { snapshot: mockSnapshot, catalog };
+
+    expect(getStats({ by: 'muscle', muscle: 'lats' }, personal).setCount).toBe(3);
+    expect(getStats({ by: 'muscle', muscle: 'chest' }, personal).setCount).toBe(0);
   });
 });
