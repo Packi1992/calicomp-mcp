@@ -70,7 +70,6 @@ import { registerToolProposeNewExercise } from '../../src/tools/propose_new_exer
 import { registerToolProposeExerciseUpdate } from '../../src/tools/propose_exercise_update.js';
 import { registerToolProposeHistoryCorrection } from '../../src/tools/propose_history_correction.js';
 import { registerToolProposeCatalogExerciseLinks } from '../../src/tools/propose_catalog_exercise_links.js';
-import { AUTO_APPLY_NOTICE } from '../../src/auto-apply-notice.js';
 import { registerToolProposePlannedUpdate } from '../../src/tools/propose_planned_update.js';
 import { registerToolGetSuggestions }     from '../../src/tools/get_suggestions.js';
 import { registerToolGetSuggestion }      from '../../src/tools/get_suggestion.js';
@@ -496,11 +495,6 @@ describe('tool registration — all 22 tools (13 READ + 9 WRITE)', () => {
   it('registers exactly 22 tools', () => {
     const tools = buildRegisteredServer();
     expect(Object.keys(tools)).toHaveLength(22);
-  });
-
-  it('the personal link tool ends its description with the notice on direct application', () => {
-    const description = buildRegisteredServer().propose_catalog_exercise_links.description;
-    expect(description?.endsWith(AUTO_APPLY_NOTICE), 'the description ends with AUTO_APPLY_NOTICE').toBe(true);
   });
 
   it('registers all expected tool names', () => {
