@@ -760,6 +760,24 @@ describe('get_stats — by capabilities', () => {
     }
   });
 
+  // Phase 168.1 (D-06, protocol 1.57 §1.11 "Pure strength"): the section stands beside the axes.
+  it('capability stats name the section beside the axes', () => {
+    const result = getStats({ by: 'capabilities' }, capabilitiesData);
+    if (result.by !== 'capabilities') throw new Error('expected by-capabilities result');
+    expect(result.pureStrength).toEqual([
+      { exerciseId: EX_NO_AXIS_ID, name: 'No Axis Exercise', setCount: 1, metric: 'reps', direction: 'insufficient-data' },
+    ]);
+    expect(result.axes.map((a) => a.key)).not.toContain('pureStrength');
+  });
+
+  it('the section name in capability stats follows lang', () => {
+    const translated = capabilitiesCatalog.map((ex) =>
+      ex.id === EX_NO_AXIS_ID ? { ...ex, translations: [{ languageCode: 'de', name: 'Ohne Achse' }] } : ex,
+    );
+    const result = getStats({ by: 'capabilities', lang: 'de' }, { snapshot: capabilitiesSnapshot, catalog: translated });
+    expect(result.pureStrength[0].name).toBe('Ohne Achse');
+  });
+
   it('existing by:"muscle" and by:"exercise" branches stay unaffected by the new branch', () => {
     const result = getStats({ by: 'muscle', muscle: 'back' }, data);
     expect(result.setCount).toBe(3);

@@ -410,7 +410,48 @@ describe('computeCapabilityBalance', () => {
     // cb-ok, cb-wid (over workoutExerciseId) and the rated link of cb-unrated: 3 balance sets;
     // no power key at all (unrated), nothing from the deleted set, the never finished and the
     // deleted session, or the exercise outside the catalog.
-    expect(balance.allTime).toEqual({ setCounts: { balance: 3 }, weighted: { balance: 3 } });
+    expect(balance.allTime).toEqual({ setCounts: { balance: 3 }, weighted: { balance: 3 }, pureStrength: [] });
     expect(balance.last7Days).toEqual(balance.allTime);
+  });
+
+  // Phase 168.1 (D-06, protocol 1.57 §1.11 "Pure strength"): the section stands beside the axes.
+  const NO_AXIS_TRAINING = [
+    { id: 'ps-50', daysAgo: 50, reps: 5 },
+    { id: 'ps-40', daysAgo: 40, reps: 6 },
+    { id: 'ps-20', daysAgo: 20, reps: 8 },
+    { id: 'ps-3', daysAgo: 3, reps: 9 },
+  ];
+  const noAxisSnapshot = buildSnapshot({
+    sessions: NO_AXIS_TRAINING.map((t) => buildSession({ id: t.id, startTime: NOW - t.daysAgo * DAY })),
+    setLogs: NO_AXIS_TRAINING.map((t) =>
+      buildSetLog({
+        id: `${t.id}-set`,
+        sessionId: t.id,
+        exerciseId: EX_NO_AXIS.id,
+        completedReps: t.reps,
+        createdAt: NOW - t.daysAgo * DAY,
+      }),
+    ),
+  });
+
+  it('setCounts stays free of the section', () => {
+    const balance = computeCapabilityBalance(noAxisSnapshot, [EX_NO_AXIS], NOW);
+    expect(balance.allTime.pureStrength).toHaveLength(1);
+    expect(balance.allTime.setCounts).toEqual({});
+    expect(balance.allTime.weighted).toEqual({});
+  });
+
+  it('each window names the section with sets in the window and a direction from the whole history', () => {
+    const balance = computeCapabilityBalance(noAxisSnapshot, [EX_NO_AXIS], NOW);
+    const row = (setCount: number) => ({
+      exerciseId: EX_NO_AXIS.id,
+      name: EX_NO_AXIS.nameEn,
+      setCount,
+      metric: 'reps',
+      direction: 'up',
+    });
+    expect(balance.last7Days.pureStrength).toEqual([row(1)]);
+    expect(balance.last30Days.pureStrength).toEqual([row(2)]);
+    expect(balance.allTime.pureStrength).toEqual([row(4)]);
   });
 });
