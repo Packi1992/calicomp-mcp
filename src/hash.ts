@@ -309,7 +309,8 @@ function canonicalizeTemplateExercise(
  */
 export function computeChangeHash(
   // Phase 168 (plan 168-05, protocol 1.56 §2.8): `history_correction`, over the outer payload like every type.
-  type: 'plan_update' | 'new_plan' | 'new_exercise' | 'planned_update' | 'exercise_update' | 'history_correction',
+  // Phase 168.1 (plan 168.1-03, protocol 1.57 §2.9): `catalog_exercise_links`.
+  type: 'plan_update' | 'new_plan' | 'new_exercise' | 'planned_update' | 'exercise_update' | 'history_correction' | 'catalog_exercise_links',
   payload: unknown,
 ): string {
   return createHash('sha256').update(`${type}:${canonicalStringify(payload)}`, 'utf8').digest('hex');

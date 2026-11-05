@@ -1515,6 +1515,7 @@ export function buildCatalogLinkIndex(curated: CatalogExercise[]): CatalogLinkIn
  * not know is left out and counted, never invented, and a kind left without an entry follows the catalog. Only curated
  * entries are touched: a list on an own exercise or on an unknown id changes nothing and is counted. A muscle link
  * without level reads as `PRIMARY`, as for an own exercise; a capability link always has a level (§1.12, rule 5).
+ * `personalLinks` names the kinds that really came from the personal list.
  */
 export function applyLinkOverrides(
   curated: CatalogExercise[],
@@ -1541,10 +1542,15 @@ export function applyLinkOverrides(
       if (cap === undefined) { leftOut.unknownCapability += 1; continue; }
       capabilities.push({ id: cap.id, key: cap.key, translations: cap.translations, capabilityLevel: link.level });
     }
+    if (muscleGroups.length === 0 && capabilities.length === 0) return ex;
     return {
       ...ex,
       ...(muscleGroups.length > 0 ? { muscleGroups } : {}),
       ...(capabilities.length > 0 ? { capabilities } : {}),
+      personalLinks: [
+        ...(muscleGroups.length > 0 ? (['muscleGroups'] as const) : []),
+        ...(capabilities.length > 0 ? (['capabilities'] as const) : []),
+      ],
     };
   });
   leftOut.unknownExercise += byExercise.size;

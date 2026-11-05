@@ -500,7 +500,7 @@ describe('tool registration — all 22 tools (13 READ + 9 WRITE)', () => {
 
   it('the personal link tool ends its description with the notice on direct application', () => {
     const description = buildRegisteredServer().propose_catalog_exercise_links.description;
-    expect(description.endsWith(AUTO_APPLY_NOTICE), 'the description ends with AUTO_APPLY_NOTICE').toBe(true);
+    expect(description?.endsWith(AUTO_APPLY_NOTICE), 'the description ends with AUTO_APPLY_NOTICE').toBe(true);
   });
 
   it('registers all expected tool names', () => {
@@ -717,7 +717,8 @@ describe('tool registration — all 22 tools (13 READ + 9 WRITE)', () => {
       'replaces that list completely',
       'personal name and description per language',
       'the shared catalog never changes for anyone',
-      'refused until phase 168.1',
+      // GEAENDERT in 168.1-03: was 'refused until phase 168.1'; the personal lists now have their own tool.
+      'propose_catalog_exercise_links proposes those',
       'EXERCISE_NOT_FOUND',
       'Equipment is not part of this proposal',
       'once the server has been deployed with it',

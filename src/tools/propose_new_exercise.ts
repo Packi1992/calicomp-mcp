@@ -72,12 +72,14 @@ export interface LinkVocabulary {
 
 /**
  * The capability and equipment vocabulary of the catalog the MCP loaded: every key that a
- * catalog entry (curated or own) carries, the same keys `get_exercise_catalog` shows the coach.
+ * catalog entry (curated or own) carries. Every caller passes `linkVocabularyCatalog`, the catalog before the personal
+ * lists of Phase 168.1 were laid over it, so an axis that stands only on an overridden exercise stays a known key
+ * (Pitfall 6). `doFetch` always sets it; a cache without it knows no key and refuses, it never guesses.
  */
-export function catalogLinkVocabulary(catalog: CatalogExercise[]): LinkVocabulary {
+export function catalogLinkVocabulary(catalog: CatalogExercise[] | undefined): LinkVocabulary {
   const capabilityKeys = new Set<string>();
   const equipmentKeys = new Set<string>();
-  for (const ex of catalog) {
+  for (const ex of catalog ?? []) {
     for (const c of ex.capabilities) capabilityKeys.add(c.key);
     for (const e of ex.equipment) equipmentKeys.add(e.key);
   }
@@ -173,7 +175,7 @@ export function registerToolProposeNewExercise(
 
         const data  = await getSnapshot(pat, keyB64, serverUrl);
         // Phase 166 (D-11, T-166-25): capability and equipment keys against the loaded catalog.
-        const unknownKey = findUnknownLinkKey(typedArgs, catalogLinkVocabulary(data.catalog));
+        const unknownKey = findUnknownLinkKey(typedArgs, catalogLinkVocabulary(data.linkVocabularyCatalog));
         if (unknownKey !== undefined) {
           return { isError: true, content: [{ type: 'text' as const, text: unknownKey }] };
         }

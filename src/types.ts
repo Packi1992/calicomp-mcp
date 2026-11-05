@@ -884,6 +884,11 @@ export interface CatalogExercise {
    * an own exercise apart from a curated one.
    */
   origin: 'CATALOG' | 'CUSTOM';
+  /**
+   * Phase 168.1 (D-02, protocol 1.57 §1.11, §1.12): the kinds whose list on this entry is the athlete's personal list,
+   * not the catalog's. `muscleGroups` and `capabilities` above then show the effective list. Absent on every other entry.
+   */
+  personalLinks?: ('muscleGroups' | 'capabilities')[];
 }
 
 /**
@@ -932,7 +937,9 @@ export interface SuggestRequestBody {
   // plan 166-03 on (ALLOWED_SUGGEST_TYPES), live after the deploy of 166-16.
   // Phase 168 (plan 168-05, PERM-05): `history_correction`, protocol 1.56 §2.8; the server allows it from plan
   // 168-03 on (ALLOWED_SUGGEST_TYPES), live after the deploy of 168-04.
-  type: 'plan_update' | 'new_plan' | 'new_exercise' | 'planned_update' | 'exercise_update' | 'history_correction';
+  // Phase 168.1 (plan 168.1-03, D-04): `catalog_exercise_links`, protocol 1.57 §2.9; the server allows it from plan
+  // 168.1-02 on (ALLOWED_SUGGEST_TYPES), live only after its deploy.
+  type: 'plan_update' | 'new_plan' | 'new_exercise' | 'planned_update' | 'exercise_update' | 'history_correction' | 'catalog_exercise_links';
   payload: string;          // JSON.stringify(canonical payload) — UUID-referencing only
   rationale: string;
   sourceLlm: string;

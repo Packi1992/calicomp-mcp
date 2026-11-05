@@ -8,7 +8,7 @@
  * `origin` whether it is an own exercise (`'CUSTOM'`) or a catalog exercise (`'CATALOG'`):
  *   - not found: `EXERCISE_NOT_FOUND`, no proposal;
  *   - catalog exercise with `muscleGroups` or `capabilities`: `CATALOG_EXERCISE_LINKS_REFUSED`,
- *     no proposal (no personal mechanism before phase 168.1, Pitfall 10, T-166-26); its
+ *     no proposal (the personal lists have their own tool, `propose_catalog_exercise_links`, T-166-26); its
  *     `translations` become the athlete's personal override of §1.7 on accept, the shared catalog
  *     never changes;
  *   - a capability key the loaded catalog does not know: `UNKNOWN_CAPABILITY_KEY`, the key named.
@@ -71,8 +71,8 @@ export function validateExerciseUpdate(
   if (target.origin === 'CATALOG' && (args.muscleGroups !== undefined || args.capabilities !== undefined)) {
     return (
       `${CATALOG_EXERCISE_LINKS_REFUSED}: muscleGroups and capabilities cannot be proposed for a ` +
-      'catalog exercise (personal muscles and capabilities of a catalog exercise follow in phase ' +
-      '168.1). Propose translations only.'
+      'catalog exercise with this tool. Use propose_catalog_exercise_links for a personal list of a ' +
+      'catalog exercise, and propose only translations here.'
     );
   }
   return findUnknownLinkKey(args, vocabulary);
@@ -118,7 +118,7 @@ export function registerToolProposeExerciseUpdate(
         'list completely while an absent list stays unchanged. For a catalog exercise only ' +
         'translations apply, as the athlete\'s own personal name and description per language; the ' +
         'shared catalog never changes for anyone. muscleGroups and capabilities of a catalog exercise ' +
-        'are refused until phase 168.1. Use the muscle and capability keys get_exercise_catalog ' +
+        'are refused here; propose_catalog_exercise_links proposes those. Use the muscle and capability keys get_exercise_catalog ' +
         'shows; a capability level is required, a muscle level is optional. An unknown capability ' +
         'key is refused with an error that names it, and an exerciseId that is neither a catalog nor ' +
         'an own exercise with EXERCISE_NOT_FOUND. Never send an empty list. Equipment is not part of ' +
@@ -137,7 +137,7 @@ export function registerToolProposeExerciseUpdate(
         const refusal = validateExerciseUpdate(
           typedArgs,
           found === undefined ? undefined : { origin: found.origin },
-          catalogLinkVocabulary(data.catalog),
+          catalogLinkVocabulary(data.linkVocabularyCatalog),
         );
         if (refusal !== undefined) {
           return { isError: true, content: [{ type: 'text' as const, text: refusal }] };

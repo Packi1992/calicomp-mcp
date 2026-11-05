@@ -139,7 +139,8 @@ function annotateCatalogRefs(value: unknown, resolver: ExerciseNameResolver): un
 /**
  * Parses a stored payload string and annotates it via `annotateCatalogRefs` (D-35). An
  * `exercise_update` (Phase 166, plan 166-08, protocol §2.7) names its exercise by a top-level
- * `exerciseId` without a `source` marker; that id additively gets the same name fields.
+ * `exerciseId` without a `source` marker; that id additively gets the same name fields. A
+ * `catalog_exercise_links` (Phase 168.1, protocol §2.9) names its exercise the same way.
  */
 function resolvePayloadString(payload: string, resolver: ExerciseNameResolver, type?: string): PayloadResolveOutcome {
   let parsed: unknown;
@@ -149,7 +150,7 @@ function resolvePayloadString(payload: string, resolver: ExerciseNameResolver, t
     return { skipped: 'unparsable_payload' };
   }
   const resolved = annotateCatalogRefs(parsed, resolver);
-  if (type === 'exercise_update' && resolved !== null && typeof resolved === 'object' && !Array.isArray(resolved)) {
+  if ((type === 'exercise_update' || type === 'catalog_exercise_links') && resolved !== null && typeof resolved === 'object' && !Array.isArray(resolved)) {
     const top = resolved as Record<string, unknown>;
     if (typeof top.exerciseId === 'string') {
       for (const key of OPTIONAL_RESOLVER_KEYS) delete top[key];
@@ -201,7 +202,7 @@ export function registerToolGetSuggestion(
         'returns payloadResolved (and appliedPayloadResolved, when appliedPayload is present) — a ' +
         'deep copy of the same payload in which every catalog exercise reference additionally ' +
         'carries exerciseName and exerciseKey next to its exerciseId (optional lang). For an ' +
-        'exercise_update proposal (since phase 166) the top-level exerciseId of ' +
+        'exercise_update proposal (since phase 166) and a catalog_exercise_links proposal the top-level exerciseId of ' +
         'the resolved copy is named the same way. ' +
         'Since phase 168 the row also says whether the app applied it automatically (`decidedBy`: ' +
         '"auto", or "user" when the athlete decided, absent when unknown) and whether it was undone ' +

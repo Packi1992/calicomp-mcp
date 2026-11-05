@@ -221,7 +221,7 @@ export function registerToolProposeNewPlan(
         const data       = await getSnapshot(pat, keyB64, serverUrl);
         // Phase 166 (plan 166-08, D-11, T-166-25): capability and equipment keys of every
         // newExercises[] entry against the loaded catalog, before any hashing/network call.
-        const vocabulary = catalogLinkVocabulary(data.catalog);
+        const vocabulary = catalogLinkVocabulary(data.linkVocabularyCatalog);
         for (const entry of typedArgs.newExercises ?? []) {
           const unknownKey = findUnknownLinkKey(entry, vocabulary);
           if (unknownKey !== undefined) {

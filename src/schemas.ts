@@ -1113,6 +1113,27 @@ export const ProposeExerciseUpdateSchema = z
     message: 'An exercise_update needs at least one of translations, muscleGroups and capabilities',
   });
 
+/**
+ * propose_catalog_exercise_links (Phase 168.1, plan 168.1-03, D-04, protocol 1.57 §2.9): `exerciseId` and at least one of
+ * `muscleGroups` and `capabilities`, in the forms of §2.7. `.strict()` because §2.9 says "no other key". Whether the id is
+ * a catalog exercise is the tool's check against the exercises it read (`validateCatalogExerciseLinks`).
+ */
+export const ProposeCatalogExerciseLinksSchema = z
+  .object({
+    exerciseId: UUID_STRING.describe('Id of a catalog exercise (origin CATALOG) from get_exercise_catalog.'),
+    rationale: z.string().min(1).max(2000),
+    muscleGroups: MuscleLinksSchema.optional().describe(
+      'Optional. Replaces the muscle list for this athlete completely; absent keeps that kind as it is.',
+    ),
+    capabilities: CapabilityLinksSchema.optional().describe(
+      'Optional. Replaces the capability list for this athlete completely; absent keeps that kind as it is.',
+    ),
+  })
+  .strict()
+  .refine((d) => d.muscleGroups !== undefined || d.capabilities !== undefined, {
+    message: 'A catalog_exercise_links proposal needs at least one of muscleGroups and capabilities',
+  });
+
 /** Bounds of a corrected set value (protocol 1.56 §2.8 "Bounds and rules", the units of the set log). */
 export const HISTORY_CORRECTION_REPS_MAX = 10000;
 export const HISTORY_CORRECTION_TIME_SEC_MAX = 86400;
