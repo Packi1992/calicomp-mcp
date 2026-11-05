@@ -309,8 +309,8 @@ describe('get_planned_workouts — registered MCP handler', () => {
       ...mockCacheFor(snapshot),
       decodeReport: {
         unreadable: [{ entity: 'plannedWorkout', id: 'row-broken', reason: 'decrypt_failed' }],
-        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 },
-        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 },
+        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0, exerciseLinkOverride: 0 },
+        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 1, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0, exerciseLinkOverride: 0 },
       },
     });
 
@@ -348,7 +348,7 @@ describe('get_planned_workouts — registered MCP handler', () => {
     const dropped = [{ entity: 'plannedForeignActivity' as const, id: 'row-pfa-bad', field: 'scheduledTime' as const, reason: 'not_hh_mm' as const }];
     vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
       ...mockCacheFor(snapshot),
-      decodeReport: { unreadable: [], encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 }, failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 }, droppedValues: dropped },
+      decodeReport: { unreadable: [], encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0, exerciseLinkOverride: 0 }, failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0, exerciseLinkOverride: 0 }, droppedValues: dropped },
     });
     const server = new McpServer({ name: 'test', version: '0.1.0' });
     registerToolGetPlannedWorkouts(server, DUMMY_CFG);
@@ -572,8 +572,8 @@ describe('get_planned_workouts — foreign appointments', () => {
       ...mockCacheFor(snapshot),
       decodeReport: {
         unreadable: [{ entity: 'plannedForeignActivity', id: 'fr-broken', reason: 'malformed_payload' }],
-        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 2, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 },
-        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 1, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0 },
+        encryptedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 2, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0, exerciseLinkOverride: 0 },
+        failedCount: { session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0, foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 1, exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0, exerciseLinkOverride: 0 },
       },
     });
 

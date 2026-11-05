@@ -274,6 +274,12 @@ export interface SyncPullResponse {
   // included. Optional here anyway: a missing key means the server predates Phase 156,
   // and `decryptMerge` then leaves the snapshot field out instead of inventing a list.
   exerciseNameOverrides?: MiscSyncRow[];
+  /**
+   * Phase 168.1 (D-01, D-02; protocol 1.57 §1.3, §1.12): the personal lists of catalog exercises, kind
+   * `exercise_link_override`, one row per exercise (`clientLocalId` = the exercise id), only live rows, as ciphertext.
+   * A missing field means the server is older than Phase 168.1.
+   */
+  exerciseLinkOverrides?: MiscSyncRow[];
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +561,19 @@ export interface DecryptedExerciseNameOverride {
   updatedAt: number;
 }
 
+/**
+ * A decoded personal list of a catalog exercise (`exercise_link_override`, Phase 168.1, D-01): the normal form of protocol
+ * §1.12 "Decoding a personal list" and at the same time the `expectedDecoded` of the corpus section
+ * `exerciseLinkOverrideCipher`. A list that is `null` follows the catalog; the two are never both `null`. Ids are the
+ * catalog's own. Carries no athlete text, only ids and levels from closed vocabularies.
+ */
+export interface DecryptedExerciseLinkOverride {
+  exerciseId: string;
+  muscleGroups: { id: string; level: 'PRIMARY' | 'SECONDARY' | 'STABILIZER' | null }[] | null;
+  capabilities: { id: string; level: 'HAUPTREIZ' | 'MITTRAINIERT' | 'GERING' }[] | null;
+  updatedAt: number;
+}
+
 /** Full decrypted snapshot aggregate — what the tool handlers receive from the cache layer. */
 export interface DecryptedSnapshot {
   syncedAt: number;
@@ -588,6 +607,13 @@ export interface DecryptedSnapshot {
    */
   exerciseNameOverrides?: DecryptedExerciseNameOverride[];
   /**
+   * Phase 168.1 (D-01, D-02): the readable personal lists of catalog exercises. OPTIONAL for the same two reasons as the
+   * lists above: the key is left out when the server did not send `exerciseLinkOverrides` (older than Phase 168.1), and
+   * every existing snapshot fixture stays valid. An unreadable row is not in this list; it is counted in the
+   * `DecodeReport`, and its exercise follows the catalog. `doFetch` lays these lists over the catalog.
+   */
+  exerciseLinkOverrides?: DecryptedExerciseLinkOverride[];
+  /**
    * Phase 164 (CRYPT-01, D-25; protocol 1.45 §1.9 "Links ride in the payload"): the decoded
    * muscle-group, equipment and capability links of every own exercise that arrived as
    * ciphertext, keyed by the exercise id, beside `exercises` (the plaintext row shape has no
@@ -614,12 +640,13 @@ export interface DecryptedSnapshot {
 // the row (`templateId`, `isQuickChallenge`) are all `classifySession` needs.
 // ---------------------------------------------------------------------------
 
-/** The eleven row kinds `decryptMerge` can fail to decode (three since Phase 155, one since
- *  Phase 156, the last two since Phase 164). `exerciseNameOverride` belongs to no readability
+/** The twelve row kinds `decryptMerge` can fail to decode (three since Phase 155, one since
+ *  Phase 156, two since Phase 164, the last since Phase 168.1). `exerciseNameOverride` belongs to no readability
  *  check of any tool: an unreadable override only takes away its own exercise's own name (D-10).
  *  `exercise` and `exerciseTranslation` (own exercises with ciphertext, protocol 1.45 §1.9) belong
  *  to none either: an unreadable own exercise is left out of the snapshot and degrades only
- *  itself — a tool then names it `exerciseUnknown`, never with a placeholder name. */
+ *  itself — a tool then names it `exerciseUnknown`, never with a placeholder name.
+ *  `exerciseLinkOverride` (protocol 1.57 §1.12) belongs to none either: its exercise follows the catalog. */
 export type UnreadableEntity =
   | 'session'
   | 'setLog'
@@ -631,13 +658,14 @@ export type UnreadableEntity =
   | 'plannedForeignActivity'
   | 'exerciseNameOverride'
   | 'exercise'
-  | 'exerciseTranslation';
+  | 'exerciseTranslation'
+  | 'exerciseLinkOverride';
 
 /**
  * Why a row could not be decoded. `unknown_version` only ever applies to
  * `plannedWorkout`/`setting`, the three foreign sport kinds
  * (`foreignActivityType`/`foreignActivity`/`plannedForeignActivity`, Phase 155) and
- * `exerciseNameOverride` (Phase 156) —
+ * `exerciseNameOverride` (Phase 156), `exerciseLinkOverride` (Phase 168.1) —
  * session/setLog/hrSample payloads carry no `v` field (§Befund 3a of the phase research).
  */
 export type UnreadableReason = 'decrypt_failed' | 'malformed_payload' | 'unknown_version';
@@ -680,6 +708,15 @@ export interface UnreadableRow {
  * could not be decoded for any reason, including rows without ciphertext (empty-payload
  * tombstones) — `assertCalendarReadable` (D-09) and the D-32 degrade path read it.
  */
+export interface ExerciseLinkOverridesLeftOut {
+  /** A list on an id outside the curated catalog: an own exercise (§1.12 "Catalog exercises only") or an unknown id. */
+  unknownExercise: number;
+  /** A muscle link whose id the curated catalog does not know; never invented. */
+  unknownMuscleGroup: number;
+  /** A capability link whose id the curated catalog does not know; never invented. */
+  unknownCapability: number;
+}
+
 export interface DecodeReport {
   unreadable: UnreadableRow[];
   encryptedCount: Record<UnreadableEntity, number>;
@@ -691,6 +728,11 @@ export interface DecodeReport {
    * Counts only, never an id or a name. Present only when an own exercise arrived as ciphertext.
    */
   ownExerciseLinksLeftOut?: OwnExerciseLinksLeftOut;
+  /**
+   * Phase 168.1 (D-01, protocol 1.57 §1.12 "Applying a personal list"): what the overlay of the personal lists left out,
+   * as counts only. Present only when the server sent `exerciseLinkOverrides`.
+   */
+  exerciseLinkOverridesLeftOut?: ExerciseLinkOverridesLeftOut;
   /**
    * Phase 166 (plan 166-10, review finding 155-IN-06): values of READABLE rows the decoder did
    * not use because they break the form the protocol gives them — today a foreign

@@ -57,6 +57,13 @@
  *   and belongs to no readability check. The decoded links ride beside the rows in
  *   `snapshot.ownExerciseLinks` and reach the catalog through `projectUserExerciseToCatalog`.
  *
+ * Personal lists of catalog exercises (Phase 168.1, D-01, D-02; protocol 1.57 §1.12):
+ *   `exerciseLinkOverrides` (kind `exercise_link_override`) is always encrypted and decodes per
+ *   row (`exercise-link-override-cipher.ts`). A missing wire field leaves the snapshot key OUT (a
+ *   server older than Phase 168.1). An unreadable row is reported under `exerciseLinkOverride`,
+ *   belongs to no readability check, and its exercise follows the catalog. `doFetch` lays the
+ *   lists over the curated catalog, the one seam every reader of `data.catalog` follows.
+ *
  * Per-row decode fault tolerance (Phase 150, D-08/D-10/D-11/D-12):
  *   Sessions, set-logs, HR samples, planned workouts and settings ALL decode per row —
  *   a single bad row (`RowDecodeError` below) never aborts `decryptMerge`. Failures land
@@ -86,6 +93,7 @@ import {
 // cache.js keeps working.
 export { CANONICAL_LOWER_UUID, RowDecodeError, isBlankOverrideText, requiredString };
 import { decryptOwnExercise, decryptOwnExerciseTranslation } from './own-exercise-cipher.js';
+import { decryptExerciseLinkOverride } from './exercise-link-override-cipher.js';
 import type { OwnExerciseLinks } from './own-exercise-cipher.js';
 import type {
   SyncPullResponse,
@@ -107,6 +115,8 @@ import type {
   DecryptedForeignActivityType,
   DecryptedPlannedForeignActivity,
   DecryptedExerciseNameOverride,
+  DecryptedExerciseLinkOverride,
+  ExerciseLinkOverridesLeftOut,
   NormalizedBlock,
   NormalizedTemplateExercise,
   CatalogExercise,
@@ -149,6 +159,12 @@ export type SnapshotCache = {
    * that omits this field.
    */
   decodeReport?: DecodeReport;
+  /**
+   * Phase 168.1 (Pitfall 6): the catalog before the personal lists were laid over it (`normalizeCatalog` plus the
+   * athlete's own exercises). It is the vocabulary of every key check of the proposal tools: an axis that stands only on
+   * an overridden exercise stays a known key. Optional for the same reason as `decodeReport`; `doFetch` always sets it.
+   */
+  linkVocabularyCatalog?: CatalogExercise[];
 };
 
 // ---------------------------------------------------------------------------
@@ -162,12 +178,12 @@ function newDecodeReport(): DecodeReport {
     encryptedCount: {
       session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
       foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
-      exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0,
+      exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0, exerciseLinkOverride: 0,
     },
     failedCount: {
       session: 0, setLog: 0, hrSample: 0, plannedWorkout: 0, setting: 0,
       foreignActivityType: 0, foreignActivity: 0, plannedForeignActivity: 0,
-      exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0,
+      exerciseNameOverride: 0, exercise: 0, exerciseTranslation: 0, exerciseLinkOverride: 0,
     },
   };
 }
@@ -1108,7 +1124,7 @@ function decodeForeignRows<T>(
   rows: MiscSyncRow[],
   keyB64: string,
   report: DecodeReport,
-  entity: 'foreignActivityType' | 'foreignActivity' | 'plannedForeignActivity' | 'exerciseNameOverride',
+  entity: 'foreignActivityType' | 'foreignActivity' | 'plannedForeignActivity' | 'exerciseNameOverride' | 'exerciseLinkOverride',
   decryptRow: (row: MiscSyncRow, keyB64: string) => T,
 ): T[] {
   const decoded: T[] = [];
@@ -1132,7 +1148,8 @@ function decodeForeignRows<T>(
         // Phase 166 (plan 166-10, 156-GR-MCP-03): an override row names its exercise through its
         // plaintext routing key "<exerciseId>:<languageCode>" (what the server already sees,
         // never payload content), the same field a setting row carries.
-        ...(entity === 'exerciseNameOverride' ? { key: row.clientLocalId } : {}),
+        // Phase 168.1 (protocol 1.57 §1.12): a personal list names its exercise the same way.
+        ...(entity === 'exerciseNameOverride' || entity === 'exerciseLinkOverride' ? { key: row.clientLocalId } : {}),
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       });
@@ -1418,6 +1435,15 @@ function decryptMerge(raw: SyncPullResponse, keyB64: string): { snapshot: Decryp
     ...(raw.exerciseNameOverrides != null
       ? { exerciseNameOverrides: decodeExerciseNameOverrides(raw.exerciseNameOverrides, keyB64, decodeReport) }
       : {}),
+    // Phase 168.1 (D-01): same rule; a missing field means a server older than Phase 168.1. An unreadable row degrades
+    // only itself: it is reported, and `doFetch` leaves its exercise on the catalog (§1.12).
+    ...(raw.exerciseLinkOverrides != null
+      ? {
+          exerciseLinkOverrides: decodeForeignRows(
+            raw.exerciseLinkOverrides, keyB64, decodeReport, 'exerciseLinkOverride', decryptExerciseLinkOverride,
+          ),
+        }
+      : {}),
     // Phase 164 (D-25): only when an own exercise arrived as ciphertext, so a plaintext pull
     // yields exactly the snapshot it yielded before.
     ...(Object.keys(ownExercises.links).length > 0 ? { ownExerciseLinks: ownExercises.links } : {}),
@@ -1477,6 +1503,52 @@ export function buildCatalogLinkIndex(curated: CatalogExercise[]): CatalogLinkIn
     for (const cap of ex.capabilities) if (!capabilities.has(cap.id)) capabilities.set(cap.id, cap);
   }
   return { muscleGroups, equipment, capabilities };
+}
+
+/**
+ * Lay the personal lists of protocol §1.12 over the curated catalog (Phase 168.1, D-01, D-02) and return the effective
+ * catalog; this is the only place that does, so every reader of `data.catalog` counts with the effective lists, also for
+ * old sets, and no tool carries an overlay of its own.
+ *
+ * A list replaces the catalog list of its kind completely; a kind that is `null` stays on the catalog. Each id is resolved
+ * against `linkIndex`, the curated catalog before this overlay, into the shape of a catalog entry; an id the index does
+ * not know is left out and counted, never invented, and a kind left without an entry follows the catalog. Only curated
+ * entries are touched: a list on an own exercise or on an unknown id changes nothing and is counted. A muscle link
+ * without level reads as `PRIMARY`, as for an own exercise; a capability link always has a level (§1.12, rule 5).
+ */
+export function applyLinkOverrides(
+  curated: CatalogExercise[],
+  overrides: DecryptedExerciseLinkOverride[] | undefined,
+  linkIndex: CatalogLinkIndex,
+  leftOut: ExerciseLinkOverridesLeftOut,
+): CatalogExercise[] {
+  if (overrides === undefined || overrides.length === 0) return curated;
+  const byExercise = new Map(overrides.map((override) => [override.exerciseId, override]));
+  const effective = curated.map((ex) => {
+    const override = byExercise.get(ex.id);
+    if (override === undefined) return ex;
+    byExercise.delete(ex.id);
+
+    const muscleGroups: CatalogMuscleGroup[] = [];
+    for (const link of override.muscleGroups ?? []) {
+      const mg = linkIndex.muscleGroups.get(link.id);
+      if (mg === undefined) { leftOut.unknownMuscleGroup += 1; continue; }
+      muscleGroups.push({ id: mg.id, key: mg.key, translations: mg.translations, involvementLevel: link.level ?? 'PRIMARY' });
+    }
+    const capabilities: CatalogCapabilityAxis[] = [];
+    for (const link of override.capabilities ?? []) {
+      const cap = linkIndex.capabilities.get(link.id);
+      if (cap === undefined) { leftOut.unknownCapability += 1; continue; }
+      capabilities.push({ id: cap.id, key: cap.key, translations: cap.translations, capabilityLevel: link.level });
+    }
+    return {
+      ...ex,
+      ...(muscleGroups.length > 0 ? { muscleGroups } : {}),
+      ...(capabilities.length > 0 ? { capabilities } : {}),
+    };
+  });
+  leftOut.unknownExercise += byExercise.size;
+  return effective;
 }
 
 /** A fresh, all-zero `OwnExerciseLinksLeftOut`. */
@@ -1603,10 +1675,16 @@ async function doFetch(
     .map((ex) =>
       projectUserExerciseToCatalog(ex, snapshot.exerciseTranslations, snapshot.ownExerciseLinks?.[ex.id], linkIndex, leftOut),
     );
-  const catalog = [...curatedCatalog, ...projectedUserExercises];
+  // Phase 168.1 (D-01, D-02): the personal lists, after the index and before `catalog`, so an id resolves against the
+  // catalog itself and the vocabulary of the proposal tools keeps the state before the overlay (Pitfall 6).
+  const overridesLeftOut: ExerciseLinkOverridesLeftOut = { unknownExercise: 0, unknownMuscleGroup: 0, unknownCapability: 0 };
+  const effectiveCatalog = applyLinkOverrides(curatedCatalog, snapshot.exerciseLinkOverrides, linkIndex, overridesLeftOut);
+  const catalog = [...effectiveCatalog, ...projectedUserExercises];
+  const linkVocabularyCatalog = [...curatedCatalog, ...projectedUserExercises];
   if (snapshot.ownExerciseLinks !== undefined) decodeReport.ownExerciseLinksLeftOut = leftOut;
+  if (snapshot.exerciseLinkOverrides !== undefined) decodeReport.exerciseLinkOverridesLeftOut = overridesLeftOut;
 
-  return { snapshot, catalog, profile, fetchedAt: Date.now(), decodeReport };
+  return { snapshot, catalog, profile, fetchedAt: Date.now(), decodeReport, linkVocabularyCatalog };
 }
 
 // ---------------------------------------------------------------------------

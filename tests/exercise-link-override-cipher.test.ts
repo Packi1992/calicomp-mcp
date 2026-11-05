@@ -15,7 +15,7 @@ import { loadCoachPlanningVectors } from './shared-vectors.js';
 const CORPUS = loadCoachPlanningVectors();
 const REASON_OF = { malformed: 'malformed_payload', unknown_version: 'unknown_version' } as const;
 
-const EX = '16811000-0000-4000-8000-000000000001';
+const EX = '16811000-0000-4000-8000-00000000000a';
 const MG = '16811000-0000-4000-8000-000000000101';
 const MG_2 = '16811000-0000-4000-8000-000000000102';
 const CAP = '16811000-0000-4000-8000-000000000301';
@@ -76,7 +76,6 @@ describe('decoding a personal list', () => {
     ['a JSON null', 'null', 'malformed_payload'],
     ['a missing version', JSON.stringify(withoutKey('v')), 'unknown_version'],
     ['the version as a string', JSON.stringify(plaintext({ v: '1' })), 'unknown_version'],
-    ['an exerciseId in upper case', JSON.stringify(plaintext({ exerciseId: EX.toUpperCase() })), 'malformed_payload'],
     ['a missing updatedAt', JSON.stringify(withoutKey('updatedAt')), 'malformed_payload'],
     ['an updatedAt that is no integer', JSON.stringify(plaintext({ updatedAt: 1.5 })), 'malformed_payload'],
     ['an updatedAt beyond 2^53 - 1', JSON.stringify(plaintext({ updatedAt: 2 ** 53 })), 'malformed_payload'],
@@ -92,6 +91,13 @@ describe('decoding a personal list', () => {
     ['a capability level of the muscle axis', JSON.stringify(plaintext({ capabilities: [{ id: CAP, level: 'PRIMARY' }] })), 'malformed_payload'],
   ])('refuses %s', (_name, text, reason) => {
     expect(reasonOf(() => decodeExerciseLinkOverridePlaintext(text, ROW))).toBe(reason);
+  });
+
+  it('refuses an exerciseId in upper case even when the row names it the same way', () => {
+    const upper = EX.toUpperCase();
+    const text = JSON.stringify(plaintext({ exerciseId: upper }));
+
+    expect(reasonOf(() => decodeExerciseLinkOverridePlaintext(text, { id: 'row-1', clientLocalId: upper }))).toBe('malformed_payload');
   });
 
   it('keeps an unsorted list in the order it was written', () => {
