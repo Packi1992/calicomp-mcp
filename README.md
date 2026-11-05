@@ -433,6 +433,31 @@ the proposal directly, `"user"` when the athlete decided, absent when unknown) a
 when the athlete undid a direct apply, absent otherwise). Both tools show only the fields of their own
 row type; a field that belongs to the app's own list never reaches the coach.
 
+### Personal muscles and capabilities, and the section "Reine Kraft" (phase 168.1)
+
+Phase 168.1 adds to the same version (protocol 1.57 of `docs/COACH-PLANNING-PROTOCOL.md`, §1.11, §1.12
+and §2.9).
+
+The new tool `propose_catalog_exercise_links` (proposal type `catalog_exercise_links`, tool 22, the
+ninth that writes) proposes a personal muscle list, a personal capability list or both for a catalog
+exercise. Such a list replaces the catalog list of its kind completely for this athlete, everywhere and
+also for old sets; an own exercise stays with `propose_exercise_update`. The tool checks the exercise
+and every key against the unchanged catalog and sends nothing otherwise. The type is live once the
+server has been deployed with it.
+
+The app keeps the personal lists encrypted. The MCP decrypts them and lays them over the catalog in
+one place, so every tool that reads the catalog counts with them, and a row it cannot read is reported
+in `unreadable` while its exercise follows the catalog. `get_exercise_catalog` shows the effective lists
+and, only on an entry with a personal list, `personalLinks` with the kinds that are personal.
+
+`get_stats { by: "capabilities" }` and each window of `get_training_state.capabilityBalance` carry a
+new field `pureStrength` beside the axes: the section "Reine Kraft", exercises without a capability
+axis, per exercise `{ exerciseId, name, setCount, metric, direction }`. It is never a key in
+`setCounts` and never an eighth axis. `setCount` counts the raw sets of the period; `metric` is `reps`,
+`e1rm` or `timeSeconds`, by its own rule, so a pull-up trained without weight shows a direction and not
+`insufficient-data`; `direction` rests on the last 12 sessions of the whole history, whatever the
+period. An own exercise also carries `exerciseNameFreeText`. `get_progress` is unchanged.
+
 ## Changelog
 
 ### 1.5.0
@@ -442,6 +467,12 @@ row type; a field that belongs to the app's own list never reaches the coach.
 - **Direct application:** every proposal tool says that the app may apply a proposal directly,
   depending on the athlete's choice; `get_suggestions` and `get_suggestion` show `decidedBy` and
   `undoneAt`.
+- **Personal lists of catalog exercises:** the new tool `propose_catalog_exercise_links`, the overlay
+  of the personal lists on every reader of the catalog, and `personalLinks` in `get_exercise_catalog`;
+  see
+  [Personal muscles and capabilities](#personal-muscles-and-capabilities-and-the-section-reine-kraft-phase-1681).
+- **Section "Reine Kraft":** `pureStrength` in `get_stats { by: "capabilities" }` and in each window of
+  `get_training_state.capabilityBalance`, with its own progress rule.
 - **Node:** still `>=22`. No new dependency.
 
 ### 1.4.0
