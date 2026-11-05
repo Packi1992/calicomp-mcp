@@ -2229,6 +2229,40 @@ describe('personal lists of catalog exercises', () => {
     expect(cache.decodeReport!.exerciseLinkOverridesLeftOut).toEqual({ unknownExercise: 0, unknownMuscleGroup: 1, unknownCapability: 1 });
   });
 
+  it('an overridden entry names its personal kinds and shows the effective lists', async () => {
+    const cache = await fetchWith({
+      exerciseLinkOverrides: [
+        linkRow('row-1', EX_A, plaintext(EX_A, [{ id: MG_LATS, level: 'PRIMARY' }], null)),
+        linkRow('row-2', EX_B, plaintext(EX_B, [{ id: MG_CHEST, level: 'PRIMARY' }], [{ id: CAP_POWER, level: 'GERING' }])),
+      ],
+    });
+
+    const [a, b] = getExerciseCatalog({}, cache.catalog, cache.snapshot);
+
+    expect(a.personalLinks).toEqual(['muscleGroups']);
+    expect(a.muscleGroups).toEqual([{ ...lats, involvementLevel: 'PRIMARY' }]);
+    expect(b.personalLinks).toEqual(['muscleGroups', 'capabilities']);
+    expect(b.capabilities).toEqual([{ ...power, capabilityLevel: 'GERING' }]);
+  });
+
+  it('a kind that follows the catalog again is not named as personal', async () => {
+    const cache = await fetchWith({
+      exerciseLinkOverrides: [
+        linkRow('row-1', EX_A, plaintext(EX_A, [{ id: MG_UNKNOWN, level: 'PRIMARY' }], [{ id: CAP_MOBILITY, level: 'GERING' }])),
+      ],
+    });
+
+    expect(getExerciseCatalog({}, cache.catalog, cache.snapshot)[0].personalLinks).toEqual(['capabilities']);
+  });
+
+  it('an entry without override has no personalLinks', async () => {
+    const cache = await fetchWith({
+      exerciseLinkOverrides: [linkRow('row-1', EX_A, plaintext(EX_A, [{ id: MG_LATS, level: 'PRIMARY' }], null))],
+    });
+
+    expect('personalLinks' in getExerciseCatalog({}, cache.catalog, cache.snapshot)[1]).toBe(false);
+  });
+
   it('the link vocabulary catalog keeps the state before the overlay', async () => {
     const cache = await fetchWith({
       exerciseLinkOverrides: [linkRow('row-1', EX_A, plaintext(EX_A, null, [{ id: CAP_MOBILITY, level: 'GERING' }]))],

@@ -79,6 +79,7 @@ const mockProfile: UserProfileResponse = {
 const MOCK_CACHE = {
   snapshot:  mockSnapshot,
   catalog:   mockCatalog,
+  linkVocabularyCatalog: mockCatalog,
   profile:   mockProfile,
   fetchedAt: Date.now(),
 };
@@ -729,7 +730,7 @@ describe('plan proposals — newExercises[] links', () => {
   );
 
   beforeEach(() => {
-    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, snapshot: pushSnapshot, catalog: LINK_CATALOG });
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, snapshot: pushSnapshot, catalog: LINK_CATALOG, linkVocabularyCatalog: LINK_CATALOG });
     vi.mocked(httpModule.postSuggest).mockReset();
     vi.mocked(httpModule.postSuggest).mockResolvedValue(MOCK_SUGGESTION);
   });
@@ -797,5 +798,19 @@ describe('plan proposals — newExercises[] links', () => {
     expect(badPlan.isError).toBe(true);
     expect(badPlan.content[0].text).toContain('juggling');
     expect(httpModule.postSuggest).not.toHaveBeenCalled();
+  });
+
+  // Phase 168.1 (Pitfall 6): the vocabulary is the catalog before the personal lists were laid over it.
+  it('a key that stood only on an overridden exercise stays known', async () => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, snapshot: pushSnapshot, catalog: mockCatalog, linkVocabularyCatalog: LINK_CATALOG });
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolProposePlanUpdate(server, DUMMY_CFG);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tools = (server as any)._registeredTools;
+
+    const result = await tools.propose_plan_update.handler(ProposePlanUpdateSchema.parse(updateArgs(linkedEntry)));
+
+    expect(result.isError).toBeFalsy();
+    expect(httpModule.postSuggest).toHaveBeenCalledTimes(1);
   });
 });

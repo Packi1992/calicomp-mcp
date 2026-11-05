@@ -49,6 +49,7 @@ const mockProfile: UserProfileResponse = {
 const MOCK_CACHE = {
   snapshot:  mockSnapshot,
   catalog:   mockCatalog,
+  linkVocabularyCatalog: mockCatalog,
   profile:   mockProfile,
   fetchedAt: Date.now(),
 };
@@ -186,7 +187,7 @@ const PINNED_NAME_ONLY_CHANGE_HASH = '4fd3d2005da0eaea18b47fd137b9f8eff72071479f
 
 describe('propose_new_exercise — links and translations', () => {
   beforeEach(() => {
-    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, catalog: LINK_CATALOG });
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, catalog: LINK_CATALOG, linkVocabularyCatalog: LINK_CATALOG });
     vi.mocked(httpModule.postSuggest).mockReset();
     vi.mocked(httpModule.postSuggest).mockResolvedValue(MOCK_SUGGESTION);
   });
@@ -252,5 +253,15 @@ describe('propose_new_exercise — links and translations', () => {
     expect(result.isError).toBeFalsy();
     expect(JSON.parse(result.content[0].text)).toStrictEqual({ dedupedTo: CATALOG_EXERCISE_ID_PUSHUP });
     expect(httpModule.postSuggest).not.toHaveBeenCalled();
+  });
+
+  // Phase 168.1 (Pitfall 6): the vocabulary is the catalog before the personal lists were laid over it.
+  it('a key that stood only on an overridden exercise stays known', async () => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, catalog: mockCatalog, linkVocabularyCatalog: LINK_CATALOG });
+
+    const result = await call({ name: 'Brand new drill', capabilities: [{ key: 'mobility', level: 'GERING' }] });
+
+    expect(result.isError).toBeFalsy();
+    expect(httpModule.postSuggest).toHaveBeenCalledTimes(1);
   });
 });

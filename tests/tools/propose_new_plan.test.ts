@@ -33,6 +33,7 @@ import {
   buildNewPlanPayload,
   type ProposeNewPlanArgs,
 } from '../../src/tools/propose_new_plan.js';
+import { ProposeNewPlanSchema } from '../../src/schemas.js';
 import { mockSnapshot, mockCatalog, CATALOG_EXERCISE_ID_PUSHUP } from '../fixture.js';
 import type { UserProfileResponse, SuggestionDtoResponse } from '../../src/types.js';
 
@@ -53,6 +54,7 @@ const mockProfile: UserProfileResponse = {
 const MOCK_CACHE = {
   snapshot:  mockSnapshot,
   catalog:   mockCatalog,
+  linkVocabularyCatalog: mockCatalog,
   profile:   mockProfile,
   fetchedAt: Date.now(),
 };
@@ -381,6 +383,33 @@ describe('propose_new_plan — registered MCP handler', () => {
     };
 
     const result = await handler(roundsOneArgs);
+
+    expect(result.isError).toBeFalsy();
+    expect(httpModule.postSuggest).toHaveBeenCalledTimes(1);
+  });
+
+  // Phase 168.1 (Pitfall 6): the vocabulary is the catalog before the personal lists were laid over it.
+  it('a key that stood only on an overridden exercise stays known', async () => {
+    const vocabulary = mockCatalog.map((ex, i) =>
+      i === 0 ? { ...ex, capabilities: [{ id: 'cap-power', key: 'power', translations: [], capabilityLevel: 'HAUPTREIZ' as const }] } : ex,
+    );
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({ ...MOCK_CACHE, linkVocabularyCatalog: vocabulary });
+    vi.mocked(httpModule.postSuggest).mockResolvedValue(MOCK_SUGGESTION);
+    const server = new McpServer({ name: 'test', version: '0.1.0' });
+    registerToolProposeNewPlan(server, DUMMY_CFG);
+
+    const result = await getHandler(server)(
+      ProposeNewPlanSchema.parse({
+        name: 'Power Day',
+        rationale: 'a new exercise with a capability',
+        newExercises: [
+          { tempId: 't-new', name: 'Brand new drill', mode: 'TIME', usesWeight: false, capabilities: [{ key: 'power', level: 'GERING' }] },
+        ],
+        standalone: [
+          { exercise: { source: 'new', tempId: 't-new' }, mode: 'TIME', targetTimeSeconds: 20, restTimeSeconds: 40, sets: 1, orderIndex: 0 },
+        ],
+      }),
+    );
 
     expect(result.isError).toBeFalsy();
     expect(httpModule.postSuggest).toHaveBeenCalledTimes(1);

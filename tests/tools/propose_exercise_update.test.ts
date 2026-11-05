@@ -63,6 +63,7 @@ const CATALOG: CatalogExercise[] = [...mockCatalog, OWN_EXERCISE];
 const MOCK_CACHE = {
   snapshot: mockSnapshot,
   catalog: CATALOG,
+  linkVocabularyCatalog: CATALOG,
   profile: {
     userId: 'user-test-1',
     email: 'test@example.com',
@@ -171,6 +172,28 @@ describe('propose_exercise_update', () => {
       exerciseId: CATALOG_EXERCISE_ID_PULLUP,
       translations: [{ languageCode: 'de', name: 'Mein Klimmzug', description: null }],
     });
+  });
+
+  it('a catalog target with links is refused and names the new tool', async () => {
+    const result = await propose({ exerciseId: CATALOG_EXERCISE_ID_PULLUP, muscleGroups: [{ key: 'lats', level: 'PRIMARY' }] });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('CATALOG_EXERCISE_LINKS_REFUSED');
+    expect(result.content[0].text).toContain('propose_catalog_exercise_links');
+    expect(httpModule.postSuggest).not.toHaveBeenCalled();
+  });
+
+  // Phase 168.1 (Pitfall 6): the vocabulary is the catalog before the personal lists were laid over it.
+  it('a key that stood only on an overridden exercise stays known', async () => {
+    vi.mocked(cacheModule.getSnapshot).mockResolvedValue({
+      ...MOCK_CACHE,
+      catalog: [...mockCatalog, { ...OWN_EXERCISE, capabilities: [] }],
+    });
+
+    const result = await propose({ exerciseId: OWN_EXERCISE_ID, capabilities: [{ key: 'mobility', level: 'GERING' }] });
+
+    expect(result.isError).toBeFalsy();
+    expect(httpModule.postSuggest).toHaveBeenCalledTimes(1);
   });
 
   it('an exerciseId missing from the catalog is refused', async () => {
