@@ -33,6 +33,8 @@ export const POPULATION_COUNT_FUNCTIONS: readonly { name: string; file: string }
   { name: 'getStatsByCapabilities', file: 'src/tools/get_stats.ts' },
   // Plan 166-06: get_training_state.capabilityBalance (STAT-03).
   { name: 'computeCapabilityBalance', file: 'src/training-state/capability-balance.ts' },
+  // Plan 168.1-04: the section "Reine Kraft" (D-06), set counts and series.
+  { name: 'computePureStrength', file: 'src/training-state/pure-strength.ts' },
   // Plan 166-06: the suspect marks (STAT-05), the source of get_history.suspect and dataQuality.
   { name: 'suspectMarksFor', file: 'src/training-state/suspect-sets.ts' },
 ];

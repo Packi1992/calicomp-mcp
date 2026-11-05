@@ -372,11 +372,12 @@ describe('computeCapabilityBalance', () => {
       NOW,
     );
     expect(Object.keys(balance)).toEqual(['last7Days', 'last30Days', 'allTime']);
-    expect(balance.last7Days).toEqual({ setCounts: { balance: 1, coordination: 1 }, weighted: { balance: 1, coordination: 0.25 } });
-    expect(balance.last30Days).toEqual({ setCounts: { balance: 2, coordination: 2 }, weighted: { balance: 2, coordination: 0.5 } });
+    expect(balance.last7Days).toEqual({ setCounts: { balance: 1, coordination: 1 }, weighted: { balance: 1, coordination: 0.25 }, pureStrength: [] });
+    expect(balance.last30Days).toEqual({ setCounts: { balance: 2, coordination: 2 }, weighted: { balance: 2, coordination: 0.5 }, pureStrength: [] });
     expect(balance.allTime).toEqual({
       setCounts: { balance: 2, coordination: 2, mobility: 1, flexibility: 1 },
       weighted: { balance: 2, coordination: 0.5, mobility: 0.5, flexibility: 0.25 },
+      pureStrength: [],
     });
   });
 

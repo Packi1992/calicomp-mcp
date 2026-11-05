@@ -111,6 +111,7 @@ if (!process.env.CHAR_166_PIN_GENERATE) {
         additions: [
           { pinFile: PIN_166, pinKey: 'getTrainingState', path: '/strengthMuscleBalance', rule: 'STAT-03', plan: '166-04', why: 'Planted.' },
           { pinFile: PIN_166, pinKey: 'getTrainingState', path: '/muscleBalance/allTime/strengthOnly', rule: 'IN-06', plan: '166-10', why: 'Planted.' },
+          { pinFile: PIN_166, pinKey: 'getStatsCapabilities', path: '/axes/*/pureStrength', rule: 'D-06', plan: '168.1-04', why: 'Planted.' },
         ],
       };
       planted.deltas.push({
@@ -123,6 +124,7 @@ if (!process.env.CHAR_166_PIN_GENERATE) {
       expect(problems.some((p) => p.includes('deltas[2]') && p.includes('why is missing'))).toBe(true);
       expect(problems.some((p) => p.includes('deltas[3]') && p.includes('before differs'))).toBe(true);
       expect(problems.some((p) => p.includes('additions[0]') && p.includes('STAT-03 adds only'))).toBe(true);
+      expect(problems.some((p) => p.includes('additions[2]') && p.includes('D-06 adds only'))).toBe(true);
       expect(problems.some((p) => p.includes('additions[1]') && p.includes('parallel field'))).toBe(true);
     });
 

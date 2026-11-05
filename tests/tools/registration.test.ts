@@ -376,13 +376,14 @@ const ENGLISH_DEFAULT_WORDING: readonly RegExp[] = [
 const NEW_FIELDS_166: Record<string, readonly string[]> = {
   // Plan 166-20 (166-20-FUND-01): narrativeNames, the own exercise of the sentence as athlete free text.
   // Gap plan 166-22 (E-17, protocol 1.52): repsInTime, the third record kind of personalRecords.
-  get_training_state: ['capabilityBalance', 'dataQuality', 'suspectSetCount', 'byReason', 'newest', 'carries key', 'exerciseNameFreeText', 'narrativeNames', 'repsInTime'],
+  // Plan 168.1-04 (D-06): pureStrength, in the capability evaluations of both tools.
+  get_training_state: ['capabilityBalance', 'dataQuality', 'suspectSetCount', 'byReason', 'newest', 'carries key', 'exerciseNameFreeText', 'narrativeNames', 'repsInTime', 'pureStrength'],
   get_history: ['suspect', 'reps_on_time_station', 'zero_set', 'measured_time_missing', 'CALICOMP_EXPORT_DIR', 'droppedValues', 'not_hh_mm', 'carries key', 'exerciseNameFreeText'],
   // Plan 166-10 (155-IN-06): a foreign time that is not HH:mm is dropped and named.
   get_planned_workouts: ['droppedValues', 'not_hh_mm'],
   get_progress: ['CALICOMP_EXPORT_DIR', 'carries key', 'exerciseNameFreeText'],
   // Plan 166-10 (156-GR-MCP-03): an unreadable override entry carries its routing key.
-  get_stats: ['carries key', 'exerciseNameFreeText'],
+  get_stats: ['carries key', 'exerciseNameFreeText', 'pureStrength'],
   // Plan 166-10 (156-IN-MCP-06): the name of an own exercise in the free-text envelope.
   get_template: ['exerciseNameFreeText'],
   get_exercise_catalog: ['nameFreeText'],

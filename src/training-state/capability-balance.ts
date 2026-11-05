@@ -37,7 +37,8 @@
  *   capabilitySetCountsInPeriod           — the window-and-count query, mirrored from muscleSetCountsInPeriod
  *   CapabilityBalanceWindow, computeCapabilityBalance — `get_training_state.capabilityBalance`
  *                                         (Phase 166, plan 166-06, STAT-03): three windows over
- *                                         the population of Rule P, raw and weighted
+ *                                         the population of Rule P, raw and weighted, since
+ *                                         Phase 168.1 with the section `pureStrength` per window
  *
  * Security (threat model):
  *   T-138.1-40: a coach-reported capability weight that disagrees with the app's own
@@ -60,6 +61,7 @@
 
 import type { DecryptedSnapshot, CatalogExercise, CapabilityInvolvementLevel } from '../types.js';
 import { resolveSetPopulation } from './set-population.js';
+import { computePureStrength, type PureStrengthRow } from './pure-strength.js';
 
 // ---------------------------------------------------------------------------
 // Port of CapabilityInvolvementWeighting.kt
@@ -213,10 +215,15 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  * resolved exercise has a RATED link to that axis (one set counts once per axis); `weighted`
  * maps the same keys to the sum of the level factors, folded by `weightedCounts` exactly as
  * the corpus section `capabilityBalance` proves. An axis without a set has no key.
+ *
+ * `pureStrength` (Phase 168.1, D-06, protocol 1.57 §1.11 "Pure strength") stands beside them and
+ * never in them: the exercises without an axis with their sets in this window; the direction
+ * rests on the whole history.
  */
 export interface CapabilityBalanceWindow {
   setCounts: Record<string, number>;
   weighted: Record<string, number>;
+  pureStrength: PureStrengthRow[];
 }
 
 /**
@@ -237,6 +244,7 @@ export function computeCapabilityBalance(
   snapshot: DecryptedSnapshot,
   catalog: CatalogExercise[],
   nowMs: number,
+  lang?: string,
 ): { last7Days: CapabilityBalanceWindow; last30Days: CapabilityBalanceWindow; allTime: CapabilityBalanceWindow } {
   const catalogById = new Map<string, CatalogExercise>(catalog.map((ex) => [ex.id, ex]));
   const population = resolveSetPopulation(snapshot, catalogById, { requireFinishedSession: true });
@@ -252,7 +260,11 @@ export function computeCapabilityBalance(
         setCounts[axis.key] = (setCounts[axis.key] ?? 0) + 1;
       }
     }
-    return { setCounts, weighted: weightedCounts(rows) };
+    return {
+      setCounts,
+      weighted: weightedCounts(rows),
+      pureStrength: computePureStrength(snapshot, catalog, sinceMs, lang),
+    };
   };
 
   return {

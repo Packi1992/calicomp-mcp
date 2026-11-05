@@ -1023,9 +1023,10 @@ describe('get_training_state — app language', () => {
     expect(Object.keys(unrecognized).slice(-1 - PHASE_166_ADDITIONS.length)).toEqual(['foreignSport', ...PHASE_166_ADDITIONS]);
 
     // Every other key is the same with and without the app language (D-10: old keys unchanged).
+    // The section `pureStrength` (Phase 168.1) names its exercises in the effective language.
     const strip = (r: Record<string, unknown>) => {
       const { appLanguage: _a, appLanguageUnavailableReason: _b, ...rest } = r;
-      return JSON.stringify(rest);
+      return JSON.stringify(rest, (key, value: unknown) => (key === 'pureStrength' ? [] : value));
     };
     expect(strip(withDe as unknown as Record<string, unknown>)).toBe(strip(notSynced as unknown as Record<string, unknown>));
     expect(strip(unrecognized as unknown as Record<string, unknown>)).toBe(strip(notSynced as unknown as Record<string, unknown>));
@@ -1256,17 +1257,31 @@ describe('get_training_state — counting rules', () => {
     expect(keys.indexOf('capabilityBalance')).toBe(keys.indexOf('foreignSport') + 1);
     const { capabilityBalance } = result as unknown as { capabilityBalance: ReturnType<typeof computeCapabilityBalance> };
     expect(capabilityBalance).toEqual(computeCapabilityBalance(CHAR166_SNAPSHOT, CHAR166_CATALOG, CHAR166_NOW_MS));
+    // Phase 168.1 (D-06): the hold exercise of the fixture has no axis and stands in the section.
+    const pureStrength = [
+      { exerciseId: 'char166-cat-hold', name: 'P166 Hold', setCount: 3, metric: 'timeSeconds', direction: 'insufficient-data' },
+    ];
     expect(capabilityBalance?.last7Days).toEqual({
       setCounts: { power: 10, mobility: 4, flexibility: 2 },
       weighted: { power: 4.5, mobility: 4, flexibility: 1 },
+      pureStrength,
     });
     expect(capabilityBalance?.last30Days).toEqual({
       setCounts: { power: 11, mobility: 5, flexibility: 3 },
       weighted: { power: 5, mobility: 5, flexibility: 1.5 },
+      pureStrength,
     });
     expect(capabilityBalance?.allTime).toEqual(capabilityBalance?.last30Days);
     const pinned = loadPinFile('characterization-166.json').getTrainingState as { narrative: string };
     expect(result.narrative).toBe(pinned.narrative);
+  });
+
+  it('the section in capabilityBalance names its exercises in lang', () => {
+    const catalog = CHAR166_CATALOG.map((ex) =>
+      ex.id === 'char166-cat-hold' ? { ...ex, translations: [{ languageCode: 'de', name: 'Halten' }] } : ex,
+    );
+    const result = getTrainingState({ lang: 'de' }, { ...CHAR166_TRAINING_STATE_DATA, catalog }, CHAR166_NOW_MS);
+    expect(result.capabilityBalance.allTime.pureStrength.map((r) => r.name)).toEqual(['Halten']);
   });
 });
 

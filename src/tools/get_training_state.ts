@@ -520,7 +520,7 @@ export function getTrainingState(
   // Phase 166 (STAT-03, D-03, D-04 in the version E-15): the capability balance, a genuine
   // addition computed AFTER narrative (protocol §1.11 "Existing fields that change meaning":
   // new keys stand at the end, the narrative reads none of them).
-  const capabilityBalance = computeCapabilityBalance(snapshot, catalog, nowMs);
+  const capabilityBalance = computeCapabilityBalance(snapshot, catalog, nowMs, args.lang);
   // Phase 166 (STAT-05, D-05, D-17): the summary of the suspect marks, the last key.
   const dataQuality = computeDataQuality(snapshot, catalog, timeZoneId);
 
@@ -733,7 +733,10 @@ export function registerToolGetTrainingState(
         'capability axis whose exercise has a rated link to it, one set once per axis) and ' +
         'weighted (the same sets weighted like the app, HAUPTREIZ 1, MITTRAINIERT 0.5, GERING ' +
         '0.25); it counts finished, undeleted sessions like muscleBalance, but includes ' +
-        'stretching on purpose. ' +
+        'stretching on purpose. Since phase 168.1 each window also carries pureStrength beside ' +
+        'setCounts, never a key in it: the section "Reine Kraft", exercises without a capability ' +
+        'axis, each { exerciseId, name, setCount, metric, direction }; setCount counts the sets ' +
+        'in the window, the direction rests on the whole history. ' +
         'dataQuality (since phase 166, the last key) summarizes sets that are probably entry ' +
         'errors: suspectSetCount, byReason (reps_on_time_station, zero_set, ' +
         'measured_time_missing; a set with two reasons counts in both) and newest, at most 20 ' +

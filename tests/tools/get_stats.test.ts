@@ -1262,7 +1262,8 @@ describe('get_stats — Rule P', () => {
     // Signature: (args, data), two parameters, as Phase 121 and the characterization tests import it.
     expect(getStats.length).toBe(2);
     // Shape: key set and order as before 166 (the pins of characterization-166.json, written
-    // from the code before 166); no key comes, none goes.
+    // from the code before 166); no key comes, none goes, except `pureStrength` on the
+    // capabilities branch (Phase 168.1, D-06, protocol 1.57 §1.11).
     const pins = JSON.parse(
       readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'vectors', 'characterization-166.json'), 'utf8'),
     ) as Record<string, Record<string, unknown>>;
@@ -1272,7 +1273,7 @@ describe('get_stats — Rule P', () => {
     const ca = getStats({ by: 'capabilities' }, dataP);
     expect(keysOf(ex)).toEqual(keysOf(pins.getStatsExercise));
     expect(keysOf(mu)).toEqual(keysOf(pins.getStatsMuscle));
-    expect(keysOf(ca)).toEqual(keysOf(pins.getStatsCapabilities));
+    expect(keysOf(ca)).toEqual([...keysOf(pins.getStatsCapabilities), 'pureStrength']);
     expect(keysOf(ex.trend)).toEqual(keysOf(pins.getStatsExercise.trend));
     expect(keysOf(ex.trend!.points[0])).toEqual(keysOf((pins.getStatsExercise.trend as { points: unknown[] }).points[0]));
     expect(keysOf(ca.axes[0])).toEqual(keysOf((pins.getStatsCapabilities.axes as unknown[])[0]));

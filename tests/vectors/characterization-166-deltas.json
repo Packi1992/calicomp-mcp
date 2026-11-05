@@ -691,6 +691,14 @@
       "rule": "E-17",
       "plan": "166-22",
       "why": "Genuine addition (protocol 1.52, D-04 in the version E-15): the third record kind, repetitions in time per exercise, duration and weight class from station sets; one exercise may stand several times, so no existing field carried it and it is no entry kind of maxReps. It is the last key of personalRecords."
+    },
+    {
+      "pinFile": "characterization-166.json",
+      "pinKey": "getStatsCapabilities",
+      "path": "/pureStrength",
+      "rule": "D-06",
+      "plan": "168.1-04",
+      "why": "Genuine addition of Phase 168.1 (protocol 1.57, section 1.11 Pure strength): exercises without a capability axis with their amount and progress, beside the axes; no axis changes. Per window of get_training_state it stands under the addition /capabilityBalance."
     }
   ]
 }

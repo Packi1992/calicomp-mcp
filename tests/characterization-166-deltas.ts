@@ -181,7 +181,9 @@ export function deltaRuleProblem(d: Pick<DeclaredDelta, 'rule' | 'pinKey' | 'pat
  * The scope of an addition: `STAT-03` only `getTrainingState /capabilityBalance`, `STAT-05`
  * only `getTrainingState /dataQuality` or a `suspect` key in `getHistory`, `E-17` only
  * `getTrainingState /personalRecords/repsInTime` (a new record kind beside the corrected
- * `maxHoldSeconds`, not a parallel field of it: protocol 1.52), a D-19 finding id anywhere except
+ * `maxHoldSeconds`, not a parallel field of it: protocol 1.52), `D-06` of Phase 168.1 only
+ * `getStatsCapabilities /pureStrength` (per window it stands under the addition `/capabilityBalance`
+ * of `STAT-03`), a D-19 finding id anywhere except
  * beside a field that a delta corrects (no parallel field, D-04 E-15).
  */
 export function additionRuleProblem(a: Pick<DeclaredAddition, 'rule' | 'pinKey' | 'path' | 'pinFile'>, deltas: DeclaredDelta[]): string | null {
@@ -198,6 +200,10 @@ export function additionRuleProblem(a: Pick<DeclaredAddition, 'rule' | 'pinKey' 
       return a.pinKey === 'getTrainingState' && a.path === '/personalRecords/repsInTime'
         ? null
         : 'E-17 adds only getTrainingState /personalRecords/repsInTime';
+    case 'D-06':
+      return a.pinKey === 'getStatsCapabilities' && a.path === '/pureStrength'
+        ? null
+        : 'D-06 adds only getStatsCapabilities /pureStrength';
     default: {
       if (!FINDING_ID.test(a.rule)) return `unknown addition rule ${JSON.stringify(a.rule)}`;
       const parent = tokens.slice(0, -1);
@@ -227,12 +233,12 @@ export function chainPredecessorIndex(deltas: DeclaredDelta[], i: number): numbe
 /** Every problem of a delta file, empty when it is sound. */
 export function checkDeltaFile(file: DeltaFile, pins: Partial<Record<PinFile, Record<string, unknown>>>): string[] {
   const problems: string[] = [];
-  const planOk = (plan: string): boolean => /^166-(0[4-9]|10|22)$/.test(plan);
+  const planOk = (plan: string): boolean => /^(166-(0[4-9]|10|22)|168\.1-04)$/.test(plan);
   const textOk = (why: string): boolean => typeof why === 'string' && why.trim().length > 0;
   file.deltas.forEach((d, i) => {
     const at = `deltas[${i}] ${d.pinFile}:${d.pinKey}${d.path}`;
     if (!(PIN_FILES as readonly string[]).includes(d.pinFile)) problems.push(`${at}: pinFile must be a bare pin file name`);
-    if (!planOk(d.plan)) problems.push(`${at}: plan must be 166-04 to 166-10 or 166-22`);
+    if (!planOk(d.plan)) problems.push(`${at}: plan must be 166-04 to 166-10, 166-22 or 168.1-04`);
     if (!textOk(d.why)) problems.push(`${at}: why is missing`);
     const ruleProblem = deltaRuleProblem(d);
     if (ruleProblem) problems.push(`${at}: ${ruleProblem}`);
@@ -262,7 +268,7 @@ export function checkDeltaFile(file: DeltaFile, pins: Partial<Record<PinFile, Re
   file.additions.forEach((a, i) => {
     const at = `additions[${i}] ${a.pinFile}:${a.pinKey}${a.path}`;
     if (!(PIN_FILES as readonly string[]).includes(a.pinFile)) problems.push(`${at}: pinFile must be a bare pin file name`);
-    if (!planOk(a.plan)) problems.push(`${at}: plan must be 166-04 to 166-10 or 166-22`);
+    if (!planOk(a.plan)) problems.push(`${at}: plan must be 166-04 to 166-10, 166-22 or 168.1-04`);
     if (!textOk(a.why)) problems.push(`${at}: why is missing`);
     const ruleProblem = additionRuleProblem(a, file.deltas);
     if (ruleProblem) problems.push(`${at}: ${ruleProblem}`);
