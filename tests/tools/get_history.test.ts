@@ -94,6 +94,74 @@ function buildSession(overrides: Partial<DecryptedSession> & { id: string; start
 // Schema validation (these tests exercise Zod without calling getHistory)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Deleted rows (Rundgang 169): a deletion mark keeps a row out of the history
+// ---------------------------------------------------------------------------
+
+describe('get_history — deleted sessions and sets', () => {
+  const ARGS = { from: '2024-03-01', to: '2024-03-31', limit: 200 };
+
+  it('leaves a deleted session and its sets out of sessions, setLogs and matchingSessions', () => {
+    const snapshot: DecryptedSnapshot = {
+      ...mockSnapshot,
+      sessions: mockSnapshot.sessions.map((s) =>
+        s.id === SESSION_ID_A ? { ...s, deletedAt: s.startTime + 1 } : s,
+      ),
+    };
+
+    const result = getHistory(ARGS, snapshot);
+
+    expect(result.sessions.map((s) => s.id)).toEqual([SESSION_ID_B]);
+    expect(result.matchingSessions).toBe(1);
+    expect(result.setLogs.length).toBeGreaterThan(0);
+    expect(result.setLogs.every((sl) => sl.sessionId === SESSION_ID_B)).toBe(true);
+  });
+
+  it('a deleted session does not use up the limit or set truncated', () => {
+    const snapshot: DecryptedSnapshot = {
+      ...mockSnapshot,
+      sessions: mockSnapshot.sessions.map((s) =>
+        s.id === SESSION_ID_B ? { ...s, deletedAt: s.startTime + 1 } : s,
+      ),
+    };
+
+    const result = getHistory({ ...ARGS, limit: 1 }, snapshot);
+
+    expect(result.sessions.map((s) => s.id)).toEqual([SESSION_ID_A]);
+    expect(result.truncated).toBe(false);
+  });
+
+  it('leaves a deleted set of a live session out, the session and its other sets stay', () => {
+    const [deletedSet] = mockSnapshot.setLogs.filter((sl) => sl.sessionId === SESSION_ID_A);
+    const snapshot: DecryptedSnapshot = {
+      ...mockSnapshot,
+      setLogs: mockSnapshot.setLogs.map((sl) =>
+        sl.id === deletedSet!.id ? { ...sl, deletedAt: sl.createdAt + 1 } : sl,
+      ),
+    };
+
+    const result = getHistory(ARGS, snapshot);
+
+    expect(result.sessions.map((s) => s.id)).toContain(SESSION_ID_A);
+    expect(result.setLogs.map((sl) => sl.id)).not.toContain(deletedSet!.id);
+    expect(result.setLogs.filter((sl) => sl.sessionId === SESSION_ID_A).length).toBeGreaterThan(0);
+  });
+
+  it('the exercise filter does not find a session through a deleted set of that exercise', () => {
+    const snapshot: DecryptedSnapshot = {
+      ...mockSnapshot,
+      setLogs: mockSnapshot.setLogs.map((sl) =>
+        sl.exerciseId === CATALOG_EXERCISE_ID_SQUAT ? { ...sl, deletedAt: sl.createdAt + 1 } : sl,
+      ),
+    };
+
+    const result = getHistory({ ...ARGS, exercise: CATALOG_EXERCISE_ID_SQUAT }, snapshot);
+
+    expect(result.sessions).toEqual([]);
+    expect(result.matchingSessions).toBe(0);
+  });
+});
+
 describe('get_history — schema validation', () => {
   it('rejects to < from (inverted date range)', () => {
     const result = GetHistorySchema.safeParse({
@@ -1276,7 +1344,7 @@ describe('get_history — suspect marks', () => {
   it('get_history carries suspect only on a finding', async () => {
     // On the fixture of 166, by hand from the protocol table: the repetitions on the MAX hold
     // (no targetReps) are reps_on_time_station, the push set with 0 repetitions is a zero set;
-    // every other set, also the deleted one, has no finding. The repetitions on the TIME station
+    // every other set has no finding, and the deleted one is left out. The repetitions on the TIME station
     // of the push exercise (catalog REPS) are real counts since protocol 1.51 (166-17-FUND-02).
     const expectedMarks: Record<string, string[]> = {
       'char166-sl-push-zero': ['zero_set'],
@@ -1291,7 +1359,7 @@ describe('get_history — suspect marks', () => {
         expect(marks.map((m) => m.reason)).toEqual(expectedMarks[sl.id as string]);
         expect(Object.keys(sl)[Object.keys(sl).length - 1]).toBe('suspect');
       }
-      expect(setLogs.some((sl) => sl.id === 'char166-sl-push-deleted' && !('suspect' in sl))).toBe(true);
+      expect(setLogs.some((sl) => sl.id === 'char166-sl-push-deleted')).toBe(false);
     };
 
     const pure = getHistory(CHAR166_HISTORY_ARGS, CHAR166_SNAPSHOT, undefined, undefined, CHAR166_CATALOG);

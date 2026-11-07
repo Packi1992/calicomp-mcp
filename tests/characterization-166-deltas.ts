@@ -233,12 +233,12 @@ export function chainPredecessorIndex(deltas: DeclaredDelta[], i: number): numbe
 /** Every problem of a delta file, empty when it is sound. */
 export function checkDeltaFile(file: DeltaFile, pins: Partial<Record<PinFile, Record<string, unknown>>>): string[] {
   const problems: string[] = [];
-  const planOk = (plan: string): boolean => /^(166-(0[4-9]|10|22)|168\.1-04)$/.test(plan);
+  const planOk = (plan: string): boolean => /^(166-(0[4-9]|10|22)|168\.1-04|169-03)$/.test(plan);
   const textOk = (why: string): boolean => typeof why === 'string' && why.trim().length > 0;
   file.deltas.forEach((d, i) => {
     const at = `deltas[${i}] ${d.pinFile}:${d.pinKey}${d.path}`;
     if (!(PIN_FILES as readonly string[]).includes(d.pinFile)) problems.push(`${at}: pinFile must be a bare pin file name`);
-    if (!planOk(d.plan)) problems.push(`${at}: plan must be 166-04 to 166-10, 166-22 or 168.1-04`);
+    if (!planOk(d.plan)) problems.push(`${at}: plan must be 166-04 to 166-10, 166-22, 168.1-04 or 169-03`);
     if (!textOk(d.why)) problems.push(`${at}: why is missing`);
     const ruleProblem = deltaRuleProblem(d);
     if (ruleProblem) problems.push(`${at}: ${ruleProblem}`);
@@ -268,7 +268,7 @@ export function checkDeltaFile(file: DeltaFile, pins: Partial<Record<PinFile, Re
   file.additions.forEach((a, i) => {
     const at = `additions[${i}] ${a.pinFile}:${a.pinKey}${a.path}`;
     if (!(PIN_FILES as readonly string[]).includes(a.pinFile)) problems.push(`${at}: pinFile must be a bare pin file name`);
-    if (!planOk(a.plan)) problems.push(`${at}: plan must be 166-04 to 166-10, 166-22 or 168.1-04`);
+    if (!planOk(a.plan)) problems.push(`${at}: plan must be 166-04 to 166-10, 166-22, 168.1-04 or 169-03`);
     if (!textOk(a.why)) problems.push(`${at}: why is missing`);
     const ruleProblem = additionRuleProblem(a, file.deltas);
     if (ruleProblem) problems.push(`${at}: ${ruleProblem}`);

@@ -77,6 +77,7 @@ import type { ExerciseNameResolver, SetLogExerciseNameFields } from '../exercise
 import { resolveForeignType, wrapFreeText } from '../foreign-types.js';
 import { APP_LANGUAGE_NAMES_SENTENCE, effectiveNameLanguage, OWN_NAMES_WITHOUT_LANG_SENTENCE } from '../app-language.js';
 import type { ForeignTypeFields } from '../foreign-types.js';
+import { isMarkedDeleted } from '../training-state/set-population.js';
 import { suspectMarksFor, type SuspectMark } from '../training-state/suspect-sets.js';
 import type {
   AthleteFreeText,
@@ -219,15 +220,17 @@ export function getHistory(
   const fromEpoch = new Date(from).getTime();                         // 2024-03-01T00:00:00.000Z
   const toEpoch   = new Date(to + 'T23:59:59.999Z').getTime();       // end-of-day UTC inclusive
 
-  // Step 2: Filter by date range
+  // Step 2: Filter by date range. A deletion mark keeps a row out (Rundgang 169): the pull carries the athlete's
+  // deleted sessions and sets as tombstones for up to 90 days, and to a coach they read as real training.
+  const liveSetLogs = snapshot.setLogs.filter(sl => !isMarkedDeleted(sl));
   let sessions: DecryptedSession[] = snapshot.sessions.filter(
-    s => s.startTime >= fromEpoch && s.startTime <= toEpoch,
+    s => !isMarkedDeleted(s) && s.startTime >= fromEpoch && s.startTime <= toEpoch,
   );
 
   // Step 3: Optional exercise filter — keep sessions with ≥1 matching setLog
   if (exercise !== undefined) {
     const sessionIdsWithExercise = new Set<string>(
-      snapshot.setLogs
+      liveSetLogs
         .filter(sl => sl.exerciseId === exercise)
         .map(sl => sl.sessionId),
     );
@@ -254,7 +257,7 @@ export function getHistory(
   // Phase 166 (STAT-05): `suspect` only on a finding, as the last key of the set-log.
   const retainedSessionIds = new Set<string>(sessions.map(s => s.id));
   const suspectMarks = catalog !== undefined ? suspectMarksFor(snapshot, catalog) : undefined;
-  const setLogs: GetHistorySetLogItem[] = snapshot.setLogs
+  const setLogs: GetHistorySetLogItem[] = liveSetLogs
     .filter(sl => retainedSessionIds.has(sl.sessionId))
     .map(sl => {
       const named: GetHistorySetLogItem = resolver ? { ...sl, ...resolver.forSetLog(sl) } : sl;
@@ -419,6 +422,7 @@ export function registerToolGetHistory(
         'for a TARGETED detail lookup — a specific window, a specific exercise. ' +
         'For the athlete\'s overall standing, call `get_training_state` first; use this ' +
         'tool once you need the underlying raw sessions and set-logs. ' +
+        'Sessions and set-logs the athlete deleted are left out, also from matchingSessions. ' +
         'Optionally filter by exercise UUID, `templateId` (matched on the session\'s own ' +
         'templateId; an unknown templateId matches nothing, never an error) and/or ' +
         '`sessionKind` (one of "template", "templateless", "quick_challenge" — see below) — ' +

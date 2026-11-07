@@ -460,6 +460,12 @@ period. An own exercise also carries `exerciseNameFreeText`. `get_progress` is u
 
 ## Changelog
 
+### 1.5.1
+
+- **`get_history` leaves deleted rows out:** sessions and set-logs the athlete deleted no longer appear in `sessions`,
+  `setLogs` or `matchingSessions`, and the exercise filter no longer finds a session through a deleted set. Until now
+  they came along as ordinary entries with a `deletedAt` field for up to 90 days.
+
 ### 1.5.0
 
 - **Correcting a finished workout:** the new tool `propose_history_correction` with an encrypted
