@@ -55,15 +55,18 @@ treat a password.
 a repo-committed config file — even a "local" one that ends up staged by accident — puts a live
 token and decryption key into git history, which is not something a later `git rm` undoes.
 
-**Where it should go instead:** a file outside any repository that only your own user account
-can read (`chmod 600`), or your MCP client's user-scope server registration instead of a
-project-scope one. Concretely, the same approach this project uses for its own recurring MCP
-calls: an env file under your user config directory (e.g. `~/.config/calicomp/mcp.env`, mode
-`600`) that a wrapper script or your client's env-var substitution reads at invocation time — or,
-if your client supports it directly, register the server in its *user* config rather than a
-project's `.mcp.json` (Claude Code, for example, distinguishes `claude mcp add --scope user` from
-a project-scoped registration). Either way, the secret lives in exactly one place your user
-account controls, never in a directory a `git add .` could reach.
+**Where it should go instead:** your password manager, and from there only into the MCP
+process itself. Register the server with a small launcher script as its `command` instead of
+calling `npx` directly. At start, the launcher asks your password manager's CLI for
+`CALICOMP_PAT` and `CALICOMP_KEY`, puts them into the environment of the child process it
+starts (`npx -y @gehlich/calicomp-mcp`), and nothing else: the values are never written to a
+file, never placed in the client's configuration, and never passed as command-line arguments
+(which other processes can read). This is the approach this project uses for its own recurring
+MCP calls. The client registration then carries no `env` block with secrets at all. If you
+register the server by hand, do it in your MCP client's *user* config rather than a project's
+`.mcp.json` (Claude Code, for example, distinguishes `claude mcp add --scope user` from a
+project-scoped registration). Either way, the secret lives in one place your user account
+controls, never in a directory a `git add .` could reach.
 
 **What the snippet leaves out:** `CALICOMP_SERVER_URL`. For the hosted default
 (`https://api.calicompanion.de`, see the table above) this is harmless — the server falls back to
