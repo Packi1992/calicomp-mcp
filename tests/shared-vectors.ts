@@ -20,15 +20,20 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { ISO_DATE, ProposePlannedUpdateSchema } from '../src/schemas.js';
+import { findSuperRepoDoc } from './super-repo-docs.js';
 import type { CatalogExercise, DecryptedSnapshot } from '../src/types.js';
 
 /** Path to the corpus, relative to this file's own directory (tests/). */
 export const CORPUS_RELATIVE_PATH = '../../docs/coach-planning-vectors.json';
 
-/** Resolve the absolute corpus path, cwd-independent. [fromDir] defaults to this file's dir. */
+/**
+ * Resolve the absolute corpus path, cwd-independent. [fromDir] defaults to this file's dir. The corpus is searched
+ * upwards (`findSuperRepoDoc`, so the Stryker sandbox finds it too); without a hit the checkout layout
+ * `CORPUS_RELATIVE_PATH` gives the path the D-02 error names.
+ */
 export function resolveCorpusPath(fromDir?: string): string {
   const baseDir = fromDir ?? dirname(fileURLToPath(import.meta.url));
-  return join(baseDir, CORPUS_RELATIVE_PATH);
+  return findSuperRepoDoc('coach-planning-vectors.json', baseDir) ?? join(baseDir, CORPUS_RELATIVE_PATH);
 }
 
 const ExpansionVectorSchema = z.object({

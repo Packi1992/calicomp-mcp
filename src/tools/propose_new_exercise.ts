@@ -97,12 +97,12 @@ export function findUnknownLinkKey(
 ): string | undefined {
   for (const c of def.capabilities ?? []) {
     if (!vocabulary.capabilityKeys.has(c.key)) {
-      return `UNKNOWN_CAPABILITY_KEY: "${c.key}" is not a capability key of the catalog (see get_exercise_catalog).`;
+      return `UNKNOWN_CAPABILITY_KEY: "${c.key}" is not a capability key of the catalog; only a key that at least one catalog exercise carries counts (see get_exercise_catalog).`;
     }
   }
   for (const e of def.equipment ?? []) {
     if (!vocabulary.equipmentKeys.has(e.key)) {
-      return `UNKNOWN_EQUIPMENT_KEY: "${e.key}" is not an equipment key of the catalog (see get_exercise_catalog).`;
+      return `UNKNOWN_EQUIPMENT_KEY: "${e.key}" is not an equipment key of the catalog; only a key that at least one catalog exercise carries counts (see get_exercise_catalog).`;
     }
   }
   return undefined;
@@ -155,8 +155,8 @@ export function registerToolProposeNewExercise(
         '(muscle keys, each with an optional level PRIMARY, SECONDARY or STABILIZER), capabilities ' +
         '(capability keys, each with a required level HAUPTREIZ, MITTRAINIERT or GERING) and ' +
         'equipment (equipment keys, each with an optional flag optional). Use the keys ' +
-        'get_exercise_catalog shows; an unknown capability or equipment key is refused with an error ' +
-        'that names it. Leave out a field you do not want to set; never send an empty list. The ' +
+        'get_exercise_catalog shows; only a key that at least one catalog exercise carries counts, and ' +
+        'any other capability or equipment key is refused with an error that names it. Leave out a field you do not want to set; never send an empty list. The ' +
         'duplicate check compares the name and every translation name with the catalog names of ' +
         'every language. The athlete can change every field when accepting in the app. ' +
         'The mode of an exercise decides how a timed set runs: TIME counts down from ' +

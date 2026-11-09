@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { findSuperRepoDoc } from '../super-repo-docs.js';
 import {
   SUSPECT_REASONS,
   computeDataQuality,
@@ -136,7 +137,8 @@ const reasonsOf = (marks: Map<string, SuspectMark[]>, id: string) => marks.get(i
 
 /** The explanation table of protocol §1.11 "Suspect sets", read verbatim. */
 function protocolExplanations(): Record<string, string> {
-  const path = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'docs', 'COACH-PLANNING-PROTOCOL.md');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const path = findSuperRepoDoc('COACH-PLANNING-PROTOCOL.md', here) ?? join(here, '..', '..', '..', 'docs', 'COACH-PLANNING-PROTOCOL.md');
   const text = readFileSync(path, 'utf-8');
   const out: Record<string, string> = {};
   for (const m of text.matchAll(/^\| `(reps_on_time_station|zero_set|measured_time_missing)` \| `(This [^`]+)` \|$/gm)) {

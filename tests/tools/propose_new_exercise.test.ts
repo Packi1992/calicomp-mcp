@@ -202,6 +202,8 @@ describe('propose_new_exercise — links and translations', () => {
     const capability = await call({ name: 'Juggling Drill', capabilities: [{ key: 'juggling', level: 'HAUPTREIZ' }] });
     expect(capability.isError).toBe(true);
     expect(capability.content[0].text).toContain('juggling');
+    // The vocabulary is what the catalog exercises carry, not a server list of all keys; the error says so.
+    expect(capability.content[0].text).toContain('only a key that at least one catalog exercise carries counts');
 
     const equipment = await call({ name: 'Trampoline Bounce', equipment: [{ key: 'trampoline' }] });
     expect(equipment.isError).toBe(true);

@@ -429,7 +429,10 @@ export function computePersonalRecords(
 /**
  * The weight class of a station set (protocol 1.52 §1.11 Rule M step 5): `round(weightUsed × 100)`, the weight in
  * hundredths of a kilogram, when that is greater than 0; otherwise (`null` or `0`) `null`, the class without weight.
- * `Math.round` agrees with SQLite's `ROUND(x)` for positive numbers, so the app and the MCP form the same classes.
+ * `Math.round` agrees with SQLite's `ROUND(x)` for positive numbers, so the app and the MCP form the same class only for
+ * the same input. They do not round the same input: the app rounds the stored `Float` (as `REAL`), the MCP the decimal
+ * value of the JSON payload. With three decimal places on the half boundary the classes can differ (`2.345f` gives 235
+ * in the app and 234 here). Rare in practice; nothing here corrects it.
  */
 function weightClassOf(weightUsed: number | null): number | null {
   if (weightUsed === null) return null;

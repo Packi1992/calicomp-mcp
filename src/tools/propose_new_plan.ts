@@ -190,8 +190,8 @@ export function registerToolProposeNewPlan(
         'The tool itself creates nothing; it sends the proposal to the app. Inline `newExercises[]` entries that match an existing catalog exercise ' +
         'are automatically resolved to that catalog UUID instead of being proposed as duplicates. ' +
         'newExercises[] entries take the same optional fields as propose_new_exercise ' +
-        '(translations, muscleGroups, capabilities, equipment); none is required, and an unknown ' +
-        'capability or equipment key is refused with an error that names it. ' +
+        '(translations, muscleGroups, capabilities, equipment); none is required; only a capability or equipment ' +
+        'key that at least one catalog exercise carries counts, any other is refused with an error that names it. ' +
         'A block is an exercise list that is run through rounds times; in a circuit each exercise ' +
         'typically has sets: 1. A standalone entry (standalone[]) is one exercise with all its ' +
         'sets done back to back. A block with rounds: 1 makes no sense — use standalone entries ' +

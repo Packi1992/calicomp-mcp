@@ -119,8 +119,8 @@ export function registerToolProposeExerciseUpdate(
         'translations apply, as the athlete\'s own personal name and description per language; the ' +
         'shared catalog never changes for anyone. muscleGroups and capabilities of a catalog exercise ' +
         'are refused here; propose_catalog_exercise_links proposes those. Use the muscle and capability keys get_exercise_catalog ' +
-        'shows; a capability level is required, a muscle level is optional. An unknown capability ' +
-        'key is refused with an error that names it, and an exerciseId that is neither a catalog nor ' +
+        'shows; a capability level is required, a muscle level is optional. Only a capability key ' +
+        'that at least one catalog exercise carries counts; any other is refused with an error that names it, and an exerciseId that is neither a catalog nor ' +
         'an own exercise with EXERCISE_NOT_FOUND. Never send an empty list. Equipment is not part of ' +
         'this proposal. This proposal type is live only once the server has been deployed with it; ' +
         'before that the server answers with an HTTP error. ' +

@@ -96,7 +96,7 @@ export function registerToolProposeCatalogExerciseLinks(
         'Never send an empty list: an axis can be replaced, not removed. The athlete takes the proposal over as it ' +
         'stands or rejects it, there is no editor at this step; to change a list later, the athlete resets the exercise ' +
         'to the catalog and you propose again. Use the muscle and capability keys get_exercise_catalog shows; a capability ' +
-        'level is required, a muscle level is optional. An unknown capability key is refused with an error that names it, ' +
+        'level is required, a muscle level is optional. Only a capability key that at least one catalog exercise carries counts; any other is refused with an error that names it, ' +
         'an exerciseId that is no exercise with EXERCISE_NOT_FOUND, and an own exercise with an error that names ' +
         'propose_exercise_update. This proposal type is live only once the server has been deployed with it; before ' +
         'that the server answers with an HTTP error. ' +

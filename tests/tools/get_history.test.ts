@@ -52,6 +52,7 @@ import {
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { findSuperRepoDoc } from '../super-repo-docs.js';
 import type { GetHistoryResult } from '../../src/tools/get_history.js';
 import { createExerciseNameResolver } from '../../src/exercise-names.js';
 import {
@@ -1438,8 +1439,9 @@ describe('get_history — suspect marks', () => {
         },
       ],
     };
+    const here = dirname(fileURLToPath(import.meta.url));
     const protocol = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'docs', 'COACH-PLANNING-PROTOCOL.md'),
+      findSuperRepoDoc('COACH-PLANNING-PROTOCOL.md', here) ?? join(here, '..', '..', '..', 'docs', 'COACH-PLANNING-PROTOCOL.md'),
       'utf-8',
     );
     const explanation = /^\| `zero_set` \| `(This [^`]+)` \|$/m.exec(protocol)?.[1];

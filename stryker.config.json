@@ -22,5 +22,5 @@
   },
   "coverageAnalysis": "perTest",
   "concurrency": 4,
-  "inPlace": true
+  "inPlace": false
 }

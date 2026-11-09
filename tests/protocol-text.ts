@@ -9,6 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { findSuperRepoDoc } from './super-repo-docs.js';
 
 /** Path to the protocol, relative to this file's own directory (tests/). */
 export const PROTOCOL_RELATIVE_PATH = '../../docs/COACH-PLANNING-PROTOCOL.md';
@@ -19,7 +20,8 @@ export const PROTOCOL_RELATIVE_PATH = '../../docs/COACH-PLANNING-PROTOCOL.md';
  * @param name The constant name, e.g. `FOREIGN_ADHERENCE_EXPLANATION`.
  */
 export function protocolExplanation(name: string): string {
-  const path = join(dirname(fileURLToPath(import.meta.url)), PROTOCOL_RELATIVE_PATH);
+  const here = dirname(fileURLToPath(import.meta.url));
+  const path = findSuperRepoDoc('COACH-PLANNING-PROTOCOL.md', here) ?? join(here, PROTOCOL_RELATIVE_PATH);
   const lines = readFileSync(path, 'utf-8').split('\n');
   const heading = lines.indexOf(`\`${name}\``);
   if (heading < 0) throw new Error(`protocol has no line \`${name}\` (${path})`);

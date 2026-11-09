@@ -48,11 +48,13 @@
  *     in the MCP configuration, resolved ONCE at start by `resolveExportDir`
  *     (a leading `~/` expands to the home directory, otherwise the value must be
  *     absolute; `realpath` resolves a symlinked directory once, and the result
- *     must be a directory). A later change of a symlink therefore cannot move the
- *     writes. The file itself is created with
- *     `O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW` and mode 0600, so a file or a
- *     symlink planted at the target name is refused instead of followed or
- *     overwritten. The `dir` parameter of `writeExportFile` carries only that
+ *     must be a directory). The directory path is resolved once and trusted
+ *     afterwards: every `open` walks the resolved path again, so a directory of
+ *     that path that is later replaced by a symlink would carry the writes with
+ *     it (no attack path in the local one-person setup, but not excluded). The
+ *     file itself is created with `O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW` and
+ *     mode 0600, so only at the file name itself a file or a symlink planted at
+ *     the target name is refused instead of followed or overwritten. The `dir` parameter of `writeExportFile` carries only that
  *     start-resolved directory (index.ts) or a test directory — it is never wired
  *     to any tool argument.
  *   T-137-07 (Information Disclosure — error text): `pruneExports` never throws,
